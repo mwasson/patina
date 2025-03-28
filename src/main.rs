@@ -8,6 +8,9 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
+mod rom;
+use rom::Rom;
+
 fn main() -> Result<(), pixels::Error> {
 	println!("Here begins the Patina project. An inauspicious start?");
 	parse_file("fileloc");
@@ -124,15 +127,4 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	} else {
 		return Ok(());
 	}
-}
-
-/* TODO: move into separate file */
-struct Rom {
-	prg_rom: Vec<u8>,
-	chr_ram: Vec<u8>,
-	byte_6_flags: u8, /* TODO: split these out */
-	byte_7_flags: u8, /* TODO: split these out */
-	trainer: Vec<u8>,
-	prg_ram: Vec<u8>,
-	tv_system: u8, /* TODO: make into a boolean or enum */
 }
