@@ -11,6 +11,8 @@ use winit::window::WindowBuilder;
 mod rom;
 use rom::Rom;
 
+mod cpu;
+
 fn main() -> Result<(), pixels::Error> {
 	println!("Here begins the Patina project. An inauspicious start?");
 	parse_file("fileloc");
