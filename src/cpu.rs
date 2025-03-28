@@ -1,6 +1,6 @@
 /* the state of the cpu at a given time */
 
-pub struct cpu
+pub struct Cpu
 {
 	accumulator: u8,
 	index_x: u8,
