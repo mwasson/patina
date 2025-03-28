@@ -1,9 +1,74 @@
 use std::fs;
-use std::io::{self, Error, ErrorKind};
+use std::io::{self, ErrorKind};
 
-fn main() {
-    println!("Here begins the Patina project. An inauspicious start?");
-    parse_file("fileloc");
+use pixels::{Pixels, SurfaceTexture};
+
+use winit::dpi::LogicalSize;
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::WindowBuilder;
+
+fn main() -> Result<(), pixels::Error> {
+	println!("Here begins the Patina project. An inauspicious start?");
+	parse_file("fileloc");
+	
+	let event_loop = EventLoop::new();
+	let window = WindowBuilder::new()
+		.with_title("Patina")
+		.with_inner_size(LogicalSize::new(640 as f64, 480 as f64))
+		.build(&event_loop)
+		.unwrap();
+
+	let mut pixels = {
+		let window_size = window.inner_size();
+		let surface_texture = SurfaceTexture::new(window_size.width,
+		                                          window_size.height,
+		                                          &window);
+		Pixels::new(640, 480, surface_texture)?
+	};
+
+	event_loop.run(move |event, _, control_flow| {
+		match event {
+			Event::RedrawRequested(_) => {
+				let frame = pixels.frame_mut();
+
+				/* clear screen */
+				for pixel in frame.chunks_exact_mut(4) {
+					pixel.copy_from_slice(&[0,0,0,255]);
+				}
+				
+				draw_circle(frame, 640 / 2, 480 /2, 100);
+
+				pixels.render();
+			}
+			Event::WindowEvent { event, .. } => match event {
+				WindowEvent::CloseRequested => {
+					*control_flow = ControlFlow::Exit;
+				}
+				_ => ()
+			}
+			_ => ()
+		}
+	});
+}
+
+fn draw_circle(frame: &mut [u8], center_x: i32, center_y: i32, radius: i32) {
+	for y in -radius..radius {
+		for x in -radius..radius {
+			if x*x + y*y <= radius*radius {
+				let mx = center_x + x;
+				let my = center_y + y;
+
+				if mx >= 0 && mx < 640 && my >= 0 && my < 480 {
+					let loc = (my*640 + mx) as usize * 4;
+					frame[loc] = 0;
+					frame[loc+1] = 0;
+					frame[loc+2] = 255;
+					frame[loc+3] = 255;	
+				}
+			}
+		} 
+	}
 }
 
 fn parse_file(file_ref: &str) -> io::Result<Vec<u8>> {
@@ -14,7 +79,8 @@ fn parse_file(file_ref: &str) -> io::Result<Vec<u8>> {
 }
 
 
-fn validate_header(rom_data: &Vec<u8>) -> Result<(), io::Error> {
+/* TODO: Result should probably be std Result, not io Result */
+fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	let mut error_msg = String::from("");
 
 	if rom_data.len() < 16 {
@@ -54,7 +120,7 @@ fn validate_header(rom_data: &Vec<u8>) -> Result<(), io::Error> {
 	};
 
 	if error_msg != "" {
-		return Err(Error::new(ErrorKind::InvalidData, error_msg));	
+		return Err(io::Error::new(ErrorKind::InvalidData, error_msg));	
 	} else {
 		return Ok(());
 	}
