@@ -12,7 +12,7 @@ pub struct ProgramState
 pub enum Instruction
 {
     /* load/store opcodes */
-    LDA, /* loads fixed value into A; can set zero flag */
+    LDA {addr_mode: AddressingMode}, /* loads fixed value into A; can set zero flag */
     LDX, /* loads value at address into X; can set zero flag */
     LDY, /* loads fixed value into Y; can set zero flag */
     STA, /* store value from A into address */
@@ -24,6 +24,18 @@ pub enum Instruction
     TYA  /* transfer value from Y into A; can set zero flag */
 
     /* TODO others */
+}
+
+impl Instruction
+{
+	fn apply(self: Instruction, state: &mut ProgramState, b1: u8, b2: u8) {
+		match self {
+			Instruction::LDA { addr_mode } => {
+				state.accumulator = addr_mode.deref(state, b1, b2)
+			}
+			_ => panic!("Unimplemented")
+		}
+	}
 }
 
 pub enum AddressingMode
@@ -39,8 +51,8 @@ pub enum AddressingMode
 	AbsoluteX,
 	AbsoluteY,
 	Indirect,
-	IndexedIndirect,
-	IndirectIndexed,
+	IndirectX,
+	IndirectY,
 }
 
 impl AddressingMode
@@ -53,7 +65,7 @@ impl AddressingMode
 			AddressingMode::Accumulator =>
 				panic!("Should never be explicitly referenced--remove?"),
 			AddressingMode::Immediate => 
-				byte1 as usize,
+				panic!("Immediate mode shouldn't look up in memory"),
 			AddressingMode::ZeroPage =>
 				zero_page_addr(byte1),
 			AddressingMode::ZeroPageX =>
@@ -72,14 +84,21 @@ impl AddressingMode
                 let jmp_loc = addr(byte1, byte2);
 				return addr(state.memory[jmp_loc+1], state.memory[jmp_loc]);
 			},
-            AddressingMode::IndexedIndirect => {
+            AddressingMode::IndirectX => {
 				let jmp_loc = zero_page_addr(byte1 + state.index_x);
 				return addr(state.memory[jmp_loc+1], state.memory[jmp_loc]);
 			}
-			AddressingMode::IndirectIndexed => {
+			AddressingMode::IndirectY => {
 				let jmp_loc = zero_page_addr(byte1 + state.index_y);
 				return addr(state.memory[jmp_loc+1], state.memory[jmp_loc]);
 			}	
+		}
+	}
+
+	fn deref(self: AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> u8 {
+		match self {
+			AddressingMode::Immediate => byte1,
+			_ => state.memory[self.resolve_address(state, byte1, byte2)]
 		}
 	}
 }
@@ -88,14 +107,29 @@ impl AddressingMode
 
 fn from_opcode(opcode: u8) -> Instruction {
 	match opcode {
-		0xa5 => Instruction::LDA, /* Zero Page, 2 bytes, 3 cycles */
-		0xa9 => Instruction::LDA, /* #Immediate, 2 bytes, 2 cycles */
-		0xa1 => Instruction::LDA, /* (Indirect,X), 2 bytes, 6 cycles */
-		0xad => Instruction::LDA, /* Absolute, 3 bytes, 4 cycles */
-		0xb1 => Instruction::LDA, /* (Indirect),Y, 2 bytes, 5/6 cycles */
-		0xb5 => Instruction::LDA, /* Zero Page,X, 2 bytes, 4 cycles */
-		0xb9 => Instruction::LDA, /* Absolute,Y, 3 bytes, 4/5 cycles */ 
-		0xbd => Instruction::LDA, /* Absolute,X, 3 bytes, 4/5 cycles */
+		/* Zero Page, 2 bytes, 3 cycles */
+		0xa5 => Instruction::LDA { addr_mode: AddressingMode::ZeroPage },
+
+		/* #Immediate, 2 bytes, 2 cycles */
+		0xa9 => Instruction::LDA { addr_mode: AddressingMode::Immediate },
+
+		/* (Indirect,X), 2 bytes, 6 cycles */
+		0xa1 => Instruction::LDA { addr_mode: AddressingMode::IndirectX },
+
+		/* Absolute, 3 bytes, 4 cycles */
+		0xad => Instruction::LDA { addr_mode: AddressingMode::Absolute },
+
+		/* (Indirect),Y, 2 bytes, 5/6 cycles */
+		0xb1 => Instruction::LDA { addr_mode: AddressingMode::IndirectY },
+
+		/* Zero Page,X, 2 bytes, 4 cycles */
+		0xb5 => Instruction::LDA { addr_mode: AddressingMode::ZeroPageY },
+
+		/* Absolute,Y, 3 bytes, 4/5 cycles */
+		0xb9 => Instruction::LDA { addr_mode: AddressingMode::AbsoluteY },
+
+		/* Absolute,X, 3 bytes, 4/5 cycles */
+		0xbd => Instruction::LDA { addr_mode: AddressingMode::AbsoluteX },
 		_ => panic!("Unknown opcode")
 	}
 }
