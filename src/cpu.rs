@@ -46,7 +46,7 @@ pub enum AddressingMode
 impl AddressingMode
 {
 	/* behavior based on: https://www.nesdev.org/obelisk-6502-guide/addressing.html */
-	fn resolve_address(self: AddressingMode, state: ProgramState, byte1:u8, byte2:u8) -> usize {
+	fn resolve_address(self: AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> usize {
 		match self  {
 			AddressingMode::Implicit =>
 				panic!("Should never be explicitly referenced--remove?"),
