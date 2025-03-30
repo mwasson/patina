@@ -150,7 +150,7 @@ fn parse_prg_rom(data: &[u8]) -> Vec<Instruction> {
 		let byte2 = if i < data.len() - 2 { data[i+2] } else { 0 };
 
 		let parsed_instruction = cpu::from_opcode(opcode, byte1, byte2);
-		i = 1 + parsed_instruction.bytes as usize;
+		i = i + 1 + parsed_instruction.bytes as usize;
 		instructions.push(parsed_instruction);
 	}	
 
