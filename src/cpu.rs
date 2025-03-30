@@ -9,15 +9,22 @@ pub struct ProgramState
 	memory: [u8; 1<<15]
 }
 
+impl ProgramState
+{
+	pub fn update_flag(&mut self, flag: StatusFlag, new_val: u8) {
+		flag.update(self, new_val);
+	}
+}
+
 pub struct Instruction
 {
-	mnemonic: Mnemonic,
-	opcode: u8,
-	addr_mode: AddressingMode,
-	cycles: u8,
-	bytes: u8,
-	byte1: u8,
-	byte2: u8
+	pub mnemonic: Mnemonic,
+	pub opcode: u8,
+	pub addr_mode: AddressingMode,
+	pub cycles: u8,
+	pub bytes: u8,
+	pub byte1: u8,
+	pub byte2: u8
 }
 
 pub enum Mnemonic
@@ -32,9 +39,10 @@ pub enum Mnemonic
     TAX, /* transfer value from A into X; can set zero flag */
     TAY, /* transfer value from A into Y; can set zero flag */
     TXA, /* transfer value from X into A; can set zero flag */
-    TYA  /* transfer value from Y into A; can set zero flag */
+    TYA,  /* transfer value from Y into A; can set zero flag */
 
     /* TODO others */
+	SEI, /* Set InterruptDisable */
 }
 
 impl Mnemonic
@@ -42,6 +50,13 @@ impl Mnemonic
 	fn apply(self: Mnemonic, state: &mut ProgramState,
 	         addr_mode: AddressingMode, b1: u8, b2: u8) {
 		match self {
+			Mnemonic::SEI => {
+				/* TODO: The effect is delayed "one instruction".
+				 * Does that mean one cycle, or until the next instruction?
+				 * how to implement this?
+				 */
+				state.update_flag(StatusFlag::InterruptDisable, 1);
+			}
 			Mnemonic::LDA => {
 				state.accumulator = addr_mode.deref(state, b1, b2)
 			}
@@ -119,6 +134,7 @@ impl AddressingMode
 
 pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
+		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 0),
 		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
 		0xa9 => (Mnemonic::LDA, AddressingMode::Immediate, 2, 2),
 		0xa1 => (Mnemonic::LDA, AddressingMode::IndirectX, 6, 2),
@@ -144,7 +160,7 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	}
 }
 
-pub enum StatusFlags
+pub enum StatusFlag
 {
 	Carry,
 	Zero,
@@ -156,16 +172,16 @@ pub enum StatusFlags
 	Negative
 }
 
-impl StatusFlags
+impl StatusFlag
 {
 	pub fn mask(self) -> u8 {
 		match self {
-			StatusFlags::Carry => 0,
-			StatusFlags::Zero => 1,
-			StatusFlags::InterruptDisable => 2,
-			StatusFlags::Decimal => 3,
-			StatusFlags::Overflow => 6,
-			StatusFlags::Negative => 7
+			StatusFlag::Carry => 0,
+			StatusFlag::Zero => 1,
+			StatusFlag::InterruptDisable => 2,
+			StatusFlag::Decimal => 3,
+			StatusFlag::Overflow => 6,
+			StatusFlag::Negative => 7
 		}
 	}
 
