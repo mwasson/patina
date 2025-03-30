@@ -101,6 +101,9 @@ impl Mnemonic
 				 */
 				state.update_flag(StatusFlag::InterruptDisable, 1);
 			}
+			Mnemonic::STA => {
+				addr_mode.write(state, b1, b2, state.accumulator);
+			}
 			Mnemonic::LDA => {
 				state.accumulator = addr_mode.deref(state, b1, b2)
 			}
@@ -172,6 +175,10 @@ impl AddressingMode
 			_ => state.memory[self.resolve_address(state, byte1, byte2)]
 		}
 	}
+
+	fn write(self: AddressingMode, state: &mut ProgramState, byte1: u8, byte2: u8, new_val: u8) {
+		state.memory[self.resolve_address(state, byte1, byte2)] = new_val;
+	}
 }
 
 
@@ -179,8 +186,14 @@ impl AddressingMode
 pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
 		0x00 => (Mnemonic::BRK, AddressingMode::Implicit, 7, 2),
-		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 1),
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 1),
+		0x81 => (Mnemonic::STA, AddressingMode::IndirectX, 6, 2),
+		0x85 => (Mnemonic::STA, AddressingMode::ZeroPage, 3, 2),
+		0x8d => (Mnemonic::STA, AddressingMode::Absolute, 4, 3),
+		0x91 => (Mnemonic::STA, AddressingMode::IndirectY, 6, 2),
+		0x95 => (Mnemonic::STA, AddressingMode::ZeroPageX, 4, 3),
+		0x99 => (Mnemonic::STA, AddressingMode::AbsoluteY, 5, 3),
+		0x9d => (Mnemonic::STA, AddressingMode::AbsoluteX, 5, 3),
 		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
 		0xa9 => (Mnemonic::LDA, AddressingMode::Immediate, 2, 2),
 		0xa1 => (Mnemonic::LDA, AddressingMode::IndirectX, 6, 2),
@@ -192,6 +205,7 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xb9 => (Mnemonic::LDA, AddressingMode::AbsoluteY, 4, 3),
 		/* TODO: Handle it takes longer if crossing page boundary */
 		0xbd => (Mnemonic::LDA, AddressingMode::AbsoluteX, 4, 3),
+		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 1),
 		_ => panic!("Unknown opcode 0x{opcode:x}")
 	};
 
