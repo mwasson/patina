@@ -152,6 +152,7 @@ fn parse_prg_rom(data: &[u8]) -> Vec<Instruction> {
 		let parsed_instruction = cpu::from_opcode(opcode, byte1, byte2);
 		i = i + parsed_instruction.bytes as usize;
 		instructions.push(parsed_instruction);
+		println!("parsed opcode 0x{opcode:x}");
 	}	
 
 	return instructions;

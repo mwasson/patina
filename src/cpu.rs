@@ -94,6 +94,12 @@ impl Mnemonic
 			Mnemonic::CLD => {
 				state.update_flag(StatusFlag::Decimal, 0);
 			}
+			Mnemonic::LDA => {
+				state.accumulator = addr_mode.deref(state, b1, b2)
+			}
+			Mnemonic::LDX => {
+				state.index_x = addr_mode.deref(state, b1, b2)
+			}
 			Mnemonic::SEI => {
 				/* TODO: The effect is delayed "one instruction".
 				 * Does that mean one cycle, or until the next instruction?
@@ -103,9 +109,6 @@ impl Mnemonic
 			}
 			Mnemonic::STA => {
 				addr_mode.write(state, b1, b2, state.accumulator);
-			}
-			Mnemonic::LDA => {
-				state.accumulator = addr_mode.deref(state, b1, b2)
 			}
 			_ => panic!("Unimplemented")
 		}
@@ -194,17 +197,23 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0x95 => (Mnemonic::STA, AddressingMode::ZeroPageX, 4, 3),
 		0x99 => (Mnemonic::STA, AddressingMode::AbsoluteY, 5, 3),
 		0x9d => (Mnemonic::STA, AddressingMode::AbsoluteX, 5, 3),
+		0xa2 => (Mnemonic::LDX, AddressingMode::Immediate, 2, 2),
 		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
+		0xa6 => (Mnemonic::LDX, AddressingMode::ZeroPage, 3, 2),
 		0xa9 => (Mnemonic::LDA, AddressingMode::Immediate, 2, 2),
 		0xa1 => (Mnemonic::LDA, AddressingMode::IndirectX, 6, 2),
 		0xad => (Mnemonic::LDA, AddressingMode::Absolute, 4, 2),
+		0xae => (Mnemonic::LDX, AddressingMode::Absolute, 4, 3),
 		/* TODO: Handle it takes longer if crossing page boundary */
 		0xb1 => (Mnemonic::LDA, AddressingMode::IndirectY, 5, 2),
 		0xb5 => (Mnemonic::LDA, AddressingMode::ZeroPageY, 4, 2),
+		0xb6 => (Mnemonic::LDX, AddressingMode::ZeroPageY, 4, 2),
 		/* TODO: Handle it takes longer if crossing page boundary */
 		0xb9 => (Mnemonic::LDA, AddressingMode::AbsoluteY, 4, 3),
 		/* TODO: Handle it takes longer if crossing page boundary */
 		0xbd => (Mnemonic::LDA, AddressingMode::AbsoluteX, 4, 3),
+		/* TODO: Handle it takes longer if crossing page boundary */
+		0xbe => (Mnemonic::LDX, AddressingMode::AbsoluteY, 4, 3),		
 		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 1),
 		_ => panic!("Unknown opcode 0x{opcode:x}")
 	};
