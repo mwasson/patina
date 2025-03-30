@@ -117,7 +117,7 @@ impl AddressingMode
 
 
 
-fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
+pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
 		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
 		0xa9 => (Mnemonic::LDA, AddressingMode::Immediate, 2, 2),
@@ -130,7 +130,7 @@ fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xb9 => (Mnemonic::LDA, AddressingMode::AbsoluteY, 4, 3),
 		/* TODO: Handle it takes longer if crossing page boundary */
 		0xbd => (Mnemonic::LDA, AddressingMode::AbsoluteX, 4, 3),
-		_ => panic!("Unknown opcode")
+		_ => panic!("Unknown opcode 0x{opcode:x}")
 	};
 
 	Instruction {

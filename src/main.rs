@@ -13,6 +13,7 @@ mod rom;
 use rom::Rom;
 
 mod cpu;
+use cpu::Instruction;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
@@ -118,7 +119,7 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	/* TODO: This is not the correct data yet */
 	/* TODO: Would it be better to use Cow here? */
 	let rom = Rom {
-		prg_rom: rom_data[prg_rom_start..chr_rom_start].to_vec(),
+		prg_data: parse_prg_rom(&rom_data[prg_rom_start..chr_rom_start]),
 		chr_ram: (&rom_data[chr_rom_start..chr_rom_start+chr_rom_size]).to_vec(),
 		byte_6_flags: rom_data[6],
 		byte_7_flags: rom_data[7],
@@ -136,4 +137,22 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	} else {
 		return Ok(());
 	}
+}
+
+fn parse_prg_rom(data: &[u8]) -> Vec<Instruction> {
+	let mut i = 0;
+	let mut instructions = Vec::new();
+
+	while i < data.len() {
+		let opcode = data[i];
+		/* TODO: need better validation of last opcode */
+		let byte1 = if i < data.len() - 1 { data[i+1] } else { 0 };
+		let byte2 = if i < data.len() - 2 { data[i+2] } else { 0 };
+
+		let parsed_instruction = cpu::from_opcode(opcode, byte1, byte2);
+		i = 1 + parsed_instruction.bytes as usize;
+		instructions.push(parsed_instruction);
+	}	
+
+	return instructions;
 }
