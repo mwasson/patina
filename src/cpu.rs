@@ -9,10 +9,21 @@ pub struct ProgramState
 	memory: [u8; 1<<15]
 }
 
-pub enum Instruction
+pub struct Instruction
+{
+	mnemonic: Mnemonic,
+	opcode: u8,
+	addr_mode: AddressingMode,
+	cycles: u8,
+	bytes: u8,
+	byte1: u8,
+	byte2: u8
+}
+
+pub enum Mnemonic
 {
     /* load/store opcodes */
-    LDA {addr_mode: AddressingMode}, /* loads fixed value into A; can set zero flag */
+    LDA, /* loads fixed value into A; can set zero flag */
     LDX, /* loads value at address into X; can set zero flag */
     LDY, /* loads fixed value into Y; can set zero flag */
     STA, /* store value from A into address */
@@ -26,11 +37,12 @@ pub enum Instruction
     /* TODO others */
 }
 
-impl Instruction
+impl Mnemonic
 {
-	fn apply(self: Instruction, state: &mut ProgramState, b1: u8, b2: u8) {
+	fn apply(self: Mnemonic, state: &mut ProgramState,
+	         addr_mode: AddressingMode, b1: u8, b2: u8) {
 		match self {
-			Instruction::LDA { addr_mode } => {
+			Mnemonic::LDA => {
 				state.accumulator = addr_mode.deref(state, b1, b2)
 			}
 			_ => panic!("Unimplemented")
@@ -105,32 +117,30 @@ impl AddressingMode
 
 
 
-fn from_opcode(opcode: u8) -> Instruction {
-	match opcode {
-		/* Zero Page, 2 bytes, 3 cycles */
-		0xa5 => Instruction::LDA { addr_mode: AddressingMode::ZeroPage },
-
-		/* #Immediate, 2 bytes, 2 cycles */
-		0xa9 => Instruction::LDA { addr_mode: AddressingMode::Immediate },
-
-		/* (Indirect,X), 2 bytes, 6 cycles */
-		0xa1 => Instruction::LDA { addr_mode: AddressingMode::IndirectX },
-
-		/* Absolute, 3 bytes, 4 cycles */
-		0xad => Instruction::LDA { addr_mode: AddressingMode::Absolute },
-
-		/* (Indirect),Y, 2 bytes, 5/6 cycles */
-		0xb1 => Instruction::LDA { addr_mode: AddressingMode::IndirectY },
-
-		/* Zero Page,X, 2 bytes, 4 cycles */
-		0xb5 => Instruction::LDA { addr_mode: AddressingMode::ZeroPageY },
-
-		/* Absolute,Y, 3 bytes, 4/5 cycles */
-		0xb9 => Instruction::LDA { addr_mode: AddressingMode::AbsoluteY },
-
-		/* Absolute,X, 3 bytes, 4/5 cycles */
-		0xbd => Instruction::LDA { addr_mode: AddressingMode::AbsoluteX },
+fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
+	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
+		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
+		0xa9 => (Mnemonic::LDA, AddressingMode::Immediate, 2, 2),
+		0xa1 => (Mnemonic::LDA, AddressingMode::IndirectX, 6, 2),
+		0xad => (Mnemonic::LDA, AddressingMode::Absolute, 4, 2),
+		/* TODO: Handle it takes longer if crossing page boundary */
+		0xb1 => (Mnemonic::LDA, AddressingMode::IndirectY, 5, 2),
+		0xb5 => (Mnemonic::LDA, AddressingMode::ZeroPageY, 4, 2),
+		/* TODO: Handle it takes longer if crossing page boundary */
+		0xb9 => (Mnemonic::LDA, AddressingMode::AbsoluteY, 4, 3),
+		/* TODO: Handle it takes longer if crossing page boundary */
+		0xbd => (Mnemonic::LDA, AddressingMode::AbsoluteX, 4, 3),
 		_ => panic!("Unknown opcode")
+	};
+
+	Instruction {
+    	mnemonic: mnemonic, 
+    	opcode: opcode, 
+    	addr_mode: addr_mode,
+    	cycles: cycles,
+    	bytes: bytes,
+    	byte1: b1,
+    	byte2: b2
 	}
 }
 
