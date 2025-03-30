@@ -43,6 +43,7 @@ pub enum Mnemonic
 
     /* TODO others */
 	SEI, /* Set InterruptDisable */
+	CLD, /* Clear Decimal */
 }
 
 impl Mnemonic
@@ -50,6 +51,9 @@ impl Mnemonic
 	fn apply(self: Mnemonic, state: &mut ProgramState,
 	         addr_mode: AddressingMode, b1: u8, b2: u8) {
 		match self {
+			Mnemonic::CLD => {
+				state.update_flag(StatusFlag::Decimal, 0);
+			}
 			Mnemonic::SEI => {
 				/* TODO: The effect is delayed "one instruction".
 				 * Does that mean one cycle, or until the next instruction?
@@ -134,6 +138,7 @@ impl AddressingMode
 
 pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
+		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 0),
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 0),
 		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
 		0xa9 => (Mnemonic::LDA, AddressingMode::Immediate, 2, 2),
