@@ -144,6 +144,36 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	}
 }
 
+pub enum StatusFlags
+{
+	Carry,
+	Zero,
+	InterruptDisable,
+	Decimal,
+	/* "No CPU effect; see: the B flag" */
+	/* "No CPU effect; always pushed as 1" */
+	Overflow,
+	Negative
+}
+
+impl StatusFlags
+{
+	pub fn mask(self) -> u8 {
+		match self {
+			StatusFlags::Carry => 0,
+			StatusFlags::Zero => 1,
+			StatusFlags::InterruptDisable => 2,
+			StatusFlags::Decimal => 3,
+			StatusFlags::Overflow => 6,
+			StatusFlags::Negative => 7
+		}
+	}
+
+	pub fn update(self, state: &mut ProgramState, new_val: u8) {
+		state.status = state.status & (new_val << self.mask());
+	}
+}
+
 
 /**
  * Converts a pair of bytes into a usize, intended to represent a 16-bit
@@ -163,5 +193,3 @@ fn addr(b1:u8, b2:u8) -> usize {
 fn zero_page_addr(b1:u8) -> usize {
 	b1 as usize
 }
-
-/* TODO implementation of Instruction behavior */
