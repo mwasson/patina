@@ -179,8 +179,8 @@ impl AddressingMode
 pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
 		0x00 => (Mnemonic::BRK, AddressingMode::Implicit, 7, 2),
-		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 0),
-		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 0),
+		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 1),
+		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 1),
 		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
 		0xa9 => (Mnemonic::LDA, AddressingMode::Immediate, 2, 2),
 		0xa1 => (Mnemonic::LDA, AddressingMode::IndirectX, 6, 2),
