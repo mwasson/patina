@@ -81,6 +81,7 @@ pub enum Mnemonic
 	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
 	SEI, /* Set InterruptDisable */
+	TXS, /* Transfer X to Stack Pointer */
 }
 
 impl Mnemonic
@@ -109,6 +110,9 @@ impl Mnemonic
 			}
 			Mnemonic::STA => {
 				addr_mode.write(state, b1, b2, state.accumulator);
+			}
+			Mnemonic::TXS => {
+				state.s_register = state.index_x
 			}
 			_ => panic!("Unimplemented")
 		}
@@ -196,6 +200,7 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0x91 => (Mnemonic::STA, AddressingMode::IndirectY, 6, 2),
 		0x95 => (Mnemonic::STA, AddressingMode::ZeroPageX, 4, 3),
 		0x99 => (Mnemonic::STA, AddressingMode::AbsoluteY, 5, 3),
+		0x9a => (Mnemonic::TXS, AddressingMode::Implicit, 2, 1),
 		0x9d => (Mnemonic::STA, AddressingMode::AbsoluteX, 5, 3),
 		0xa2 => (Mnemonic::LDX, AddressingMode::Immediate, 2, 2),
 		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
