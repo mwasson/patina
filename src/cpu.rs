@@ -5,14 +5,50 @@ pub struct ProgramState
 	accumulator: u8,
 	index_x: u8,
 	index_y: u8,
+	s_register: u8,
+	program_counter: u8, /* TODO: should this be a u16? */
 	status: u8,
 	memory: [u8; 1<<15]
 }
 
 impl ProgramState
 {
+	pub fn new() -> Self {
+		Self {
+			accumulator: 0x00,
+			index_x: 0x00,
+			index_y: 0x00,
+			s_register: 0xff,
+			program_counter: 0x00,
+			status: (0x11) << 4,
+			memory: [0; 1<<15]
+		}
+	}
+
 	pub fn update_flag(&mut self, flag: StatusFlag, new_val: u8) {
 		flag.update(self, new_val);
+	}
+
+	pub fn push(&mut self, data: u8) {
+		self.memory[(0x10 + self.s_register) as usize] = data;
+		self.s_register -= 1;
+	}
+
+	pub fn pop(&mut self) -> u8 {
+		let value = self.memory[(0x10 + self.s_register) as usize];
+		self.s_register += 1;
+		value
+	}	
+
+	pub fn irq(&mut self) {
+		self.irq_with_offset(0);
+	}
+
+	pub fn irq_with_offset(&mut self, offset: u8) {
+		self.push(self.program_counter + offset);
+		self.push(self.status);
+		self.update_flag(StatusFlag::InterruptDisable, 0);
+		/* TODO: jump to IRQ handler */
 	}
 }
 
@@ -42,8 +78,9 @@ pub enum Mnemonic
     TYA,  /* transfer value from Y into A; can set zero flag */
 
     /* TODO others */
-	SEI, /* Set InterruptDisable */
+	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
+	SEI, /* Set InterruptDisable */
 }
 
 impl Mnemonic
@@ -51,6 +88,9 @@ impl Mnemonic
 	fn apply(self: Mnemonic, state: &mut ProgramState,
 	         addr_mode: AddressingMode, b1: u8, b2: u8) {
 		match self {
+			Mnemonic::BRK => {
+				state.irq_with_offset(2);
+			}
 			Mnemonic::CLD => {
 				state.update_flag(StatusFlag::Decimal, 0);
 			}
@@ -138,6 +178,7 @@ impl AddressingMode
 
 pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
+		0x00 => (Mnemonic::BRK, AddressingMode::Implicit, 7, 2),
 		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 0),
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 0),
 		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
