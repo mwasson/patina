@@ -25,8 +25,8 @@ impl ProgramState
 		}
 	}
 
-	pub fn update_flag(&mut self, flag: StatusFlag, new_val: u8) {
-		flag.update(self, new_val);
+	pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {
+		flag.update_bool(self, new_val);
 	}
 
 	pub fn push(&mut self, data: u8) {
@@ -59,7 +59,7 @@ impl ProgramState
 	pub fn irq_with_offset(&mut self, offset: u8) {
 		self.push_memory_loc(self.program_counter + offset as u16);
 		self.push(self.status);
-		self.update_flag(StatusFlag::InterruptDisable, 0);
+		self.update_flag(StatusFlag::InterruptDisable, false);
 		/* TODO: jump to IRQ handler */
 	}
 
@@ -100,6 +100,9 @@ pub enum Mnemonic
     TXA, /* transfer value from X into A; can set zero flag */
     TYA,  /* transfer value from Y into A; can set zero flag */
 
+	/* comparisons */
+	CMP,
+
     /* TODO others */
 	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
@@ -117,7 +120,15 @@ impl Mnemonic
 				state.irq_with_offset(2);
 			}
 			Mnemonic::CLD => {
-				state.update_flag(StatusFlag::Decimal, 0);
+				state.update_flag(StatusFlag::Decimal, false);
+			}
+			Mnemonic::CMP => {
+				let a = state.accumulator;
+				let mem_val = addr_mode.deref(state, b1, b2);
+
+				state.update_flag(StatusFlag::Carry, a >= mem_val);
+				state.update_flag(StatusFlag::Zero, a == mem_val);
+				state.update_flag(StatusFlag::Negative, a < mem_val);
 			}
 			Mnemonic::JSR => {
 				state.push_memory_loc(state.program_counter + 2);
@@ -137,7 +148,7 @@ impl Mnemonic
 				 * Does that mean one cycle, or until the next instruction?
 				 * how to implement this?
 				 */
-				state.update_flag(StatusFlag::InterruptDisable, 1);
+				state.update_flag(StatusFlag::InterruptDisable, true);
 			}
 			Mnemonic::STA => {
 				addr_mode.write(state, b1, b2, state.accumulator);
@@ -220,6 +231,9 @@ impl AddressingMode
 
 pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
+		/* TODO: instructions marked 'boundary' take longer if crossing
+		 * a page boundary */
+
 		0x00 => (Mnemonic::BRK, AddressingMode::Implicit, 7, 2),
 		0x20 => (Mnemonic::JSR, AddressingMode::Absolute, 6, 3),
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 1),
@@ -241,20 +255,23 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xac => (Mnemonic::LDY, AddressingMode::Absolute, 4, 3),
 		0xad => (Mnemonic::LDA, AddressingMode::Absolute, 4, 2),
 		0xae => (Mnemonic::LDX, AddressingMode::Absolute, 4, 3),
-		/* TODO: Handle it takes longer if crossing page boundary */
-		0xb1 => (Mnemonic::LDA, AddressingMode::IndirectY, 5, 2),
+		0xb1 => (Mnemonic::LDA, AddressingMode::IndirectY, 5, 2), /*boundary*/
 		0xb4 => (Mnemonic::LDY, AddressingMode::ZeroPageX, 4, 2),
 		0xb5 => (Mnemonic::LDA, AddressingMode::ZeroPageY, 4, 2),
 		0xb6 => (Mnemonic::LDX, AddressingMode::ZeroPageY, 4, 2),
-		/* TODO: Handle it takes longer if crossing page boundary */
-		0xb9 => (Mnemonic::LDA, AddressingMode::AbsoluteY, 4, 3),
-		/* TODO: Handle it takes longer if crossing page boundary */
-		0xbc => (Mnemonic::LDY, AddressingMode::AbsoluteX, 4, 3),
-		/* TODO: Handle it takes longer if crossing page boundary */
-		0xbd => (Mnemonic::LDA, AddressingMode::AbsoluteX, 4, 3),
-		/* TODO: Handle it takes longer if crossing page boundary */
-		0xbe => (Mnemonic::LDX, AddressingMode::AbsoluteY, 4, 3),		
+		0xb9 => (Mnemonic::LDA, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
+		0xbc => (Mnemonic::LDY, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
+		0xbd => (Mnemonic::LDA, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
+		0xbe => (Mnemonic::LDX, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
+		0xc1 => (Mnemonic::CMP, AddressingMode::IndirectX, 6, 2),
+		0xc5 => (Mnemonic::CMP, AddressingMode::ZeroPage, 3, 2),
+		0xc9 => (Mnemonic::CMP, AddressingMode::Immediate, 2, 2),
+		0xcd => (Mnemonic::CMP, AddressingMode::Absolute, 4, 3),
+		0xd1 => (Mnemonic::CMP, AddressingMode::IndirectY, 5, 2), /*boundary*/
+		0xd5 => (Mnemonic::CMP, AddressingMode::ZeroPageX, 4, 2),
 		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 1),
+		0xd9 => (Mnemonic::CMP, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
+		0xdd => (Mnemonic::CMP, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		_ => panic!("Unknown opcode 0x{opcode:x}")
 	};
 
@@ -292,6 +309,11 @@ impl StatusFlag
 			StatusFlag::Overflow => 6,
 			StatusFlag::Negative => 7
 		}
+	}
+
+	pub fn update_bool(self, state: &mut ProgramState, new_val: bool) {
+		let new_val_as_number = if { new_val } { 1 } else { 0 };
+		self.update(state, new_val_as_number);
 	}
 
 	pub fn update(self, state: &mut ProgramState, new_val: u8) {
