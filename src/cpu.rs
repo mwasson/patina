@@ -319,7 +319,7 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xa9 => (Mnemonic::LDA, AddressingMode::Immediate, 2, 2),
 		0xa1 => (Mnemonic::LDA, AddressingMode::IndirectX, 6, 2),
 		0xac => (Mnemonic::LDY, AddressingMode::Absolute, 4, 3),
-		0xad => (Mnemonic::LDA, AddressingMode::Absolute, 4, 2),
+		0xad => (Mnemonic::LDA, AddressingMode::Absolute, 4, 3),
 		0xae => (Mnemonic::LDX, AddressingMode::Absolute, 4, 3),
 		0xb0 => (Mnemonic::BCS, AddressingMode::Relative, 3, 2), /*boundary*/
 		0xb1 => (Mnemonic::LDA, AddressingMode::IndirectY, 5, 2), /*boundary*/
