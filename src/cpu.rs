@@ -28,6 +28,11 @@ impl ProgramState
 	pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {
 		flag.update_bool(self, new_val);
 	}
+
+	pub fn update_flags_for_new_val(&mut self, new_val: u8) {
+		self.update_flag(StatusFlag::Zero, new_val == 0);
+		self.update_flag(StatusFlag::Negative, new_val.leading_ones() > 0);
+	}
 		
 	pub fn push(&mut self, data: u8) {
 		self.memory[addr(0x10, self.s_register) as usize] = data;
@@ -113,9 +118,13 @@ pub enum Mnemonic
 	BVC, /* Branch if Overflow Clear */
 	BVS, /* Branch if Overflow Set */
 
-	/* modify registers */
+	/* increment/decrement locations */
+	DEC, /* Decrement Memory */
 	DEX, /* Decrement X */
 	DEY, /* Decrement Y */
+	INC, /* Increment Memory */
+	INX, /* Increment X */
+	INY, /* Increment Y */
 
     /* TODO others */
 	BRK, /* Break (software IRQ) */
@@ -168,17 +177,31 @@ impl Mnemonic
 				state.update_flag(StatusFlag::Zero, a == mem_val);
 				state.update_flag(StatusFlag::Negative, a < mem_val);
 			}
+			Mnemonic::DEC => {
+				let new_val = addr_mode.deref(state, b1, b2) - 1;
+				addr_mode.write(state, b1, b2, new_val);
+				state.update_flags_for_new_val(new_val);
+			}
 			Mnemonic::DEX => {
 				state.index_x -= 1;
-				state.update_flag(StatusFlag::Zero, state.index_x == 0);
-				state.update_flag(StatusFlag::Negative,
-				                  state.index_x.leading_ones() > 0);
+				state.update_flags_for_new_val(state.index_x);
 			}
 			Mnemonic::DEY => {
 				state.index_y -= 1;
-				state.update_flag(StatusFlag::Zero, state.index_y == 0);
-				state.update_flag(StatusFlag::Negative,
-				                  state.index_y.leading_ones() > 0);
+				state.update_flags_for_new_val(state.index_y);
+			}
+			Mnemonic::INC => {
+				let new_val = addr_mode.deref(state, b1, b2) + 1;
+				addr_mode.write(state, b1, b2, new_val);
+				state.update_flags_for_new_val(new_val);
+			}
+			Mnemonic::INX => {
+				state.index_x += 1;
+				state.update_flags_for_new_val(state.index_x);
+			}
+			Mnemonic::INY => {
+				state.index_y += 1;
+				state.update_flags_for_new_val(state.index_y);
 			}
 			Mnemonic::JSR => {
 				state.push_memory_loc(state.program_counter + 2);
@@ -239,7 +262,7 @@ pub enum AddressingMode
 impl AddressingMode
 {
 	/* behavior based on: https://www.nesdev.org/obelisk-6502-guide/addressing.html */
-	fn resolve_address(self: AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u16 {
+	fn resolve_address(self: &AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u16 {
 		match self  {
 			AddressingMode::Implicit =>
 				panic!("Should never be explicitly referenced--remove?"),
@@ -271,7 +294,7 @@ impl AddressingMode
 		}
 	}
 
-	fn deref(self: AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u8 {
+	fn deref(self: &AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u8 {
 		match self {
 			AddressingMode::Immediate => byte1,
 			_ => {
@@ -281,7 +304,7 @@ impl AddressingMode
 		}
 	}
 
-	fn write(self: AddressingMode, state: &mut ProgramState, byte1: u8, byte2: u8, new_val: u8) {
+	fn write(self: &AddressingMode, state: &mut ProgramState, byte1: u8, byte2: u8, new_val: u8) {
 		state.memory[self.resolve_address(state, byte1, byte2) as usize] = new_val;
 	}
 }
@@ -332,16 +355,26 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xbe => (Mnemonic::LDX, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
 		0xc1 => (Mnemonic::CMP, AddressingMode::IndirectX, 6, 2),
 		0xc5 => (Mnemonic::CMP, AddressingMode::ZeroPage, 3, 2),
+		0xc6 => (Mnemonic::DEC, AddressingMode::ZeroPage, 5, 2),
+		0xc8 => (Mnemonic::INY, AddressingMode::Implicit, 2, 1),
 		0xc9 => (Mnemonic::CMP, AddressingMode::Immediate, 2, 2),
 		0xca => (Mnemonic::DEX, AddressingMode::Implicit, 2, 1),
 		0xcd => (Mnemonic::CMP, AddressingMode::Absolute, 4, 3),
+		0xce => (Mnemonic::DEC, AddressingMode::Absolute, 6, 3),
 		0xd0 => (Mnemonic::BNE, AddressingMode::Relative, 2, 2), /*boundary*/
 		0xd1 => (Mnemonic::CMP, AddressingMode::IndirectY, 5, 2), /*boundary*/
 		0xd5 => (Mnemonic::CMP, AddressingMode::ZeroPageX, 4, 2),
+		0xd6 => (Mnemonic::DEC, AddressingMode::ZeroPageX, 6, 2),
 		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 1),
 		0xd9 => (Mnemonic::CMP, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
 		0xdd => (Mnemonic::CMP, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
+		0xde => (Mnemonic::DEC, AddressingMode::AbsoluteX, 7, 3),
+		0xe6 => (Mnemonic::INC, AddressingMode::ZeroPage, 5, 2),
+		0xe8 => (Mnemonic::INX, AddressingMode::Implicit, 2, 1),
+		0xee => (Mnemonic::INC, AddressingMode::Absolute, 6, 3),
 		0xf0 => (Mnemonic::BEQ, AddressingMode::Relative, 2, 2), /*boundary*/
+		0xf6 => (Mnemonic::INC, AddressingMode::ZeroPageX, 6, 3),
+		0xfe => (Mnemonic::INC, AddressingMode::AbsoluteX, 7, 3),
 		_ => panic!("Unknown opcode 0x{opcode:x}")
 	};
 
