@@ -126,6 +126,9 @@ pub enum Mnemonic
 	INX, /* Increment X */
 	INY, /* Increment Y */
 
+	/* bitwise operators */
+	ORA, /* Bitwise OR */
+
     /* TODO others */
 	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
@@ -215,6 +218,9 @@ impl Mnemonic
 			}
 			Mnemonic::LDY => {
 				state.index_y = addr_mode.deref(state, b1, b2)
+			}
+			Mnemonic::ORA => {
+				state.accumulator |= addr_mode.deref(state, b1, b2)
 			}
 			Mnemonic::SEI => {
 				/* TODO: The effect is delayed "one instruction".
@@ -318,7 +324,15 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		/* branch instructions also take an extra cycle if branch taken */
 
 		0x00 => (Mnemonic::BRK, AddressingMode::Implicit, 7, 2),
+		0x01 => (Mnemonic::ORA, AddressingMode::IndirectX, 6, 2),
+		0x05 => (Mnemonic::ORA, AddressingMode::ZeroPage, 3, 2),
+		0x09 => (Mnemonic::ORA, AddressingMode::Immediate, 2, 2),
+		0x0d => (Mnemonic::ORA, AddressingMode::Absolute, 4, 3),
 		0x10 => (Mnemonic::BPL, AddressingMode::Relative, 2, 2), /*boundary*/
+		0x11 => (Mnemonic::ORA, AddressingMode::IndirectY, 5, 2), /*boundary*/
+		0x15 => (Mnemonic::ORA, AddressingMode::ZeroPageX, 3, 2),
+		0x19 => (Mnemonic::ORA, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
+		0x1d => (Mnemonic::ORA, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0x20 => (Mnemonic::JSR, AddressingMode::Absolute, 6, 3),
 		0x30 => (Mnemonic::BMI, AddressingMode::Relative, 2, 2), /*boundary*/
 		0x50 => (Mnemonic::BVC, AddressingMode::Relative, 2, 2), /*boundary*/
