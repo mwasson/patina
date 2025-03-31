@@ -6,7 +6,7 @@ pub struct ProgramState
 	index_x: u8,
 	index_y: u8,
 	s_register: u8,
-	program_counter: u8, /* TODO: should this be a u16? */
+	program_counter: u16,
 	status: u8,
 	memory: [u8; 1<<15]
 }
@@ -19,7 +19,7 @@ impl ProgramState
 			index_x: 0x00,
 			index_y: 0x00,
 			s_register: 0xff,
-			program_counter: 0x00,
+			program_counter: 0x0000,
 			status: (0x11) << 4,
 			memory: [0; 1<<15]
 		}
@@ -30,8 +30,20 @@ impl ProgramState
 	}
 
 	pub fn push(&mut self, data: u8) {
-		self.memory[(0x10 + self.s_register) as usize] = data;
+		self.memory[addr(0x10, self.s_register) as usize] = data;
 		self.s_register -= 1;
+	}
+
+	pub fn push_memory_loc(&mut self, mem_loc: u16) {
+		self.push((mem_loc >> 8) as u8);
+		self.push(mem_loc as u8);
+	}
+
+	pub fn pop_memory_loc(&mut self) -> u16 {
+		let lower = self.pop();
+		let upper = self.pop();
+
+		addr(upper, lower)
 	}
 
 	pub fn pop(&mut self) -> u8 {
@@ -45,10 +57,18 @@ impl ProgramState
 	}
 
 	pub fn irq_with_offset(&mut self, offset: u8) {
-		self.push(self.program_counter + offset);
+		self.push_memory_loc(self.program_counter + offset as u16);
 		self.push(self.status);
 		self.update_flag(StatusFlag::InterruptDisable, 0);
 		/* TODO: jump to IRQ handler */
+	}
+
+	pub fn mem_lookup(&mut self, addr: u16) -> u8 {
+		self.memory[addr as usize]
+	}
+
+	pub fn addr_from_mem(&mut self, addr_to_lookup: u16) -> u16 {
+		addr(self.mem_lookup(addr_to_lookup+1), self.mem_lookup(addr_to_lookup))
 	}
 }
 
@@ -72,8 +92,11 @@ pub enum Mnemonic
     STA, /* store value from A into address */
     STX, /* stores value from X into address */
     STY, /* stores value from Y into address */
+
+	/* transfer opcodes */
     TAX, /* transfer value from A into X; can set zero flag */
     TAY, /* transfer value from A into Y; can set zero flag */
+	TXS, /* Transfer X to Stack Pointer */
     TXA, /* transfer value from X into A; can set zero flag */
     TYA,  /* transfer value from Y into A; can set zero flag */
 
@@ -81,7 +104,8 @@ pub enum Mnemonic
 	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
 	SEI, /* Set InterruptDisable */
-	TXS, /* Transfer X to Stack Pointer */
+
+	JSR, /* Jump to Subroutine */
 }
 
 impl Mnemonic
@@ -94,6 +118,10 @@ impl Mnemonic
 			}
 			Mnemonic::CLD => {
 				state.update_flag(StatusFlag::Decimal, 0);
+			}
+			Mnemonic::JSR => {
+				state.push_memory_loc(state.program_counter + 2);
+				state.program_counter = addr_mode.resolve_address(state,b1,b2);
 			}
 			Mnemonic::LDA => {
 				state.accumulator = addr_mode.deref(state, b1, b2)
@@ -139,7 +167,7 @@ pub enum AddressingMode
 impl AddressingMode
 {
 	/* behavior based on: https://www.nesdev.org/obelisk-6502-guide/addressing.html */
-	fn resolve_address(self: AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> usize {
+	fn resolve_address(self: AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u16 {
 		match self  {
 			AddressingMode::Implicit =>
 				panic!("Should never be explicitly referenced--remove?"),
@@ -161,30 +189,27 @@ impl AddressingMode
 				addr(byte1, byte2 + state.index_x),
 			AddressingMode::AbsoluteY =>
 				addr(byte1, byte2 + state.index_y),
-			AddressingMode::Indirect => {
-                let jmp_loc = addr(byte1, byte2);
-				return addr(state.memory[jmp_loc+1], state.memory[jmp_loc]);
-			},
-            AddressingMode::IndirectX => {
-				let jmp_loc = zero_page_addr(byte1 + state.index_x);
-				return addr(state.memory[jmp_loc+1], state.memory[jmp_loc]);
-			}
-			AddressingMode::IndirectY => {
-				let jmp_loc = zero_page_addr(byte1 + state.index_y);
-				return addr(state.memory[jmp_loc+1], state.memory[jmp_loc]);
-			}	
+			AddressingMode::Indirect =>
+                state.addr_from_mem(addr(byte1, byte2)),
+            AddressingMode::IndirectX =>
+				state.addr_from_mem(zero_page_addr(byte1 + state.index_x)),
+			AddressingMode::IndirectY =>
+				state.addr_from_mem(zero_page_addr(byte1 + state.index_y)),
 		}
 	}
 
-	fn deref(self: AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> u8 {
+	fn deref(self: AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u8 {
 		match self {
 			AddressingMode::Immediate => byte1,
-			_ => state.memory[self.resolve_address(state, byte1, byte2)]
+			_ => {
+				let address = self.resolve_address(state, byte1, byte2);
+				state.mem_lookup(address)
+			}
 		}
 	}
 
 	fn write(self: AddressingMode, state: &mut ProgramState, byte1: u8, byte2: u8, new_val: u8) {
-		state.memory[self.resolve_address(state, byte1, byte2)] = new_val;
+		state.memory[self.resolve_address(state, byte1, byte2) as usize] = new_val;
 	}
 }
 
@@ -193,6 +218,7 @@ impl AddressingMode
 pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
 		0x00 => (Mnemonic::BRK, AddressingMode::Implicit, 7, 2),
+		0x20 => (Mnemonic::JSR, AddressingMode::Absolute, 6, 3),
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 1),
 		0x81 => (Mnemonic::STA, AddressingMode::IndirectX, 6, 2),
 		0x85 => (Mnemonic::STA, AddressingMode::ZeroPage, 3, 2),
@@ -264,14 +290,13 @@ impl StatusFlag
 	}
 }
 
-
 /**
- * Converts a pair of bytes into a usize, intended to represent a 16-bit
- * address. The first argument will be the higher order byte, the second
+ * Converts a pair of bytes into a u16 to look up an address in memory.
+ * The first argument will be the higher order byte, the second
  * argument the lower order. So addr(0xAB, 0xCD) returns 0xABCD.
  */ 
-fn addr(b1:u8, b2:u8) -> usize {
-	((b1 << 7) + b2) as usize
+fn addr(b1:u8, b2:u8) -> u16 {
+	((b1 as u16) << 8) + (b2 as u16)
 }
 
 /**
@@ -280,6 +305,6 @@ fn addr(b1:u8, b2:u8) -> usize {
  * with 0x00. If this is passed in 0xAB, it returns 0x00AB. In effect this
  * is just a cast, but wrapping it as a function makes the goal clearer.
  */
-fn zero_page_addr(b1:u8) -> usize {
-	b1 as usize
+fn zero_page_addr(b1:u8) -> u16 {
+	b1 as u16
 }
