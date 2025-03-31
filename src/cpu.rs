@@ -106,6 +106,10 @@ pub enum Mnemonic
 	/* branch codes */
 	BCS, /* Branch if Carry Set */
 
+	/* modify registers */
+	DEX, /* Decrement X */
+	DEY, /* Decrement Y */
+
     /* TODO others */
 	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
@@ -138,6 +142,18 @@ impl Mnemonic
 				state.update_flag(StatusFlag::Carry, a >= mem_val);
 				state.update_flag(StatusFlag::Zero, a == mem_val);
 				state.update_flag(StatusFlag::Negative, a < mem_val);
+			}
+			Mnemonic::DEX => {
+				state.index_x -= 1;
+				state.update_flag(StatusFlag::Zero, state.index_x == 0);
+				state.update_flag(StatusFlag::Negative,
+				                  state.index_x.leading_ones() > 0);
+			}
+			Mnemonic::DEY => {
+				state.index_y -= 1;
+				state.update_flag(StatusFlag::Zero, state.index_y == 0);
+				state.update_flag(StatusFlag::Negative,
+				                  state.index_y.leading_ones() > 0);
 			}
 			Mnemonic::JSR => {
 				state.push_memory_loc(state.program_counter + 2);
@@ -249,6 +265,7 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 1),
 		0x81 => (Mnemonic::STA, AddressingMode::IndirectX, 6, 2),
 		0x85 => (Mnemonic::STA, AddressingMode::ZeroPage, 3, 2),
+		0x88 => (Mnemonic::DEY, AddressingMode::Implicit, 2, 1),
 		0x8d => (Mnemonic::STA, AddressingMode::Absolute, 4, 3),
 		0x91 => (Mnemonic::STA, AddressingMode::IndirectY, 6, 2),
 		0x95 => (Mnemonic::STA, AddressingMode::ZeroPageX, 4, 3),
@@ -277,6 +294,7 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xc1 => (Mnemonic::CMP, AddressingMode::IndirectX, 6, 2),
 		0xc5 => (Mnemonic::CMP, AddressingMode::ZeroPage, 3, 2),
 		0xc9 => (Mnemonic::CMP, AddressingMode::Immediate, 2, 2),
+		0xca => (Mnemonic::DEX, AddressingMode::Implicit, 2, 1),
 		0xcd => (Mnemonic::CMP, AddressingMode::Absolute, 4, 3),
 		0xd1 => (Mnemonic::CMP, AddressingMode::IndirectY, 5, 2), /*boundary*/
 		0xd5 => (Mnemonic::CMP, AddressingMode::ZeroPageX, 4, 2),
