@@ -104,7 +104,14 @@ pub enum Mnemonic
 	CMP,
 
 	/* branch codes */
+	BCC, /* Branch if Carry Clear */
 	BCS, /* Branch if Carry Set */
+	BEQ, /* Branch if Equal */
+	BMI, /* Branch if Minus */
+	BNE, /* Branch if Not Equal */
+	BPL, /* Branch if Plus */
+	BVC, /* Branch if Overflow Clear */
+	BVS, /* Branch if Overflow Set */
 
 	/* modify registers */
 	DEX, /* Decrement X */
@@ -123,14 +130,32 @@ impl Mnemonic
 	fn apply(self: Mnemonic, state: &mut ProgramState,
 	         addr_mode: AddressingMode, b1: u8, b2: u8) {
 		match self {
+			Mnemonic::BCC => {
+				Self::branch_instr(state, StatusFlag::Carry, false, b1)
+			}	
 			Mnemonic::BCS => {
-				if StatusFlag::Carry.is_set(state) {
-					state.program_counter = addr_mode.resolve_address(state,
-					                                                  b1, b2);
-				}
+				Self::branch_instr(state, StatusFlag::Carry, true, b1)
+			}
+			Mnemonic::BEQ => {
+				Self::branch_instr(state, StatusFlag::Zero, true, b1)
+			}
+			Mnemonic::BMI => {
+				Self::branch_instr(state, StatusFlag::Negative, true, b1)	
+			}
+			Mnemonic::BNE => {
+				Self::branch_instr(state, StatusFlag::Zero, false, b1)
+			}
+			Mnemonic::BPL => {
+				Self::branch_instr(state, StatusFlag::Negative, false, b1)
 			}
 			Mnemonic::BRK => {
 				state.irq_with_offset(2);
+			}
+			Mnemonic::BVC => {
+				Self::branch_instr(state, StatusFlag::Overflow, false, b1)
+			}
+			Mnemonic::BVS => {
+				Self::branch_instr(state, StatusFlag::Overflow, true, b1)	
 			}
 			Mnemonic::CLD => {
 				state.update_flag(StatusFlag::Decimal, false);
@@ -182,6 +207,14 @@ impl Mnemonic
 				state.s_register = state.index_x
 			}
 			_ => panic!("Unimplemented")
+		}
+	}
+
+	fn branch_instr(state: &mut ProgramState, flag: StatusFlag, 
+	                is_positive: bool, offset: u8) {
+		if is_positive == flag.is_set(state) {
+			state.program_counter = AddressingMode::Relative.resolve_address(
+			                        state, offset, 0);
 		}
 	}
 }
@@ -259,14 +292,20 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 	let (mnemonic, addr_mode, cycles, bytes) = match opcode {
 		/* TODO: instructions marked 'boundary' take longer if crossing
 		 * a page boundary */
+		/* branch instructions also take an extra cycle if branch taken */
 
 		0x00 => (Mnemonic::BRK, AddressingMode::Implicit, 7, 2),
+		0x10 => (Mnemonic::BPL, AddressingMode::Relative, 2, 2), /*boundary*/
 		0x20 => (Mnemonic::JSR, AddressingMode::Absolute, 6, 3),
+		0x30 => (Mnemonic::BMI, AddressingMode::Relative, 2, 2), /*boundary*/
+		0x50 => (Mnemonic::BVC, AddressingMode::Relative, 2, 2), /*boundary*/
+		0x70 => (Mnemonic::BVS, AddressingMode::Relative, 2, 2), /*boundary*/
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 1),
 		0x81 => (Mnemonic::STA, AddressingMode::IndirectX, 6, 2),
 		0x85 => (Mnemonic::STA, AddressingMode::ZeroPage, 3, 2),
 		0x88 => (Mnemonic::DEY, AddressingMode::Implicit, 2, 1),
 		0x8d => (Mnemonic::STA, AddressingMode::Absolute, 4, 3),
+		0x90 => (Mnemonic::BCC, AddressingMode::Relative, 2, 2), /*boundary*/
 		0x91 => (Mnemonic::STA, AddressingMode::IndirectY, 6, 2),
 		0x95 => (Mnemonic::STA, AddressingMode::ZeroPageX, 4, 3),
 		0x99 => (Mnemonic::STA, AddressingMode::AbsoluteY, 5, 3),
@@ -296,11 +335,13 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xc9 => (Mnemonic::CMP, AddressingMode::Immediate, 2, 2),
 		0xca => (Mnemonic::DEX, AddressingMode::Implicit, 2, 1),
 		0xcd => (Mnemonic::CMP, AddressingMode::Absolute, 4, 3),
+		0xd0 => (Mnemonic::BNE, AddressingMode::Relative, 2, 2), /*boundary*/
 		0xd1 => (Mnemonic::CMP, AddressingMode::IndirectY, 5, 2), /*boundary*/
 		0xd5 => (Mnemonic::CMP, AddressingMode::ZeroPageX, 4, 2),
 		0xd8 => (Mnemonic::CLD, AddressingMode::Implicit, 2, 1),
 		0xd9 => (Mnemonic::CMP, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
 		0xdd => (Mnemonic::CMP, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
+		0xf0 => (Mnemonic::BEQ, AddressingMode::Relative, 2, 2), /*boundary*/
 		_ => panic!("Unknown opcode 0x{opcode:x}")
 	};
 
