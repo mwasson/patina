@@ -28,7 +28,7 @@ impl ProgramState
 	pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {
 		flag.update_bool(self, new_val);
 	}
-
+		
 	pub fn push(&mut self, data: u8) {
 		self.memory[addr(0x10, self.s_register) as usize] = data;
 		self.s_register -= 1;
@@ -103,6 +103,9 @@ pub enum Mnemonic
 	/* comparisons */
 	CMP,
 
+	/* branch codes */
+	BCS, /* Branch if Carry Set */
+
     /* TODO others */
 	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
@@ -116,6 +119,12 @@ impl Mnemonic
 	fn apply(self: Mnemonic, state: &mut ProgramState,
 	         addr_mode: AddressingMode, b1: u8, b2: u8) {
 		match self {
+			Mnemonic::BCS => {
+				if StatusFlag::Carry.is_set(state) {
+					state.program_counter = addr_mode.resolve_address(state,
+					                                                  b1, b2);
+				}
+			}
 			Mnemonic::BRK => {
 				state.irq_with_offset(2);
 			}
@@ -196,7 +205,8 @@ impl AddressingMode
 			AddressingMode::ZeroPageY =>
 				zero_page_addr(byte1 + state.index_y),
 			AddressingMode::Relative =>
-				panic!("Relative unimplemented for now"),
+				state.program_counter
+				     .overflowing_add_signed(byte1 as i8 as i16).0,
 			AddressingMode::Absolute =>
 				addr(byte1, byte2),
 			AddressingMode::AbsoluteX =>
@@ -255,6 +265,7 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xac => (Mnemonic::LDY, AddressingMode::Absolute, 4, 3),
 		0xad => (Mnemonic::LDA, AddressingMode::Absolute, 4, 2),
 		0xae => (Mnemonic::LDX, AddressingMode::Absolute, 4, 3),
+		0xb0 => (Mnemonic::BCS, AddressingMode::Relative, 3, 2), /*boundary*/
 		0xb1 => (Mnemonic::LDA, AddressingMode::IndirectY, 5, 2), /*boundary*/
 		0xb4 => (Mnemonic::LDY, AddressingMode::ZeroPageX, 4, 2),
 		0xb5 => (Mnemonic::LDA, AddressingMode::ZeroPageY, 4, 2),
@@ -311,8 +322,12 @@ impl StatusFlag
 		}
 	}
 
+	pub fn is_set(self, state: &ProgramState) -> bool {
+		state.status & self.mask() != 0
+	}
+
 	pub fn update_bool(self, state: &mut ProgramState, new_val: bool) {
-		let new_val_as_number = if { new_val } { 1 } else { 0 };
+		let new_val_as_number = if new_val { 1 } else { 0 };
 		self.update(state, new_val_as_number);
 	}
 
