@@ -129,6 +129,9 @@ impl Mnemonic
 			Mnemonic::LDX => {
 				state.index_x = addr_mode.deref(state, b1, b2)
 			}
+			Mnemonic::LDY => {
+				state.index_y = addr_mode.deref(state, b1, b2)
+			}
 			Mnemonic::SEI => {
 				/* TODO: The effect is delayed "one instruction".
 				 * Does that mean one cycle, or until the next instruction?
@@ -228,19 +231,25 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0x99 => (Mnemonic::STA, AddressingMode::AbsoluteY, 5, 3),
 		0x9a => (Mnemonic::TXS, AddressingMode::Implicit, 2, 1),
 		0x9d => (Mnemonic::STA, AddressingMode::AbsoluteX, 5, 3),
+		0xa0 => (Mnemonic::LDY, AddressingMode::Immediate, 2, 2),
 		0xa2 => (Mnemonic::LDX, AddressingMode::Immediate, 2, 2),
+		0xa4 => (Mnemonic::LDY, AddressingMode::ZeroPage, 3, 2),
 		0xa5 => (Mnemonic::LDA, AddressingMode::ZeroPage, 3, 2),
 		0xa6 => (Mnemonic::LDX, AddressingMode::ZeroPage, 3, 2),
 		0xa9 => (Mnemonic::LDA, AddressingMode::Immediate, 2, 2),
 		0xa1 => (Mnemonic::LDA, AddressingMode::IndirectX, 6, 2),
+		0xac => (Mnemonic::LDY, AddressingMode::Absolute, 4, 3),
 		0xad => (Mnemonic::LDA, AddressingMode::Absolute, 4, 2),
 		0xae => (Mnemonic::LDX, AddressingMode::Absolute, 4, 3),
 		/* TODO: Handle it takes longer if crossing page boundary */
 		0xb1 => (Mnemonic::LDA, AddressingMode::IndirectY, 5, 2),
+		0xb4 => (Mnemonic::LDY, AddressingMode::ZeroPageX, 4, 2),
 		0xb5 => (Mnemonic::LDA, AddressingMode::ZeroPageY, 4, 2),
 		0xb6 => (Mnemonic::LDX, AddressingMode::ZeroPageY, 4, 2),
 		/* TODO: Handle it takes longer if crossing page boundary */
 		0xb9 => (Mnemonic::LDA, AddressingMode::AbsoluteY, 4, 3),
+		/* TODO: Handle it takes longer if crossing page boundary */
+		0xbc => (Mnemonic::LDY, AddressingMode::AbsoluteX, 4, 3),
 		/* TODO: Handle it takes longer if crossing page boundary */
 		0xbd => (Mnemonic::LDA, AddressingMode::AbsoluteX, 4, 3),
 		/* TODO: Handle it takes longer if crossing page boundary */
