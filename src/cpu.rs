@@ -35,20 +35,20 @@ impl ProgramState
 	}
 		
 	pub fn push(&mut self, data: u8) {
-		self.memory[addr(0x10, self.s_register) as usize] = data;
+		self.memory[addr(self.s_register, 0x10) as usize] = data;
 		self.s_register -= 1;
 	}
 
 	pub fn push_memory_loc(&mut self, mem_loc: u16) {
-		self.push((mem_loc >> 8) as u8);
 		self.push(mem_loc as u8);
+		self.push((mem_loc >> 8) as u8);
 	}
 
 	pub fn pop_memory_loc(&mut self) -> u16 {
-		let lower = self.pop();
 		let upper = self.pop();
+		let lower = self.pop();
 
-		addr(upper, lower)
+		addr(lower, upper)
 	}
 
 	pub fn pop(&mut self) -> u8 {
@@ -73,7 +73,14 @@ impl ProgramState
 	}
 
 	pub fn addr_from_mem(&mut self, addr_to_lookup: u16) -> u16 {
-		addr(self.mem_lookup(addr_to_lookup+1), self.mem_lookup(addr_to_lookup))
+		self.addr_from_mem_separate_bytes(addr_to_lookup, addr_to_lookup+1)
+	}
+				
+	pub fn addr_from_mem_separate_bytes(&mut self,
+	                                    lo_byte_addr: u16,
+	                                    hi_byte_addr: u16)
+			-> u16 {	
+		addr(self.mem_lookup(lo_byte_addr), self.mem_lookup(hi_byte_addr))
 	}
 }
 
@@ -134,6 +141,8 @@ pub enum Mnemonic
 	CLD, /* Clear Decimal */
 	SEI, /* Set InterruptDisable */
 
+	/* jumps */
+	JMP, /* Jump */
 	JSR, /* Jump to Subroutine */
 }
 
@@ -205,6 +214,11 @@ impl Mnemonic
 			Mnemonic::INY => {
 				state.index_y += 1;
 				state.update_flags_for_new_val(state.index_y);
+			}
+			Mnemonic::JMP => {
+				/* TODO: if this directly sets PC to the value in memory,
+				 * does this imply other things that set PC need an offset? */
+				state.program_counter = addr_mode.resolve_address(state,b1,b2);
 			}
 			Mnemonic::JSR => {
 				state.push_memory_loc(state.program_counter + 2);
@@ -288,11 +302,15 @@ impl AddressingMode
 			AddressingMode::Absolute =>
 				addr(byte1, byte2),
 			AddressingMode::AbsoluteX =>
-				addr(byte1, byte2 + state.index_x),
+				addr(byte1 + state.index_x, byte2),
 			AddressingMode::AbsoluteY =>
-				addr(byte1, byte2 + state.index_y),
-			AddressingMode::Indirect =>
-                state.addr_from_mem(addr(byte1, byte2)),
+				addr(byte1 + state.index_y, byte2),
+			AddressingMode::Indirect => /* only used for JMP */
+				/* this implements a bug where this mode does not
+				 * correctly handle crossing page boundaries
+				 */	
+                state.addr_from_mem_separate_bytes(addr(byte1, byte2),
+				                                   addr(byte1+1, byte2)),
             AddressingMode::IndirectX =>
 				state.addr_from_mem(zero_page_addr(byte1 + state.index_x)),
 			AddressingMode::IndirectY =>
@@ -335,7 +353,9 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0x1d => (Mnemonic::ORA, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0x20 => (Mnemonic::JSR, AddressingMode::Absolute, 6, 3),
 		0x30 => (Mnemonic::BMI, AddressingMode::Relative, 2, 2), /*boundary*/
+		0x4c => (Mnemonic::JMP, AddressingMode::Absolute, 3, 3),
 		0x50 => (Mnemonic::BVC, AddressingMode::Relative, 2, 2), /*boundary*/
+		0x6c => (Mnemonic::JMP, AddressingMode::Indirect, 5, 3),
 		0x70 => (Mnemonic::BVS, AddressingMode::Relative, 2, 2), /*boundary*/
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 1),
 		0x81 => (Mnemonic::STA, AddressingMode::IndirectX, 6, 2),
@@ -444,11 +464,11 @@ impl StatusFlag
 
 /**
  * Converts a pair of bytes into a u16 to look up an address in memory.
- * The first argument will be the higher order byte, the second
- * argument the lower order. So addr(0xAB, 0xCD) returns 0xABCD.
+ * The 6502 is little-endian, so this expects the low-order byte first.
+ * addr(0xCD, 0xAB) returns 0xABCD.
  */ 
-fn addr(b1:u8, b2:u8) -> u16 {
-	((b1 as u16) << 8) + (b2 as u16)
+fn addr(lo_byte:u8, hi_byte:u8) -> u16 {
+	((hi_byte as u16) << 8) + (lo_byte as u16)
 }
 
 /**
