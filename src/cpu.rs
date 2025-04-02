@@ -29,7 +29,7 @@ impl ProgramState
 		flag.update_bool(self, new_val);
 	}
 
-	pub fn update_flags_for_new_val(&mut self, new_val: u8) {
+	pub fn update_zero_neg_flags(&mut self, new_val: u8) {
 		self.update_flag(StatusFlag::Zero, new_val == 0);
 		self.update_flag(StatusFlag::Negative, new_val.leading_ones() > 0);
 	}
@@ -113,7 +113,9 @@ pub enum Mnemonic
     TYA,  /* transfer value from Y into A; can set zero flag */
 
 	/* comparisons */
-	CMP,
+	CMP, /* Compare A */
+	CPX, /* Compare X */
+	CPY, /* Compare Y */
 
 	/* branch codes */
 	BCC, /* Branch if Carry Clear */
@@ -182,38 +184,39 @@ impl Mnemonic
 				state.update_flag(StatusFlag::Decimal, false);
 			}
 			Mnemonic::CMP => {
-				let a = state.accumulator;
-				let mem_val = addr_mode.deref(state, b1, b2);
-
-				state.update_flag(StatusFlag::Carry, a >= mem_val);
-				state.update_flag(StatusFlag::Zero, a == mem_val);
-				state.update_flag(StatusFlag::Negative, a < mem_val);
+				Self::compare(state, addr_mode, b1, b2, state.accumulator);
+			}
+			Mnemonic::CPX => {
+				Self::compare(state, addr_mode, b1, b2, state.index_x);
+			}
+			Mnemonic::CPY => {
+				Self::compare(state, addr_mode, b1, b2, state.index_y);
 			}
 			Mnemonic::DEC => {
 				let new_val = addr_mode.deref(state, b1, b2) - 1;
 				addr_mode.write(state, b1, b2, new_val);
-				state.update_flags_for_new_val(new_val);
+				state.update_zero_neg_flags(new_val);
 			}
 			Mnemonic::DEX => {
 				state.index_x -= 1;
-				state.update_flags_for_new_val(state.index_x);
+				state.update_zero_neg_flags(state.index_x);
 			}
 			Mnemonic::DEY => {
 				state.index_y -= 1;
-				state.update_flags_for_new_val(state.index_y);
+				state.update_zero_neg_flags(state.index_y);
 			}
 			Mnemonic::INC => {
 				let new_val = addr_mode.deref(state, b1, b2) + 1;
 				addr_mode.write(state, b1, b2, new_val);
-				state.update_flags_for_new_val(new_val);
+				state.update_zero_neg_flags(new_val);
 			}
 			Mnemonic::INX => {
 				state.index_x += 1;
-				state.update_flags_for_new_val(state.index_x);
+				state.update_zero_neg_flags(state.index_x);
 			}
 			Mnemonic::INY => {
 				state.index_y += 1;
-				state.update_flags_for_new_val(state.index_y);
+				state.update_zero_neg_flags(state.index_y);
 			}
 			Mnemonic::JMP => {
 				/* TODO: if this directly sets PC to the value in memory,
@@ -259,6 +262,15 @@ impl Mnemonic
 			state.program_counter = AddressingMode::Relative.resolve_address(
 			                        state, offset, 0);
 		}
+	}
+
+	fn compare(state: &mut ProgramState, addr_mode: AddressingMode,
+	           b1: u8, b2: u8,
+	           compare_val: u8) {
+		let mem_val = addr_mode.deref(state, b1, b2);
+
+		state.update_flag(StatusFlag::Carry, compare_val >= mem_val);
+		state.update_zero_neg_flags(compare_val - mem_val);
 	}
 }
 
@@ -387,12 +399,15 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xbc => (Mnemonic::LDY, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0xbd => (Mnemonic::LDA, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0xbe => (Mnemonic::LDX, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
+		0xc0 => (Mnemonic::CPY, AddressingMode::Immediate, 2, 2),
 		0xc1 => (Mnemonic::CMP, AddressingMode::IndirectX, 6, 2),
+		0xc4 => (Mnemonic::CPY, AddressingMode::ZeroPage, 3, 2),
 		0xc5 => (Mnemonic::CMP, AddressingMode::ZeroPage, 3, 2),
 		0xc6 => (Mnemonic::DEC, AddressingMode::ZeroPage, 5, 2),
 		0xc8 => (Mnemonic::INY, AddressingMode::Implicit, 2, 1),
 		0xc9 => (Mnemonic::CMP, AddressingMode::Immediate, 2, 2),
 		0xca => (Mnemonic::DEX, AddressingMode::Implicit, 2, 1),
+		0xcc => (Mnemonic::CPY, AddressingMode::Absolute, 4, 3),
 		0xcd => (Mnemonic::CMP, AddressingMode::Absolute, 4, 3),
 		0xce => (Mnemonic::DEC, AddressingMode::Absolute, 6, 3),
 		0xd0 => (Mnemonic::BNE, AddressingMode::Relative, 2, 2), /*boundary*/
@@ -403,8 +418,11 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0xd9 => (Mnemonic::CMP, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
 		0xdd => (Mnemonic::CMP, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0xde => (Mnemonic::DEC, AddressingMode::AbsoluteX, 7, 3),
+		0xe0 => (Mnemonic::CPX, AddressingMode::Immediate, 2, 2),
+		0xe4 => (Mnemonic::CPX, AddressingMode::ZeroPage, 3, 2),
 		0xe6 => (Mnemonic::INC, AddressingMode::ZeroPage, 5, 2),
 		0xe8 => (Mnemonic::INX, AddressingMode::Implicit, 2, 1),
+		0xec => (Mnemonic::CPX, AddressingMode::Absolute, 4, 3),
 		0xee => (Mnemonic::INC, AddressingMode::Absolute, 6, 3),
 		0xf0 => (Mnemonic::BEQ, AddressingMode::Relative, 2, 2), /*boundary*/
 		0xf6 => (Mnemonic::INC, AddressingMode::ZeroPageX, 6, 3),
