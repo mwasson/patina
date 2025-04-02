@@ -136,6 +136,7 @@ pub enum Mnemonic
 	INY, /* Increment Y */
 
 	/* bitwise operators */
+	EOR, /* Bitwise XOR */
 	ORA, /* Bitwise OR */
 
     /* TODO others */
@@ -204,6 +205,11 @@ impl Mnemonic
 			Mnemonic::DEY => {
 				state.index_y -= 1;
 				state.update_zero_neg_flags(state.index_y);
+			}
+			Mnemonic::EOR => {
+				let mem_val = addr_mode.deref(state, b1, b2);
+				state.accumulator = state.accumulator ^ mem_val;
+				state.update_zero_neg_flags(state.accumulator);
 			}
 			Mnemonic::INC => {
 				let new_val = addr_mode.deref(state, b1, b2) + 1;
@@ -365,8 +371,16 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0x1d => (Mnemonic::ORA, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0x20 => (Mnemonic::JSR, AddressingMode::Absolute, 6, 3),
 		0x30 => (Mnemonic::BMI, AddressingMode::Relative, 2, 2), /*boundary*/
+		0x41 => (Mnemonic::EOR, AddressingMode::IndirectX, 6, 2),
+		0x45 => (Mnemonic::EOR, AddressingMode::ZeroPage, 3, 2),
+		0x49 => (Mnemonic::EOR, AddressingMode::Immediate, 2, 2),
 		0x4c => (Mnemonic::JMP, AddressingMode::Absolute, 3, 3),
+		0x4d => (Mnemonic::EOR, AddressingMode::Absolute, 4, 3),
 		0x50 => (Mnemonic::BVC, AddressingMode::Relative, 2, 2), /*boundary*/
+		0x51 => (Mnemonic::EOR, AddressingMode::IndirectY, 5, 2), /*boundary*/
+		0x55 => (Mnemonic::EOR, AddressingMode::ZeroPageX, 4, 2),
+		0x59 => (Mnemonic::EOR, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
+		0x5d => (Mnemonic::EOR, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0x6c => (Mnemonic::JMP, AddressingMode::Indirect, 5, 3),
 		0x70 => (Mnemonic::BVS, AddressingMode::Relative, 2, 2), /*boundary*/
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 1),
