@@ -139,6 +139,9 @@ pub enum Mnemonic
 	EOR, /* Bitwise XOR */
 	ORA, /* Bitwise OR */
 
+	/* arithmetic */
+	ADC, /* Add With Carry */
+
     /* TODO others */
 	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
@@ -154,6 +157,17 @@ impl Mnemonic
 	fn apply(self: Mnemonic, state: &mut ProgramState,
 	         addr_mode: AddressingMode, b1: u8, b2: u8) {
 		match self {
+			Mnemonic::ADC => {
+				let mem_val = addr_mode.deref(state, b1, b2);
+				let old_a = state.accumulator;
+				let result_carry: u16 = old_a as u16 + mem_val as u16 + StatusFlag::Carry.is_set(state) as u16;
+				let result = result_carry as u8;
+				state.accumulator = result;
+				state.update_zero_neg_flags(result);
+				state.update_flag(StatusFlag::Carry, result_carry > 0xff);
+				state.update_flag(StatusFlag::Overflow, (result ^ old_a) & (result ^ mem_val) & 0x80 != 0);
+				
+			}
 			Mnemonic::BCC => {
 				Self::branch_instr(state, StatusFlag::Carry, false, b1)
 			}	
@@ -381,9 +395,17 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0x55 => (Mnemonic::EOR, AddressingMode::ZeroPageX, 4, 2),
 		0x59 => (Mnemonic::EOR, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
 		0x5d => (Mnemonic::EOR, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
+		0x61 => (Mnemonic::ADC, AddressingMode::IndirectX, 6, 2),
+		0x65 => (Mnemonic::ADC, AddressingMode::ZeroPage, 3, 2),
+		0x69 => (Mnemonic::ADC, AddressingMode::Immediate, 2, 2),
 		0x6c => (Mnemonic::JMP, AddressingMode::Indirect, 5, 3),
+		0x6d => (Mnemonic::ADC, AddressingMode::Absolute, 4, 3),
 		0x70 => (Mnemonic::BVS, AddressingMode::Relative, 2, 2), /*boundary*/
+		0x71 => (Mnemonic::ADC, AddressingMode::IndirectY, 5, 2), /*boundary*/
+		0x75 => (Mnemonic::ADC, AddressingMode::ZeroPageX, 4, 2),
 		0x78 => (Mnemonic::SEI, AddressingMode::Implicit, 2, 1),
+		0x79 => (Mnemonic::ADC, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
+		0x7d => (Mnemonic::ADC, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0x81 => (Mnemonic::STA, AddressingMode::IndirectX, 6, 2),
 		0x85 => (Mnemonic::STA, AddressingMode::ZeroPage, 3, 2),
 		0x88 => (Mnemonic::DEY, AddressingMode::Implicit, 2, 1),
