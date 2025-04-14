@@ -136,6 +136,7 @@ pub enum Mnemonic
 	INY, /* Increment Y */
 
 	/* bitwise operators */
+	AND, /* Bitwise AND */
 	EOR, /* Bitwise XOR */
 	ORA, /* Bitwise OR */
 
@@ -167,6 +168,11 @@ impl Mnemonic
 				state.update_flag(StatusFlag::Carry, result_carry > 0xff);
 				state.update_flag(StatusFlag::Overflow, (result ^ old_a) & (result ^ mem_val) & 0x80 != 0);
 				
+			}
+			Mnemonic::AND => {
+				let mem_val = addr_mode.deref(state, b1, b2);
+				state.accumulator = state.accumulator & mem_val;
+				state.update_zero_neg_flags(state.accumulator);
 			}
 			Mnemonic::BCC => {
 				Self::branch_instr(state, StatusFlag::Carry, false, b1)
@@ -384,7 +390,15 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		0x19 => (Mnemonic::ORA, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
 		0x1d => (Mnemonic::ORA, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0x20 => (Mnemonic::JSR, AddressingMode::Absolute, 6, 3),
+		0x21 => (Mnemonic::AND, AddressingMode::IndirectX, 6, 2),
+		0x25 => (Mnemonic::AND, AddressingMode::ZeroPage, 3, 2),
+		0x29 => (Mnemonic::AND, AddressingMode::Immediate, 2, 2),
+		0x2d => (Mnemonic::AND, AddressingMode::Absolute, 4, 3),
 		0x30 => (Mnemonic::BMI, AddressingMode::Relative, 2, 2), /*boundary*/
+		0x31 => (Mnemonic::AND, AddressingMode::IndirectY, 5, 2), /*boundary*/
+		0x35 => (Mnemonic::AND, AddressingMode::ZeroPageX, 4, 2),
+		0x39 => (Mnemonic::AND, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
+		0x3d => (Mnemonic::AND, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
 		0x41 => (Mnemonic::EOR, AddressingMode::IndirectX, 6, 2),
 		0x45 => (Mnemonic::EOR, AddressingMode::ZeroPage, 3, 2),
 		0x49 => (Mnemonic::EOR, AddressingMode::Immediate, 2, 2),
