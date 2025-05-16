@@ -137,6 +137,7 @@ pub enum Mnemonic
 
 	/* bitwise operators */
 	AND, /* Bitwise AND */
+	ASL, /* Arithmetic Shift Left */
 	EOR, /* Bitwise XOR */
 	ORA, /* Bitwise OR */
 
@@ -173,6 +174,14 @@ impl Mnemonic
 				let mem_val = addr_mode.deref(state, b1, b2);
 				state.accumulator = state.accumulator & mem_val;
 				state.update_zero_neg_flags(state.accumulator);
+			}
+			Mnemonic::ASL => {
+				let old_val: u8 = addr_mode.deref(state, b1, b2);
+				let result = old_val << 1;
+				state.update_flag(StatusFlag::Carry, (old_val >> 7) != 0);
+				state.update_flag(StatusFlag::Negative, (result >> 7) != 0);
+				state.update_flag(StatusFlag::Zero, result == 0);
+				addr_mode.write(state, b1, b2, result);
 			}
 			Mnemonic::BCC => {
 				Self::branch_instr(state, StatusFlag::Carry, false, b1)
@@ -380,15 +389,20 @@ pub fn from_opcode(opcode: u8, b1: u8, b2: u8) -> Instruction {
 		/* branch instructions also take an extra cycle if branch taken */
 
 		0x00 => (Mnemonic::BRK, AddressingMode::Implicit, 7, 2),
+		0x06 => (Mnemonic::ASL, AddressingMode::ZeroPage, 5, 2),
+		0x0a => (Mnemonic::ASL, AddressingMode::Accumulator, 2, 1),
 		0x01 => (Mnemonic::ORA, AddressingMode::IndirectX, 6, 2),
 		0x05 => (Mnemonic::ORA, AddressingMode::ZeroPage, 3, 2),
 		0x09 => (Mnemonic::ORA, AddressingMode::Immediate, 2, 2),
 		0x0d => (Mnemonic::ORA, AddressingMode::Absolute, 4, 3),
+		0x0e => (Mnemonic::ASL, AddressingMode::Absolute, 6, 3),
 		0x10 => (Mnemonic::BPL, AddressingMode::Relative, 2, 2), /*boundary*/
 		0x11 => (Mnemonic::ORA, AddressingMode::IndirectY, 5, 2), /*boundary*/
 		0x15 => (Mnemonic::ORA, AddressingMode::ZeroPageX, 3, 2),
+		0x16 => (Mnemonic::ASL, AddressingMode::ZeroPageX, 6, 2),
 		0x19 => (Mnemonic::ORA, AddressingMode::AbsoluteY, 4, 3), /*boundary*/
 		0x1d => (Mnemonic::ORA, AddressingMode::AbsoluteX, 4, 3), /*boundary*/
+		0x1e => (Mnemonic::ASL, AddressingMode::AbsoluteX, 7, 3),
 		0x20 => (Mnemonic::JSR, AddressingMode::Absolute, 6, 3),
 		0x21 => (Mnemonic::AND, AddressingMode::IndirectX, 6, 2),
 		0x25 => (Mnemonic::AND, AddressingMode::ZeroPage, 3, 2),
