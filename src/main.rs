@@ -2,10 +2,10 @@ use std::fs;
 use std::io::{self, ErrorKind};
 
 mod cpu;
-use cpu::Instruction;
 
 mod rom;
 use rom::Rom;
+use crate::cpu::Operation;
 
 mod window;
 
@@ -58,6 +58,7 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	/* TODO: This is not the correct data yet */
 	/* TODO: Would it be better to use Cow here? */
 	let rom = Rom {
+		/* TODO: this is just wrong, shouldn't be forcing these to be instructions */
 		prg_data: parse_prg_rom(&rom_data[prg_rom_start..chr_rom_start]),
 		chr_ram: (&rom_data[chr_rom_start..chr_rom_start+chr_rom_size]).to_vec(),
 		byte_6_flags: rom_data[6],
@@ -78,9 +79,9 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	}
 }
 
-fn parse_prg_rom(data: &[u8]) -> Vec<Instruction> {
+fn parse_prg_rom(data: &[u8]) -> Vec<Operation> {
 	let mut i = 0;
-	let mut instructions = Vec::new();
+	let mut operations = Vec::new();
 
 	while i < data.len() {
 		let opcode = data[i];
@@ -88,11 +89,15 @@ fn parse_prg_rom(data: &[u8]) -> Vec<Instruction> {
 		let byte1 = if i < data.len() - 1 { data[i+1] } else { 0 };
 		let byte2 = if i < data.len() - 2 { data[i+2] } else { 0 };
 
-		let parsed_instruction = cpu::from_opcode(opcode, byte1, byte2);
+		let parsed_instruction = cpu::from_opcode(opcode);
 		i = i + parsed_instruction.bytes as usize;
-		instructions.push(parsed_instruction);
+		operations.push(Operation {
+			instruction: parsed_instruction,
+			byte1,
+			byte2
+		});
 		println!("parsed opcode 0x{opcode:x}");
 	}	
 
-	return instructions;
+	return operations;
 }
