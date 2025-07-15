@@ -14,6 +14,8 @@ use crate::rom::Rom;
 
 const MEMORY_SIZE: usize = 1<<15;
 
+const INITIAL_PC_LOCATION: u16 = 0xfffc;
+
 #[derive(Debug)]
 pub struct Operation
 {
@@ -69,7 +71,7 @@ fn transition(rom:&Rom, state: &mut ProgramState) {
 
 /* TODO: very basic test of CPU */
 pub fn operate(rom:&Rom, state: &mut ProgramState) {
-	while(state.program_counter < rom.prg_data.len() as u16) {
+	while((state.program_counter as usize) < rom.prg_data.len()) {
 		println!("Taking a step at program counter {0}", state.program_counter);
 		transition(rom, state);
 	}

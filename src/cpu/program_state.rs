@@ -1,5 +1,5 @@
 use crate::cpu;
-use crate::cpu::{StatusFlag, MEMORY_SIZE};
+use crate::cpu::{StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
 
 pub struct ProgramState
 {
@@ -20,7 +20,7 @@ impl ProgramState
 			index_x: 0x00,
 			index_y: 0x00,
 			s_register: 0xff,
-			program_counter: 0x0000,
+			program_counter: INITIAL_PC_LOCATION,
 			status: (0x11) << 4,
 			memory: [0; MEMORY_SIZE]
 		}

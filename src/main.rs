@@ -12,7 +12,8 @@ mod window;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
-	let _ = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
+	//let _ = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
+	let _ = parse_file("/Users/mwasson/instr_misc.nes")?; /* temporary, for testing */
 
 	window::initialize_ui()
 }
