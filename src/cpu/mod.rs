@@ -3,12 +3,15 @@ mod addressing_mode;
 mod instruction;
 mod status_flag;
 mod program_state;
+mod memory_mirror;
 
 pub use addressing_mode::AddressingMode;
 pub use instruction::RealizedInstruction;
 pub use program_state::ProgramState;
 pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
+
+const MEMORY_SIZE: usize = 1<<15;
 
 pub struct Operation
 {

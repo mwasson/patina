@@ -20,7 +20,7 @@ pub enum AddressingMode
 impl AddressingMode
 {
 	/* behavior based on: https://www.nesdev.org/obelisk-6502-guide/addressing.html */
-	pub fn resolve_address(self: &AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u16 {
+	pub fn resolve_address(self: &AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> u16 {
 		match self  {
 			AddressingMode::Implicit =>
 				panic!("Should never be explicitly referenced--remove?"),
@@ -61,12 +61,12 @@ impl AddressingMode
 			AddressingMode::Immediate => byte1,
 			_ => {
 				let address = self.resolve_address(state, byte1, byte2);
-				state.mem_lookup(address)
+				state.read_mem(address)
 			}
 		}
 	}
 
 	pub fn write(self: &AddressingMode, state: &mut ProgramState, byte1: u8, byte2: u8, new_val: u8) {
-		state.memory[self.resolve_address(state, byte1, byte2) as usize] = new_val;
+		state.write_mem(self.resolve_address(state, byte1, byte2), new_val);
 	}
 }

@@ -1,5 +1,5 @@
 use crate::cpu;
-use crate::cpu::StatusFlag;
+use crate::cpu::{StatusFlag, MEMORY_SIZE};
 
 pub struct ProgramState
 {
@@ -9,7 +9,7 @@ pub struct ProgramState
 	pub s_register: u8,
 	pub program_counter: u16,
 	pub status: u8,
-	pub memory: [u8; 1<<15]
+	memory: [u8; MEMORY_SIZE]
 }
 
 impl ProgramState
@@ -22,7 +22,7 @@ impl ProgramState
 			s_register: 0xff,
 			program_counter: 0x0000,
 			status: (0x11) << 4,
-			memory: [0; 1<<15]
+			memory: [0; MEMORY_SIZE]
 		}
 	}
 
@@ -69,18 +69,22 @@ impl ProgramState
 		/* TODO: jump to IRQ handler */
 	}
 
-	pub fn mem_lookup(&mut self, addr: u16) -> u8 {
+	pub fn read_mem(&self, addr: u16) -> u8 {
 		self.memory[addr as usize]
 	}
 
-	pub fn addr_from_mem(&mut self, addr_to_lookup: u16) -> u16 {
+	pub fn write_mem(&mut self, addr: u16, data: u8) {
+		self.memory[addr as usize] = data;
+	}
+
+	pub fn addr_from_mem(&self, addr_to_lookup: u16) -> u16 {
 		self.addr_from_mem_separate_bytes(addr_to_lookup, addr_to_lookup+1)
 	}
 
-	pub fn addr_from_mem_separate_bytes(&mut self,
+	pub fn addr_from_mem_separate_bytes(&self,
 	                                    lo_byte_addr: u16,
 	                                    hi_byte_addr: u16)
 			-> u16 {
-		cpu::addr(self.mem_lookup(lo_byte_addr), self.mem_lookup(hi_byte_addr))
+		cpu::addr(self.read_mem(lo_byte_addr), self.read_mem(hi_byte_addr))
 	}
 }
