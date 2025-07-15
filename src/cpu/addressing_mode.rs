@@ -57,7 +57,7 @@ impl AddressingMode
 		}
 	}
 
-	pub fn deref(self: &AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u8 {
+	pub fn deref(self: &AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> u8 {
 		match self {
 			AddressingMode::Immediate => byte1,
 			_ => {

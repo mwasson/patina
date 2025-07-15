@@ -32,7 +32,7 @@ impl ProgramState
 
 	pub fn update_zero_neg_flags(&mut self, new_val: u8) {
 		self.update_flag(StatusFlag::Zero, new_val == 0);
-		self.update_flag(StatusFlag::Negative, new_val.leading_ones() > 0);
+		self.update_flag(StatusFlag::Negative, (new_val as i8) < 0);
 	}
 
 	pub fn push(&mut self, data: u8) {

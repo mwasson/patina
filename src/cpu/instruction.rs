@@ -172,13 +172,16 @@ impl Instruction
 				state.program_counter = addr_mode.resolve_address(state,b1,b2);
 			}
 			Instruction::LDA => {
-				state.accumulator = addr_mode.deref(state, b1, b2)
+				state.accumulator = addr_mode.deref(state, b1, b2);
+				state.update_zero_neg_flags(state.accumulator);
 			}
 			Instruction::LDX => {
-				state.index_x = addr_mode.deref(state, b1, b2)
+				state.index_x = addr_mode.deref(state, b1, b2);
+				state.update_zero_neg_flags(state.index_x);
 			}
 			Instruction::LDY => {
-				state.index_y = addr_mode.deref(state, b1, b2)
+				state.index_y = addr_mode.deref(state, b1, b2);
+				state.update_zero_neg_flags(state.index_y);
 			}
 			Instruction::ORA => {
 				state.accumulator |= addr_mode.deref(state, b1, b2)
