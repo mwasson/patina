@@ -1,4 +1,4 @@
-use crate::cpu::ProgramState;
+use crate::cpu::program_state::ProgramState;
 
 pub enum StatusFlag
 {

@@ -1,6 +1,7 @@
-use crate::cpu::{ProgramState, AddressingMode, StatusFlag};
+use crate::cpu::{AddressingMode, StatusFlag};
 
 use AddressingMode::*;
+use crate::cpu::program_state::ProgramState;
 
 pub enum Instruction
 {
