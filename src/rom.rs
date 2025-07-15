@@ -1,7 +1,5 @@
-use crate::cpu::{Operation};
-
 pub struct Rom {
-    pub prg_data: Vec<Operation>,
+    pub prg_data: Vec<u8>,
     pub chr_ram: Vec<u8>,
     pub byte_6_flags: u8, /* TODO: split these out */
     pub byte_7_flags: u8, /* TODO: split these out */

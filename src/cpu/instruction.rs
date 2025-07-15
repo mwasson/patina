@@ -3,6 +3,7 @@ use crate::cpu::{AddressingMode, StatusFlag};
 use AddressingMode::*;
 use crate::cpu::program_state::ProgramState;
 
+#[derive(Debug)]
 pub enum Instruction
 {
     /* load/store opcodes */
@@ -64,8 +65,8 @@ pub enum Instruction
 
 impl Instruction
 {
-	fn apply(self: Instruction, state: &mut ProgramState,
-			 addr_mode: AddressingMode, b1: u8, b2: u8) {
+	pub fn apply(&self, state: &mut ProgramState,
+			 addr_mode: &AddressingMode, b1: u8, b2: u8) {
 		match self {
 			Instruction::ADC => {
 				let mem_val = addr_mode.deref(state, b1, b2);
@@ -207,7 +208,7 @@ impl Instruction
 		}
 	}
 
-	fn compare(state: &mut ProgramState, addr_mode: AddressingMode,
+	fn compare(state: &mut ProgramState, addr_mode: &AddressingMode,
 	           b1: u8, b2: u8,
 	           compare_val: u8) {
 		let mem_val = addr_mode.deref(state, b1, b2);
@@ -217,6 +218,7 @@ impl Instruction
 	}
 }
 
+#[derive(Debug)]
 pub struct RealizedInstruction
 {
     pub instruction: Instruction,
@@ -224,6 +226,17 @@ pub struct RealizedInstruction
     pub addr_mode: AddressingMode,
     pub cycles: u8,
     pub bytes: u8,
+}
+
+impl RealizedInstruction
+{
+	pub fn apply(&self, state: &mut ProgramState, b1: u8, b2: u8) {
+		let old_program_counter = state.program_counter;
+		self.instruction.apply(state, &self.addr_mode, b1, b2);
+		if(old_program_counter == state.program_counter) {
+			state.program_counter = state.program_counter.wrapping_add(self.bytes as u16);
+		}
+	}
 }
 
 pub fn from_opcode(opcode: u8) -> RealizedInstruction {

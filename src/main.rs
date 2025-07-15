@@ -5,7 +5,7 @@ mod cpu;
 
 mod rom;
 use rom::Rom;
-use crate::cpu::Operation;
+use crate::cpu::{Operation, ProgramState};
 
 mod window;
 
@@ -59,7 +59,8 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	/* TODO: Would it be better to use Cow here? */
 	let rom = Rom {
 		/* TODO: this is just wrong, shouldn't be forcing these to be instructions */
-		prg_data: parse_prg_rom(&rom_data[prg_rom_start..chr_rom_start]),
+		//prg_data: parse_prg_rom(&rom_data[prg_rom_start..chr_rom_start]),
+		prg_data: (&rom_data[prg_rom_start..chr_rom_start]).to_vec(),
 		chr_ram: (&rom_data[chr_rom_start..chr_rom_start+chr_rom_size]).to_vec(),
 		byte_6_flags: rom_data[6],
 		byte_7_flags: rom_data[7],
@@ -72,32 +73,11 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	println!("{}", rom.byte_6_flags);
 	println!("{}", rom.byte_7_flags);
 
+	crate::cpu::operate(&rom, &mut ProgramState::new());
+
 	if error_msg != "" {
 		return Err(io::Error::new(ErrorKind::InvalidData, error_msg));	
 	} else {
 		return Ok(());
 	}
-}
-
-fn parse_prg_rom(data: &[u8]) -> Vec<Operation> {
-	let mut i = 0;
-	let mut operations = Vec::new();
-
-	while i < data.len() {
-		let opcode = data[i];
-		/* TODO: need better validation of last opcode */
-		let byte1 = if i < data.len() - 1 { data[i+1] } else { 0 };
-		let byte2 = if i < data.len() - 2 { data[i+2] } else { 0 };
-
-		let parsed_instruction = cpu::from_opcode(opcode);
-		i = i + parsed_instruction.bytes as usize;
-		operations.push(Operation {
-			instruction: parsed_instruction,
-			byte1,
-			byte2
-		});
-		println!("parsed opcode 0x{opcode:x}");
-	}	
-
-	return operations;
 }

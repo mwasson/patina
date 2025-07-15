@@ -1,5 +1,6 @@
 use crate::cpu::{addr, zero_page_addr, ProgramState};
 
+#[derive(Debug)]
 pub enum AddressingMode
 {
 	Implicit,

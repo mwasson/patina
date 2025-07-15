@@ -10,20 +10,29 @@ pub use instruction::RealizedInstruction;
 pub use program_state::ProgramState;
 pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
+use crate::rom::Rom;
 
 const MEMORY_SIZE: usize = 1<<15;
 
+#[derive(Debug)]
 pub struct Operation
 {
-	pub instruction: RealizedInstruction,
+	pub realized_instruction: RealizedInstruction, /* TODO should this be a reference? */
 	pub byte1: u8,
 	pub byte2: u8
+}
+
+impl Operation
+{
+	fn apply(&self, state: &mut ProgramState) {
+		self.realized_instruction.apply(state, self.byte1, self.byte2);
+	}
 }
 
 fn operation_from_memory(opcode: u8, byte1: u8, byte2: u8) -> Operation
 {
 	Operation {
-		instruction: from_opcode(opcode),
+		realized_instruction: from_opcode(opcode),
 		byte1,
 		byte2
 	}
@@ -46,4 +55,23 @@ fn addr(lo_byte:u8, hi_byte:u8) -> u16 {
  */
 fn zero_page_addr(b1:u8) -> u16 {
 	b1 as u16
+}
+
+fn transition(rom:&Rom, state: &mut ProgramState) {
+	let operation_loc = state.program_counter as usize;
+	/* TODO: what if this hits the top of program memory */
+	let operation = operation_from_memory(rom.prg_data[operation_loc],
+										  rom.prg_data[operation_loc+1],
+										  rom.prg_data[operation_loc+2]);
+	println!("Running operation: {operation:?}");
+	operation.apply(state)
+}
+
+/* TODO: very basic test of CPU */
+pub fn operate(rom:&Rom, state: &mut ProgramState) {
+	while(state.program_counter < rom.prg_data.len() as u16) {
+		println!("Taking a step at program counter {0}", state.program_counter);
+		transition(rom, state);
+	}
+	println!("Program counter exceeded size of program memory");
 }
