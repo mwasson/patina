@@ -233,9 +233,8 @@ impl RealizedInstruction
 	pub fn apply(&self, state: &mut ProgramState, b1: u8, b2: u8) {
 		let old_program_counter = state.program_counter;
 		self.instruction.apply(state, &self.addr_mode, b1, b2);
-		if(old_program_counter == state.program_counter) {
-			state.program_counter = state.program_counter.wrapping_add(self.bytes as u16);
-		}
+		/* note that this holds even for branching instructions! */
+		state.program_counter = state.program_counter.wrapping_add(self.bytes as u16);
 	}
 }
 
