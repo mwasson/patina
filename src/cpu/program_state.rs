@@ -102,4 +102,9 @@ impl ProgramState
 			-> u16 {
 		cpu::addr(self.read_mem(lo_byte_addr), self.read_mem(hi_byte_addr))
 	}
+
+	/* TODO comment */
+	pub fn link_memory(&self, addr:u16) -> &u8 {
+		return &self.memory[addr as usize];
+	}
 }

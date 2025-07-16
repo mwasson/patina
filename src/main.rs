@@ -8,7 +8,7 @@ use rom::Rom;
 use crate::cpu::{Operation, ProgramState};
 
 mod window;
-
+mod ppu;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
@@ -59,8 +59,6 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	/* TODO: This is not the correct data yet */
 	/* TODO: Would it be better to use Cow here? */
 	let rom = Rom {
-		/* TODO: this is just wrong, shouldn't be forcing these to be instructions */
-		//prg_data: parse_prg_rom(&rom_data[prg_rom_start..chr_rom_start]),
 		prg_data: (&rom_data[prg_rom_start..chr_rom_start]).to_vec(),
 		chr_ram: (&rom_data[chr_rom_start..chr_rom_start+chr_rom_size]).to_vec(),
 		byte_6_flags: rom_data[6],
