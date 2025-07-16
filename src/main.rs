@@ -12,8 +12,8 @@ mod window;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
-	//let _ = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
-	let _ = parse_file("/Users/mwasson/instr_misc.nes")?; /* temporary, for testing */
+	let _ = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
+	//let _ = parse_file("/Users/mwasson/instr_misc.nes")?; /* temporary, for testing */
 
 	window::initialize_ui()
 }
@@ -74,7 +74,7 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	println!("{}", rom.byte_6_flags);
 	println!("{}", rom.byte_7_flags);
 
-	crate::cpu::operate(&rom, &mut ProgramState::new());
+	crate::cpu::operate(&mut ProgramState::from_rom(&rom));
 
 	if error_msg != "" {
 		return Err(io::Error::new(ErrorKind::InvalidData, error_msg));	

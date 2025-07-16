@@ -10,11 +10,12 @@ pub use instruction::RealizedInstruction;
 pub use program_state::ProgramState;
 pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
-use crate::rom::Rom;
 
-const MEMORY_SIZE: usize = 1<<15;
+const MEMORY_SIZE: usize = 1<<16;
 
 const INITIAL_PC_LOCATION: u16 = 0xfffc;
+
+const RAM_MEMORY_START: usize = 0x8000;
 
 #[derive(Debug)]
 pub struct Operation
@@ -59,21 +60,20 @@ fn zero_page_addr(b1:u8) -> u16 {
 	b1 as u16
 }
 
-fn transition(rom:&Rom, state: &mut ProgramState) {
-	let operation_loc = state.program_counter as usize;
+fn transition(state: &mut ProgramState) {
+	let operation_loc = state.program_counter;
 	/* TODO: what if this hits the top of program memory */
-	let operation = operation_from_memory(rom.prg_data[operation_loc],
-										  rom.prg_data[operation_loc+1],
-										  rom.prg_data[operation_loc+2]);
+	let operation = operation_from_memory(state.read_mem(operation_loc),
+										  state.read_mem(operation_loc.wrapping_add(1)),
+										  state.read_mem(operation_loc.wrapping_add(2)));
 	println!("Running operation: {operation:?}");
 	operation.apply(state)
 }
 
 /* TODO: very basic test of CPU */
-pub fn operate(rom:&Rom, state: &mut ProgramState) {
-	while((state.program_counter as usize) < rom.prg_data.len()) {
+pub fn operate(state: &mut ProgramState) {
+	while(true) {
 		println!("Taking a step at program counter {0}", state.program_counter);
-		transition(rom, state);
+		transition(state);
 	}
-	println!("Program counter exceeded size of program memory");
 }

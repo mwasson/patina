@@ -31,10 +31,12 @@ impl MemoryMirror {
      */
     fn ppu_mirror() -> MemoryMirror {
         let address_mapper = |addr:u16| -> Option<u16> {
-            if addr >= 0x2000 && addr <= 0x3FFF {
-             return Some(0x2000 | (addr & 7));
-            }  else {
-            return None;
+            if addr <= 0x1fff { /* system memory */
+                return Some(addr & 0x7FF);
+            }  else if addr >= 0x2000 && addr <= 0x3FFF { /* ppu registers */
+                return Some(0x2000 | (addr & 0x7));
+            } else {
+                return None;
             }
         };
 

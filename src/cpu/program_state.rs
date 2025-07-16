@@ -1,5 +1,6 @@
 use crate::cpu;
-use crate::cpu::{StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
+use crate::cpu::{AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE, RAM_MEMORY_START};
+use crate::rom::Rom;
 
 pub struct ProgramState
 {
@@ -20,10 +21,24 @@ impl ProgramState
 			index_x: 0x00,
 			index_y: 0x00,
 			s_register: 0xff,
-			program_counter: INITIAL_PC_LOCATION,
+			program_counter: 0x00,
 			status: (0x11) << 4,
 			memory: [0; MEMORY_SIZE]
 		}
+	}
+
+	/* TODO comment */
+	pub fn from_rom(rom: &Rom) -> Self {
+		let mut result = Self::new();
+
+		/* copy ROM data into memory */
+		/* TODO: handling RAM, mappers, etc. */
+		result.memory[RAM_MEMORY_START..(RAM_MEMORY_START+rom.prg_data.len())].copy_from_slice(&*rom.prg_data);
+
+		/* set program counter to value in memory at this location */
+		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&result, INITIAL_PC_LOCATION);
+
+		result
 	}
 
 	pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {
@@ -37,7 +52,7 @@ impl ProgramState
 
 	pub fn push(&mut self, data: u8) {
 		self.memory[cpu::addr(self.s_register, 0x10) as usize] = data;
-		self.s_register -= 1;
+		self.s_register = self.s_register.wrapping_sub(1);
 	}
 
 	pub fn push_memory_loc(&mut self, mem_loc: u16) {
@@ -63,7 +78,7 @@ impl ProgramState
 	}
 
 	pub fn irq_with_offset(&mut self, offset: u8) {
-		self.push_memory_loc(self.program_counter + offset as u16);
+		self.push_memory_loc(self.program_counter.wrapping_add(offset as u16));
 		self.push(self.status);
 		self.update_flag(StatusFlag::InterruptDisable, false);
 		/* TODO: jump to IRQ handler */

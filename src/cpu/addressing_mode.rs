@@ -57,6 +57,11 @@ impl AddressingMode
 		}
 	}
 
+	/* convenience method for when you have a u16 representing an entire memory address */
+	pub fn resolve_address_u16(&self, state: &ProgramState, addr:u16) -> u16 {
+		self.resolve_address(state, (addr & 0xff) as u8, (addr >> 8) as u8)
+	}
+
 	pub fn deref(self: &AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> u8 {
 		match self {
 			AddressingMode::Immediate => byte1,
