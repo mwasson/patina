@@ -72,7 +72,7 @@ fn transition(state: &mut ProgramState) {
 
 /* TODO: very basic test of CPU */
 pub fn operate(state: &mut ProgramState) {
-	while(true) {
+	loop {
 		println!("Taking a step at program counter {0}", state.program_counter);
 		transition(state);
 	}

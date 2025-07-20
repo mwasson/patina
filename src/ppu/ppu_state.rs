@@ -29,7 +29,7 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         let oam : [u8; OAM_SIZE] = [0; OAM_SIZE]; /* TODO: link this to CPU memory? */
 
         /* copy over character data; TODO surely this is not correct even in the no-mapper case*/
-        vram[0x0000..rom.chr_ram.len()].copy_from_slice(&rom.chr_ram);
+        vram[0x0000..rom.chr_data.len()].copy_from_slice(&rom.chr_data);
 
         return PPUState {
             vram,

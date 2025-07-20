@@ -12,23 +12,21 @@ mod ppu;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
-	let _ = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
+	let rom = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
 	//let _ = parse_file("/Users/mwasson/instr_misc.nes")?; /* temporary, for testing */
 
-	window::initialize_ui()
+	window::initialize_ui(rom)
 }
 
-fn parse_file(file_ref: &str) -> io::Result<Vec<u8>> {
+fn parse_file(file_ref: &str) -> io::Result<Rom> {
 	println!("Attempting to parse {}", file_ref);
 	let rom_data: Vec<u8> = fs::read(file_ref)?;
-	validate_header(&rom_data);
-
-	return Ok(rom_data);
+	return validate_header(&rom_data);
 }
 
 
 /* TODO: Result should probably be std Result, not io Result */
-fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
+fn validate_header(rom_data: &Vec<u8>) -> io::Result<Rom> {
 	println!("ROM validation...");
 	let mut error_msg = String::from("");
 
@@ -60,7 +58,7 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	/* TODO: Would it be better to use Cow here? */
 	let rom = Rom {
 		prg_data: (&rom_data[prg_rom_start..chr_rom_start]).to_vec(),
-		chr_ram: (&rom_data[chr_rom_start..chr_rom_start+chr_rom_size]).to_vec(),
+		chr_data: (&rom_data[chr_rom_start..chr_rom_start+chr_rom_size]).to_vec(),
 		byte_6_flags: rom_data[6],
 		byte_7_flags: rom_data[7],
 		trainer: vec![], /* TODO */
@@ -72,11 +70,11 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<()> {
 	println!("{}", rom.byte_6_flags);
 	println!("{}", rom.byte_7_flags);
 
-	crate::cpu::operate(&mut ProgramState::from_rom(&rom));
+	// crate::cpu::operate(&mut ProgramState::from_rom(&rom));
 
 	if error_msg != "" {
 		return Err(io::Error::new(ErrorKind::InvalidData, error_msg));	
 	} else {
-		return Ok(());
+		return Ok(rom);
 	}
 }
