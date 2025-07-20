@@ -1,6 +1,8 @@
 use crate::cpu::ProgramState;
 use crate::rom::Rom;
 
+use bincode;
+use bincode::BorrowDecode;
 
 const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
 const OAM_SIZE : usize = 256;
@@ -14,6 +16,7 @@ struct PPUState<'a> {
     oam: [u8; OAM_SIZE],
     palette_ram: [u8; PALETTE_SIZE],
     secondary_oam: [u8; SECONDARY_OAM_SIZE],
+    ppuctrl: &'a u8,
     oamaddr: &'a u8,
     oamdata: &'a u8,
     oamdma: &'a u8,
@@ -32,19 +35,22 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
             oam,
             palette_ram: [0; PALETTE_SIZE],
             secondary_oam: [0; SECONDARY_OAM_SIZE],
+            /* TODO: a simple link like this is not sufficient; how should it actually work? */
+            ppuctrl: program_state.link_memory(0x2000),
             oamaddr: program_state.link_memory(0x2003),
             oamdata: program_state.link_memory(0x2004),
             oamdma: program_state.link_memory(0x4014),
         }
     }
 
-    fn scanline(&mut self, cycle:u16) {
+    fn scanline(&mut self, scanline_num:u8, cycle:u16) {
         /* first 64 cycles: clear secondary oam */
         if(cycle <= 64 && cycle % 2 == 0) {
             self.secondary_oam[(cycle/2) as usize] = 0xff;
         /* 65-256: sprite evaluation */
         } else if (cycle <= 256) {
-            /* TODO */
+            /* for each sprite in the OAM, check if y coordinate is in range */
+
         /* 257-320: sprite fetches */
         } else if (cycle <= 320) {
 
@@ -59,14 +65,48 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         let mut i = 0;
         let mut sprites : Vec<u8> = Vec::new();
         let sprite_size = 8; /* TODO */
-        while(i < OAM_SIZE/4) {
-            let sprite_data = &self.oam[(i*4)..(i*4+4)];
-            if(sprite_data[0] <= scanline_num && sprite_data[0] + sprite_size >= scanline_num) {
+        for i in (0..OAM_SIZE/4) {
+            let sprite_data = self.slice_as_sprite(i);
+            if sprite_data.in_scanline(i as u8, &self) {
                 sprites.push(i as u8);
             }
-            i += 1;
         }
 
         sprites
+    }
+
+    fn determine_pixel_color() {
+        /* TODO */
+    }
+
+    fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
+        let oam_size = self.oam.len();
+        if(sprite_index + 4 >= oam_size) {
+            log::warn!("Sprite index out of range; wrapping but consider avoiding this");
+        }
+
+        bincode::borrow_decode_from_slice(&self.oam[(sprite_index % oam_size)..((sprite_index+4) % oam_size)],
+                                          bincode::config::standard()).unwrap()
+            .0
+    }
+
+    /* sprites are 8 pixels tall unless the 5th bit of PPUCTRL is true, then they're 16 */
+    fn sprite_size(&self) -> u8 {
+        if self.ppuctrl & 0x10 == 0 { 16 } else { 8 }
+    }
+}
+
+#[derive(BorrowDecode)]
+struct SpriteInfo
+{
+    y: u8,
+    tile_index: u8,
+    attrs: u8,
+    x: u8
+}
+
+impl SpriteInfo {
+    fn in_scanline(&self, scanline: u8, ppu: &PPUState) -> bool {
+            self.y <= scanline &&  scanline < self.y + ppu.sprite_size()
     }
 }
