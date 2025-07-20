@@ -2,7 +2,7 @@ use crate::cpu::ProgramState;
 use crate::rom::Rom;
 
 use bincode;
-use bincode::BorrowDecode;
+use bincode::{BorrowDecode, Encode};
 
 const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
 const OAM_SIZE : usize = 256;
@@ -17,6 +17,7 @@ struct PPUState<'a> {
     palette_ram: [u8; PALETTE_SIZE],
     secondary_oam: [u8; SECONDARY_OAM_SIZE],
     ppuctrl: &'a u8,
+    ppustatus: u8, /* TODO: really need to figure out how I want to share this info! */
     oamaddr: &'a u8,
     oamdata: &'a u8,
     oamdma: &'a u8,
@@ -37,19 +38,22 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
             secondary_oam: [0; SECONDARY_OAM_SIZE],
             /* TODO: a simple link like this is not sufficient; how should it actually work? */
             ppuctrl: program_state.link_memory(0x2000),
+            ppustatus: 0,// program_state.link_memory(0x2002),
             oamaddr: program_state.link_memory(0x2003),
             oamdata: program_state.link_memory(0x2004),
             oamdma: program_state.link_memory(0x4014),
         }
     }
 
+    /* TODO: this is just a sketch; not really sure how I want to use 'cycle' yet */
     fn scanline(&mut self, scanline_num:u8, cycle:u16) {
         /* first 64 cycles: clear secondary oam */
         if(cycle <= 64 && cycle % 2 == 0) {
             self.secondary_oam[(cycle/2) as usize] = 0xff;
         /* 65-256: sprite evaluation */
         } else if (cycle <= 256) {
-            /* for each sprite in the OAM, check if y coordinate is in range */
+            self.write_scanline_sprites(scanline_num);
+            
 
         /* 257-320: sprite fetches */
         } else if (cycle <= 320) {
@@ -61,18 +65,28 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         }
     }
 
-    fn get_sprites_on_scanline(&self, scanline_num: u8) -> Vec<u8> {
+    /* Finds the first eight sprites on the given scanline, determined
+     * by position in the OAM. Takes into account whether sprites are 8 or 16
+     * pixels tall. It then copies these into secondary OAM. Also sets the
+     * sprite overflow bit if necessary.
+     */
+    fn write_scanline_sprites(&mut self, scanline_num: u8) {
         let mut i = 0;
-        let mut sprites : Vec<u8> = Vec::new();
         let sprite_size = 8; /* TODO */
+        let mut sprites_found = 0;
         for i in (0..OAM_SIZE/4) {
             let sprite_data = self.slice_as_sprite(i);
             if sprite_data.in_scanline(i as u8, &self) {
-                sprites.push(i as u8);
+                /* already found eight sprites, set overflow */
+                /* TODO: should we implement the buggy 'diagonal' behavior for this? */
+                if(sprites_found >= 8) {
+                    self.ppustatus = self.ppustatus | 0x20;
+                    break;
+                }
+                sprite_data.copy_to_mem(&mut self.secondary_oam[(sprites_found*4)..(sprites_found*4+4)]);
+                sprites_found += 1;
             }
         }
-
-        sprites
     }
 
     fn determine_pixel_color() {
@@ -85,18 +99,16 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
             log::warn!("Sprite index out of range; wrapping but consider avoiding this");
         }
 
-        bincode::borrow_decode_from_slice(&self.oam[(sprite_index % oam_size)..((sprite_index+4) % oam_size)],
-                                          bincode::config::standard()).unwrap()
-            .0
+        SpriteInfo::from_memory(&self.oam[(sprite_index*4 % OAM_SIZE)..(sprite_index*4+4) % OAM_SIZE])
     }
 
     /* sprites are 8 pixels tall unless the 5th bit of PPUCTRL is true, then they're 16 */
     fn sprite_size(&self) -> u8 {
-        if self.ppuctrl & 0x10 == 0 { 16 } else { 8 }
+        if self.ppuctrl & 0x10 != 0 { 16 } else { 8 }
     }
 }
 
-#[derive(BorrowDecode)]
+#[derive(BorrowDecode,Encode)]
 struct SpriteInfo
 {
     y: u8,
@@ -108,5 +120,23 @@ struct SpriteInfo
 impl SpriteInfo {
     fn in_scanline(&self, scanline: u8, ppu: &PPUState) -> bool {
             self.y <= scanline &&  scanline < self.y + ppu.sprite_size()
+    }
+
+    /* write this sprite as a byte array into memory */
+    fn copy_to_mem(&self, dst_slice: &mut [u8]) {
+        let result = bincode::encode_into_slice(self, dst_slice, bincode::config::standard());
+
+        if result.is_err() {
+            panic!("Failed to copy sprite; {0}", result.unwrap_err());
+        }
+    }
+
+    /* create a SpriteInfo from memory
+     * TODO: bincode creates a copy, using serde might allow just a view into memory
+     */
+    fn from_memory(src_slice: &[u8]) -> SpriteInfo {
+        bincode::borrow_decode_from_slice(src_slice,
+                                          bincode::config::standard()).unwrap()
+            .0
     }
 }
