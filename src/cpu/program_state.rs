@@ -34,6 +34,7 @@ impl ProgramState
 		/* copy ROM data into memory */
 		/* TODO: handling RAM, mappers, etc. */
 		result.memory[RAM_MEMORY_START..(RAM_MEMORY_START+rom.prg_data.len())].copy_from_slice(&*rom.prg_data);
+		result.memory[(RAM_MEMORY_START-rom.chr_data.len())..RAM_MEMORY_START].copy_from_slice(&*rom.chr_data);
 
 		/* set program counter to value in memory at this location */
 		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&result, INITIAL_PC_LOCATION);

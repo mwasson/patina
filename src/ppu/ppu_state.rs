@@ -45,15 +45,24 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         }
     }
 
+    fn render_scanline(&self, scanline: u8, write_buffer: &mut [u8]) {
+        for i in (0..write_buffer.len()/4) {
+            for sprite_data in self.secondary_oam.chunks_exact(4) {
+                let sprite = SpriteInfo::from_memory(sprite_data);
+                // if sprite.at_x_position()
+            }
+        }
+    }
+
     /* TODO: this is just a sketch; not really sure how I want to use 'cycle' yet */
-    fn scanline(&mut self, scanline_num:u8, cycle:u16) {
+    fn sprite_evaluation(&mut self, scanline_num:u8, cycle:u16) {
         /* first 64 cycles: clear secondary oam */
         if(cycle <= 64 && cycle % 2 == 0) {
             self.secondary_oam[(cycle/2) as usize] = 0xff;
         /* 65-256: sprite evaluation */
         } else if (cycle <= 256) {
             self.write_scanline_sprites(scanline_num);
-            
+
 
         /* 257-320: sprite fetches */
         } else if (cycle <= 320) {
@@ -120,6 +129,10 @@ struct SpriteInfo
 impl SpriteInfo {
     fn in_scanline(&self, scanline: u8, ppu: &PPUState) -> bool {
             self.y <= scanline &&  scanline < self.y + ppu.sprite_size()
+    }
+
+    fn at_x_position(&self, x: u8) -> bool {
+        self.x <= x && self.x + 8 > x
     }
 
     /* write this sprite as a byte array into memory */
