@@ -13,7 +13,7 @@ mod ppu;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
 	let rom = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
-	//let _ = parse_file("/Users/mwasson/instr_misc.nes")?; /* temporary, for testing */
+	//let rom = parse_file("/Users/mwasson/instr_misc.nes")?; /* temporary, for testing */
 
 	window::initialize_ui(rom)
 }
@@ -40,7 +40,7 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<Rom> {
 	}
 
 	/* parse section sizes; PRG ROM is in 16k increments,
-	 * CHR ROM is in 8k (and can be zero) */
+	 * CHR ROM is in 8k (and can be zero) TODO: this does not handle that case */
 	let prg_rom_size = (rom_data[4] as usize) * (1 << 14 /*16k*/);
 	let chr_rom_size = (rom_data[5] as usize) * (1 << 13 /*8k*/);
 
@@ -69,6 +69,8 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<Rom> {
 	println!("Rom flags:");
 	println!("{}", rom.byte_6_flags);
 	println!("{}", rom.byte_7_flags);
+	println!("PRG size: {}", rom.prg_data.len());
+	println!("CHR size: {}", rom.chr_data.len());
 
 	// crate::cpu::operate(&mut ProgramState::from_rom(&rom));
 
