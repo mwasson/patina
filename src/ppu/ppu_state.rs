@@ -1,8 +1,6 @@
 use crate::cpu::ProgramState;
 use crate::rom::Rom;
 
-use bincode;
-use bincode::{BorrowDecode, Encode};
 use crate::ppu::palette::Palette;
 use crate::ppu::Tile;
 
@@ -203,7 +201,6 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
     }
 }
 
-#[derive(BorrowDecode,Encode)]
 struct SpriteInfo
 {
     y: u8,
@@ -240,23 +237,23 @@ impl SpriteInfo {
 
     /* write this sprite as a byte array into memory */
     fn copy_to_mem(&self, dst_slice: &mut [u8]) {
-        let result = bincode::encode_into_slice(self, dst_slice, bincode::config::standard());
-
-        if result.is_err() {
-            panic!("Failed to copy sprite; {0}", result.unwrap_err());
-        }
+        dst_slice[0] = self.y;
+        dst_slice[1] = self.tile_index;
+        dst_slice[2] = self.attrs;
+        dst_slice[3] = self.x;
     }
 
     pub fn is_foreground(&self) -> bool {
         self.attrs & 0x10 == 0
     }
 
-    /* create a SpriteInfo from memory
-     * TODO: bincode creates a copy, using serde might allow just a view into memory
-     */
+    /* create a SpriteInfo from memory */
     fn from_memory(src_slice: &[u8]) -> SpriteInfo {
-        bincode::borrow_decode_from_slice(src_slice,
-                                          bincode::config::standard()).unwrap()
-            .0
+        SpriteInfo {
+            y: src_slice[0],
+            tile_index: src_slice[1],
+            attrs: src_slice[2],
+            x: src_slice[3]
+        }
     }
 }
