@@ -3,18 +3,19 @@ use crate::rom::Rom;
 
 use bincode;
 use bincode::{BorrowDecode, Encode};
+use crate::ppu::palette::Palette;
+use crate::ppu::Tile;
 
 const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
 const OAM_SIZE : usize = 256;
 
-const PALETTE_SIZE : usize = 256; /* ? TODO */
-
 const SECONDARY_OAM_SIZE : usize = 32;
+
+/* TODO: ppumask rendering effects */
 
 struct PPUState<'a> {
     vram: [u8; PPU_MEMORY_SIZE],
     oam: [u8; OAM_SIZE],
-    palette_ram: [u8; PALETTE_SIZE],
     secondary_oam: [u8; SECONDARY_OAM_SIZE],
     ppuctrl: &'a u8,
     ppustatus: u8, /* TODO: really need to figure out how I want to share this info! */
@@ -34,7 +35,6 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         return PPUState {
             vram,
             oam,
-            palette_ram: [0; PALETTE_SIZE],
             secondary_oam: [0; SECONDARY_OAM_SIZE],
             /* TODO: a simple link like this is not sufficient; how should it actually work? */
             ppuctrl: program_state.link_memory(0x2000),
@@ -46,12 +46,45 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
     }
 
     fn render_scanline(&self, scanline: u8, write_buffer: &mut [u8]) {
-        for i in (0..write_buffer.len()/4) {
-            for sprite_data in self.secondary_oam.chunks_exact(4) {
-                let sprite = SpriteInfo::from_memory(sprite_data);
-                // if sprite.at_x_position()
+        let write_buffer_num_pixels = write_buffer.len()/4;
+        for (pixel_buffer,i) in write_buffer.chunks_exact_mut(4).zip((0..write_buffer_num_pixels)) {
+            // TODO remove just a placeholder
+            let sprite = SpriteInfo::from_memory(&self.secondary_oam[0..4]);
+            let (fg_sprite, fg_brightness) = self.find_first_sprite(i as u8, scanline, true);
+            let (bg_tile, bg_tile_brightness) = (&sprite, 0); // TODO
+            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(i as u8, scanline, false);
+
+            let pixels = if fg_brightness > 0 {
+                fg_sprite.unwrap().color_from_brightness(self, fg_brightness)
+            } else if bg_tile_brightness > 0 {
+                // TODO look up background palette, output
+                [0,0,0,0xff]
+            } else if bg_sprite_brightness > 0 {
+                bg_sprite.unwrap().color_from_brightness(self, bg_sprite_brightness)
+            } else {
+                // TODO flat background color from 0x3f00
+                [0,0,0,0xff]
+            };
+
+            pixel_buffer.copy_from_slice(&pixels);
+        }
+    }
+
+    fn find_first_sprite(&self, x: u8, y: u8, is_foreground: bool) -> (Option<SpriteInfo>, u8) {
+        let mut brightness = 0;
+        let mut sprite = Option::None;
+        for sprite_data in self.secondary_oam.chunks_exact(4) {
+            let cur_sprite = SpriteInfo::from_memory(sprite_data);
+            if cur_sprite.at_x_position(x) && cur_sprite.is_foreground() == is_foreground {
+                let sprite_brightness = cur_sprite.get_brightness(self, x, y);
+                if(sprite_brightness != 0) {
+                    brightness = sprite_brightness;
+                    sprite = Some(cur_sprite);
+                    break;
+                }
             }
         }
+        (sprite, brightness)
     }
 
     /* TODO: this is just a sketch; not really sure how I want to use 'cycle' yet */
@@ -62,7 +95,6 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         /* 65-256: sprite evaluation */
         } else if (cycle <= 256) {
             self.write_scanline_sprites(scanline_num);
-
 
         /* 257-320: sprite fetches */
         } else if (cycle <= 320) {
@@ -115,6 +147,12 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
     fn sprite_size(&self) -> u8 {
         if self.ppuctrl & 0x10 != 0 { 16 } else { 8 }
     }
+
+    /* TODO: switch between pattern tables */
+    /* TODO this is not right!! */
+    fn get_tile(&self, tile_index: u8) -> Tile {
+        Tile::from_memory(&self.vram[0x0000..0x1000].chunks_exact(16).nth(tile_index as usize).unwrap())
+    }
 }
 
 #[derive(BorrowDecode,Encode)]
@@ -135,6 +173,27 @@ impl SpriteInfo {
         self.x <= x && self.x + 8 > x
     }
 
+    fn get_brightness(&self, ppu: &PPUState, x:u8, y:u8) -> u8 {
+        self.get_brightness_localized(ppu, x-self.x,y-self.y)
+    }
+
+    fn get_brightness_localized(&self, ppu: &PPUState, x:u8, y:u8) -> u8 {
+        let tile = ppu.get_tile(self.tile_index);
+        tile.pixel_intensity(x as usize, y as usize)
+    }
+
+    fn color_from_brightness(&self, ppu: &PPUState, brightness: u8) -> [u8; 4] {
+        self.get_palette(&ppu).brightness_to_pixels(brightness)
+    }
+
+    fn get_palette(&self, ppu: &PPUState) -> Palette {
+        let palette_num = self.attrs & 0x3;
+        let palette_mem_loc = 0x3f00;
+        let palette_data = &ppu.vram[palette_mem_loc..palette_mem_loc+4];
+
+        Palette::new(palette_data)
+    }
+
     /* write this sprite as a byte array into memory */
     fn copy_to_mem(&self, dst_slice: &mut [u8]) {
         let result = bincode::encode_into_slice(self, dst_slice, bincode::config::standard());
@@ -142,6 +201,10 @@ impl SpriteInfo {
         if result.is_err() {
             panic!("Failed to copy sprite; {0}", result.unwrap_err());
         }
+    }
+
+    pub fn is_foreground(&self) -> bool {
+        self.attrs & 0x10 == 0
     }
 
     /* create a SpriteInfo from memory

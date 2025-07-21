@@ -40,7 +40,7 @@ impl Tile<'_>
         }
     }
 
-    fn pixel_intensity(&self, x:usize, y:usize) -> u8 {
+    pub fn pixel_intensity(&self, x:usize, y:usize) -> u8 {
         self.bit_set(self.data[y], x) + 2*self.bit_set(self.data[8+y], x)
     }
 
