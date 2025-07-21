@@ -49,16 +49,16 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         let write_buffer_num_pixels = write_buffer.len()/4;
         for (pixel_buffer,i) in write_buffer.chunks_exact_mut(4).zip((0..write_buffer_num_pixels)) {
             // TODO remove just a placeholder
+            let iu8 = i as u8;
             let sprite = SpriteInfo::from_memory(&self.secondary_oam[0..4]);
-            let (fg_sprite, fg_brightness) = self.find_first_sprite(i as u8, scanline, true);
-            let (bg_tile, bg_tile_brightness) = (&sprite, 0); // TODO
-            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(i as u8, scanline, false);
+            let (fg_sprite, fg_brightness) = self.find_first_sprite(iu8, scanline, true);
+            let (bg_pixels, bg_tile_brightness) = self.background_brightness(iu8, scanline);
+            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(iu8, scanline, false);
 
             let pixels = if fg_brightness > 0 {
                 fg_sprite.unwrap().color_from_brightness(self, fg_brightness)
             } else if bg_tile_brightness > 0 {
-                // TODO look up background palette, output
-                [0,0,0,0xff]
+                bg_pixels
             } else if bg_sprite_brightness > 0 {
                 bg_sprite.unwrap().color_from_brightness(self, bg_sprite_brightness)
             } else {
@@ -85,6 +85,43 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
             }
         }
         (sprite, brightness)
+    }
+
+    fn background_brightness(&self, x:u8, y:u8) -> ([u8;4], u8) {
+        let tile = self.tile_for_pixel(x,y);
+        let palette = self.palette_for_pixel(x,y);
+
+        let tile_origin = (x - x % 8, y  - y%8);
+        let brightness = tile.pixel_intensity((x - tile_origin.0) as usize, (y - tile_origin.1) as usize);
+
+        (palette.brightness_to_pixels(brightness), brightness)
+    }
+
+    /* TODO; this only uses the first name table */
+    fn tile_for_pixel(&self, x:u8, y:u8) -> Tile {
+        let offset : usize = (y/8*32 + x/8) as usize;
+        let tile_index = self.vram[0x2000 + offset];
+        self.get_bg_tile(tile_index)
+    }
+
+    /* TODO: this only uses the first attribute table */
+    fn palette_for_pixel(&self, x:u8, y:u8) -> Palette {
+        /* each address controls a 32x32 pixel block; 8 blocks per row */
+        let attr_addr = y/32*8 + x/32;
+        let attr_table_value = self.vram[0x23c0 + attr_addr as usize];
+        /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
+         * in order from the lowest bits they are: upper left, upper right, bottom left, bottom right
+         */
+        let attr_table_offset = if x % 32 < 16 && y % 32 < 16 {
+            0
+        } else if x % 32 >= 16 && y % 32 < 16 {
+            2
+        } else if x % 32 < 16 && y % 32 >= 16 {
+            4
+        } else {
+            6
+        };
+        self.get_palette((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
     }
 
     /* TODO: this is just a sketch; not really sure how I want to use 'cycle' yet */
@@ -130,10 +167,6 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         }
     }
 
-    fn determine_pixel_color() {
-        /* TODO */
-    }
-
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
         let oam_size = self.oam.len();
         if(sprite_index + 4 >= oam_size) {
@@ -148,10 +181,18 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         if self.ppuctrl & 0x10 != 0 { 16 } else { 8 }
     }
 
-    /* TODO: switch between pattern tables */
-    /* TODO this is not right!! */
-    fn get_tile(&self, tile_index: u8) -> Tile {
-        Tile::from_memory(&self.vram[0x0000..0x1000].chunks_exact(16).nth(tile_index as usize).unwrap())
+    /* TODO: handle 8x16 sprites */
+    fn get_sprite_tile(&self, tile_index: u8) -> Tile {
+        self.get_tile(tile_index, (self.ppuctrl & 0x4).count_ones() as usize)
+    }
+
+    fn get_bg_tile(&self, tile_index: u8) -> Tile {
+        self.get_tile(tile_index, (self.ppuctrl & 0x8).count_ones() as usize)
+    }
+
+    fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
+        let pattern_table_base : usize = 0x1000 * pattern_table_num;
+        Tile::from_memory(&self.vram[pattern_table_base..(pattern_table_base+0x1000)].chunks_exact(16).nth(tile_index as usize).unwrap())
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
@@ -185,7 +226,7 @@ impl SpriteInfo {
     }
 
     fn get_brightness_localized(&self, ppu: &PPUState, x:u8, y:u8) -> u8 {
-        let tile = ppu.get_tile(self.tile_index);
+        let tile = ppu.get_sprite_tile(self.tile_index); /* TODO is this right? */
         tile.pixel_intensity(x as usize, y as usize)
     }
 
