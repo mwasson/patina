@@ -234,7 +234,7 @@ impl SpriteInfo {
         self.get_palette(&ppu).brightness_to_pixels(brightness)
     }
 
-    fn get_palette(&self, ppu: &PPUState) -> Palette {
+    fn get_palette<'a>(&self, ppu: &'a PPUState<'a>) -> Palette<'a> {
         ppu.get_palette(self.attrs & 0x3)
     }
 

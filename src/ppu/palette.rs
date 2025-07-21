@@ -1,15 +1,13 @@
-pub struct Palette
+pub struct Palette<'a>
 {
-    data: [u8; 4]
+    data: &'a [u8; 4]
 }
 
-impl Palette
+impl Palette<'_>
 {
     pub fn new(data: &[u8]) -> Palette {
-        let mut palette_data = [0;4];
-        palette_data.copy_from_slice(data);
         Palette {
-            data: palette_data
+            data: <&[u8; 4]>::try_from(data).unwrap()
         }
     }
 
