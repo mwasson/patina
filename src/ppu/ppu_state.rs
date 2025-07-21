@@ -62,8 +62,8 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
             } else if bg_sprite_brightness > 0 {
                 bg_sprite.unwrap().color_from_brightness(self, bg_sprite_brightness)
             } else {
-                // TODO flat background color from 0x3f00
-                [0,0,0,0xff]
+                /* use the master background color, stored in color 0 of palette 0 */
+                self.get_palette(0).brightness_to_pixels(0)
             };
 
             pixel_buffer.copy_from_slice(&pixels);
@@ -153,6 +153,13 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
     fn get_tile(&self, tile_index: u8) -> Tile {
         Tile::from_memory(&self.vram[0x0000..0x1000].chunks_exact(16).nth(tile_index as usize).unwrap())
     }
+
+    fn get_palette(&self, palette_index: u8) -> Palette {
+        let palette_mem_loc : usize = 0x3f00 + (palette_index as usize)*4;
+        let palette_data = &self.vram[palette_mem_loc..palette_mem_loc+4];
+
+        Palette::new(palette_data)
+    }
 }
 
 #[derive(BorrowDecode,Encode)]
@@ -187,11 +194,7 @@ impl SpriteInfo {
     }
 
     fn get_palette(&self, ppu: &PPUState) -> Palette {
-        let palette_num = self.attrs & 0x3;
-        let palette_mem_loc = 0x3f00;
-        let palette_data = &ppu.vram[palette_mem_loc..palette_mem_loc+4];
-
-        Palette::new(palette_data)
+        ppu.get_palette(self.attrs & 0x3)
     }
 
     /* write this sprite as a byte array into memory */
