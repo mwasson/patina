@@ -3,15 +3,17 @@ mod addressing_mode;
 mod instruction;
 mod status_flag;
 mod program_state;
-mod memory_mirror;
+mod core_memory;
 
+use std::sync::{Arc, Mutex};
 pub use addressing_mode::AddressingMode;
+pub use core_memory::CoreMemory;
 pub use instruction::RealizedInstruction;
 pub use program_state::ProgramState;
 pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
 
-const MEMORY_SIZE: usize = 1<<16;
+pub const MEMORY_SIZE: usize = 1<<16;
 
 const INITIAL_PC_LOCATION: u16 = 0xfffc;
 

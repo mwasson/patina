@@ -1,5 +1,8 @@
+use std::sync::{Arc, Mutex};
 use crate::cpu;
 use crate::cpu::{AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE, RAM_MEMORY_START};
+use crate::cpu::core_memory::CoreMemory;
+use crate::ppu::PPUState;
 use crate::rom::Rom;
 
 pub struct ProgramState
@@ -10,33 +13,35 @@ pub struct ProgramState
 	pub s_register: u8,
 	pub program_counter: u16,
 	pub status: u8,
-	memory: [u8; MEMORY_SIZE]
+	memory: CoreMemory,
+	ppu: PPUState,
 }
 
 impl ProgramState
 {
-	pub fn new() -> Self {
-		Self {
+	/* TODO comment */
+	pub fn from_rom(rom: &Rom) -> Self {
+		let mut memory = [0; MEMORY_SIZE];
+
+		/* copy ROM data into memory */
+		/* TODO: handling RAM, mappers, etc. */
+		memory[RAM_MEMORY_START..(RAM_MEMORY_START+rom.prg_data.len())].copy_from_slice(&*rom.prg_data);
+		memory[(RAM_MEMORY_START-rom.chr_data.len())..RAM_MEMORY_START].copy_from_slice(&*rom.chr_data);
+
+		/* set program counter to value in memory at this location */
+
+
+		let mut result = Self  {
 			accumulator: 0x00,
 			index_x: 0x00,
 			index_y: 0x00,
 			s_register: 0xff,
 			program_counter: 0x00,
 			status: (0x11) << 4,
-			memory: [0; MEMORY_SIZE]
-		}
-	}
+			memory: CoreMemory::new(memory),
+			ppu: PPUState::from_rom(rom, CoreMemory::new(memory)),
+		};
 
-	/* TODO comment */
-	pub fn from_rom(rom: &Rom) -> Self {
-		let mut result = Self::new();
-
-		/* copy ROM data into memory */
-		/* TODO: handling RAM, mappers, etc. */
-		result.memory[RAM_MEMORY_START..(RAM_MEMORY_START+rom.prg_data.len())].copy_from_slice(&*rom.prg_data);
-		result.memory[(RAM_MEMORY_START-rom.chr_data.len())..RAM_MEMORY_START].copy_from_slice(&*rom.chr_data);
-
-		/* set program counter to value in memory at this location */
 		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&result, INITIAL_PC_LOCATION);
 
 		result
@@ -52,7 +57,7 @@ impl ProgramState
 	}
 
 	pub fn push(&mut self, data: u8) {
-		self.memory[cpu::addr(self.s_register, 0x10) as usize] = data;
+		self.memory.write(cpu::addr(self.s_register, 0x10), data);
 		self.s_register = self.s_register.wrapping_sub(1);
 	}
 
@@ -69,7 +74,7 @@ impl ProgramState
 	}
 
 	pub fn pop(&mut self) -> u8 {
-		let value = self.memory[(0x10 + self.s_register) as usize];
+		let value = self.memory.read(0x10 + self.s_register as u16);
 		self.s_register += 1;
 		value
 	}
@@ -86,11 +91,11 @@ impl ProgramState
 	}
 
 	pub fn read_mem(&self, addr: u16) -> u8 {
-		self.memory[addr as usize]
+		self.memory.read(addr)
 	}
 
 	pub fn write_mem(&mut self, addr: u16, data: u8) {
-		self.memory[addr as usize] = data;
+		self.memory.write(addr, data);
 	}
 
 	pub fn addr_from_mem(&self, addr_to_lookup: u16) -> u16 {
@@ -102,10 +107,5 @@ impl ProgramState
 	                                    hi_byte_addr: u16)
 			-> u16 {
 		cpu::addr(self.read_mem(lo_byte_addr), self.read_mem(hi_byte_addr))
-	}
-
-	/* TODO comment */
-	pub fn link_memory(&self, addr:u16) -> &u8 {
-		return &self.memory[addr as usize];
 	}
 }

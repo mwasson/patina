@@ -1,5 +1,7 @@
 mod ppu_state;
 mod tile;
 mod palette;
+mod ppu_registers;
 
+pub use ppu_state::PPUState;
 pub use tile::{Tile, index_to_pixel, pixel_to_index};

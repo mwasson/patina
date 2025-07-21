@@ -1,7 +1,13 @@
-use crate::cpu::ProgramState;
+use std::ptr::null;
+use std::sync::{Arc, Mutex};
+use pixels::wgpu::DeviceType::Cpu;
+use crate::cpu;
+use crate::cpu::{CoreMemory, ProgramState};
 use crate::rom::Rom;
 
 use crate::ppu::palette::Palette;
+use crate::ppu::ppu_registers::PPURegister;
+use crate::ppu::ppu_registers::PPURegister::{PPUCTRL, PPUSTATUS};
 use crate::ppu::Tile;
 
 const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
@@ -11,19 +17,20 @@ const SECONDARY_OAM_SIZE : usize = 32;
 
 /* TODO: ppumask rendering effects */
 
-struct PPUState<'a> {
+/* TODO ppuscroll scrolling */
+
+/* TODO PPU internal registers */
+
+pub struct PPUState {
     vram: [u8; PPU_MEMORY_SIZE],
     oam: [u8; OAM_SIZE],
     secondary_oam: [u8; SECONDARY_OAM_SIZE],
-    ppuctrl: &'a u8,
-    ppustatus: u8, /* TODO: really need to figure out how I want to share this info! */
-    oamaddr: &'a u8,
-    oamdata: &'a u8,
-    oamdma: &'a u8,
+    memory: CoreMemory,
 }
 
-impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
-    pub fn from_rom<'a>(rom: &Rom, program_state: &'a ProgramState) -> PPUState<'a> {
+impl PPUState {
+
+    pub fn from_rom(rom: &Rom, memory: CoreMemory) -> PPUState {
         let mut vram: [u8; PPU_MEMORY_SIZE] = [0; PPU_MEMORY_SIZE];
         let oam : [u8; OAM_SIZE] = [0; OAM_SIZE]; /* TODO: link this to CPU memory? */
 
@@ -34,24 +41,19 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
             vram,
             oam,
             secondary_oam: [0; SECONDARY_OAM_SIZE],
-            /* TODO: a simple link like this is not sufficient; how should it actually work? */
-            ppuctrl: program_state.link_memory(0x2000),
-            ppustatus: 0,// program_state.link_memory(0x2002),
-            oamaddr: program_state.link_memory(0x2003),
-            oamdata: program_state.link_memory(0x2004),
-            oamdma: program_state.link_memory(0x4014),
+            memory: memory
         }
     }
 
-    fn render_scanline(&self, scanline: u8, write_buffer: &mut [u8]) {
+    fn render_scanline(&self, cpu: &ProgramState, scanline: u8, write_buffer: &mut [u8]) {
         let write_buffer_num_pixels = write_buffer.len()/4;
         for (pixel_buffer,i) in write_buffer.chunks_exact_mut(4).zip((0..write_buffer_num_pixels)) {
             // TODO remove just a placeholder
             let iu8 = i as u8;
             let sprite = SpriteInfo::from_memory(&self.secondary_oam[0..4]);
-            let (fg_sprite, fg_brightness) = self.find_first_sprite(iu8, scanline, true);
-            let (bg_pixels, bg_tile_brightness) = self.background_brightness(iu8, scanline);
-            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(iu8, scanline, false);
+            let (fg_sprite, fg_brightness) = self.find_first_sprite(cpu, iu8, scanline, true);
+            let (bg_pixels, bg_tile_brightness) = self.background_brightness(cpu, iu8, scanline);
+            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(cpu, iu8, scanline, false);
 
             let pixels = if fg_brightness > 0 {
                 fg_sprite.unwrap().color_from_brightness(self, fg_brightness)
@@ -68,7 +70,7 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         }
     }
 
-    fn find_first_sprite(&self, x: u8, y: u8, is_foreground: bool) -> (Option<SpriteInfo>, u8) {
+    fn find_first_sprite(&self, cpu: &ProgramState, x: u8, y: u8, is_foreground: bool) -> (Option<SpriteInfo>, u8) {
         let mut brightness = 0;
         let mut sprite = Option::None;
         for sprite_data in self.secondary_oam.chunks_exact(4) {
@@ -85,8 +87,8 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
         (sprite, brightness)
     }
 
-    fn background_brightness(&self, x:u8, y:u8) -> ([u8;4], u8) {
-        let tile = self.tile_for_pixel(x,y);
+    fn background_brightness(&self, cpu: &ProgramState, x:u8, y:u8) -> ([u8;4], u8) {
+        let tile = self.tile_for_pixel(cpu, x,y);
         let palette = self.palette_for_pixel(x,y);
 
         let tile_origin = (x - x % 8, y  - y%8);
@@ -96,7 +98,7 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
     }
 
     /* TODO; this only uses the first name table */
-    fn tile_for_pixel(&self, x:u8, y:u8) -> Tile {
+    fn tile_for_pixel(&self, cpu: &ProgramState, x:u8, y:u8) -> Tile {
         let offset : usize = (y/8*32 + x/8) as usize;
         let tile_index = self.vram[0x2000 + offset];
         self.get_bg_tile(tile_index)
@@ -123,13 +125,13 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
     }
 
     /* TODO: this is just a sketch; not really sure how I want to use 'cycle' yet */
-    fn sprite_evaluation(&mut self, scanline_num:u8, cycle:u16) {
+    fn sprite_evaluation(&mut self, cpu: &mut ProgramState, scanline_num:u8, cycle:u16) {
         /* first 64 cycles: clear secondary oam */
         if(cycle <= 64 && cycle % 2 == 0) {
             self.secondary_oam[(cycle/2) as usize] = 0xff;
         /* 65-256: sprite evaluation */
         } else if (cycle <= 256) {
-            self.write_scanline_sprites(scanline_num);
+            self.write_scanline_sprites(cpu, scanline_num);
 
         /* 257-320: sprite fetches */
         } else if (cycle <= 320) {
@@ -146,17 +148,18 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
-    fn write_scanline_sprites(&mut self, scanline_num: u8) {
+    fn write_scanline_sprites(&mut self, cpu: &mut ProgramState, scanline_num: u8) {
         let mut i = 0;
         let sprite_size = 8; /* TODO */
         let mut sprites_found = 0;
         for i in (0..OAM_SIZE/4) {
             let sprite_data = self.slice_as_sprite(i);
-            if sprite_data.in_scanline(i as u8, &self) {
+            if sprite_data.in_scanline(i as u8, self) {
                 /* already found eight sprites, set overflow */
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
                 if(sprites_found >= 8) {
-                    self.ppustatus = self.ppustatus | 0x20;
+                    let old_status = PPUSTATUS.read(&self.memory);
+                    PPUSTATUS.write(&mut self.memory, old_status | 0x20);
                     break;
                 }
                 sprite_data.copy_to_mem(&mut self.secondary_oam[(sprites_found*4)..(sprites_found*4+4)]);
@@ -176,16 +179,16 @@ impl PPUState<'_> { /* TODO: how should the lifetime work here...? */
 
     /* sprites are 8 pixels tall unless the 5th bit of PPUCTRL is true, then they're 16 */
     fn sprite_size(&self) -> u8 {
-        if self.ppuctrl & 0x10 != 0 { 16 } else { 8 }
+        if PPUCTRL.read(&self.memory) & 0x10 != 0 { 16 } else { 8 }
     }
 
     /* TODO: handle 8x16 sprites */
     fn get_sprite_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, (self.ppuctrl & 0x4).count_ones() as usize)
+        self.get_tile(tile_index, (PPURegister::PPUCTRL.read(&self.memory) & 0x4).count_ones() as usize)
     }
 
     fn get_bg_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, (self.ppuctrl & 0x8).count_ones() as usize)
+        self.get_tile(tile_index, (PPURegister::PPUCTRL.read(&self.memory) & 0x8).count_ones() as usize)
     }
 
     fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
@@ -219,7 +222,7 @@ impl SpriteInfo {
     }
 
     fn get_brightness(&self, ppu: &PPUState, x:u8, y:u8) -> u8 {
-        self.get_brightness_localized(ppu, x-self.x,y-self.y)
+        self.get_brightness_localized(ppu,x-self.x,y-self.y)
     }
 
     fn get_brightness_localized(&self, ppu: &PPUState, x:u8, y:u8) -> u8 {
@@ -231,7 +234,7 @@ impl SpriteInfo {
         self.get_palette(&ppu).brightness_to_pixels(brightness)
     }
 
-    fn get_palette<'a>(&self, ppu: &'a PPUState<'a>) -> Palette<'a> {
+    fn get_palette<'a>(&self, ppu: &'a PPUState) -> Palette<'a> {
         ppu.get_palette(self.attrs & 0x3)
     }
 
