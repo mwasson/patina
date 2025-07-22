@@ -113,7 +113,7 @@ impl PPUState {
         let mut sprite = Option::None;
         for sprite_data in self.secondary_oam.chunks_exact(4) {
             /* check if initialized: TODO probably a better way to do this; relying on secondary oam state a lot */
-            if(sprite_data == [0,0,0,0]) {
+            if sprite_data == [0,0,0,0] || sprite_data == [0xff,0xff,0xff,0xff] {
                 continue;
             }
             let cur_sprite = SpriteInfo::from_memory(sprite_data);
@@ -141,7 +141,7 @@ impl PPUState {
 
     /* TODO; this only uses the first name table */
     fn tile_for_pixel(&self, x:u8, y:u8) -> Tile {
-        let offset : usize = (y/8*32 + x/8) as usize;
+        let offset : usize = ((y as usize)/8*32 + (x as usize)/8);
         let tile_index = self.vram[0x2000 + offset];
         self.get_bg_tile(tile_index)
     }
@@ -250,6 +250,7 @@ impl PPUState {
     }
 }
 
+#[derive(Debug)]
 struct SpriteInfo
 {
     y: u8,
