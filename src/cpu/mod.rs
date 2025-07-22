@@ -12,6 +12,7 @@ pub use instruction::RealizedInstruction;
 pub use program_state::ProgramState;
 pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
+use crate::processor::Processor;
 
 pub const MEMORY_SIZE: usize = 1<<16;
 
@@ -69,7 +70,10 @@ fn transition(state: &mut ProgramState) {
 										  state.read_mem(operation_loc.wrapping_add(1)),
 										  state.read_mem(operation_loc.wrapping_add(2)));
 	println!("Running operation: {operation:?}");
-	operation.apply(state)
+
+	state.run_timed(operation.realized_instruction.cycles, |state| {
+		operation.apply(state)
+	});
 }
 
 /* TODO: very basic test of CPU */

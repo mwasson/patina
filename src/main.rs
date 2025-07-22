@@ -73,7 +73,7 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<Rom> {
 	println!("PRG size: {}", rom.prg_data.len());
 	println!("CHR size: {}", rom.chr_data.len());
 
-	// crate::cpu::operate(&mut ProgramState::from_rom(&rom));
+	crate::cpu::operate(&mut ProgramState::from_rom(&rom));
 
 	if error_msg != "" {
 		return Err(io::Error::new(ErrorKind::InvalidData, error_msg));	

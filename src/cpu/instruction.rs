@@ -227,7 +227,7 @@ pub struct RealizedInstruction
     pub instruction: Instruction,
     pub opcode: u8,
     pub addr_mode: AddressingMode,
-    pub cycles: u8,
+    pub cycles: u16,
     pub bytes: u8,
 }
 
