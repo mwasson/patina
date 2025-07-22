@@ -84,8 +84,8 @@ impl ProgramState
 	}
 
 	pub fn push(&mut self, data: u8) {
-		self.memory.write(cpu::addr(self.s_register, 0x10), data);
-		self.s_register = self.s_register.wrapping_sub(1);
+		self.memory.write(cpu::addr(self.s_register, 0x01), data);
+		self.s_register -= 1;
 	}
 
 	pub fn push_memory_loc(&mut self, mem_loc: u16) {
@@ -101,8 +101,8 @@ impl ProgramState
 	}
 
 	pub fn pop(&mut self) -> u8 {
-		let value = self.memory.read(0x10 + self.s_register as u16);
 		self.s_register += 1;
+		let value = self.memory.read(0x0100 + self.s_register as u16);
 		value
 	}
 
