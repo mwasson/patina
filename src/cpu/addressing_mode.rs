@@ -65,6 +65,7 @@ impl AddressingMode
 	pub fn deref(self: &AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> u8 {
 		match self {
 			AddressingMode::Immediate => byte1,
+			AddressingMode::Accumulator => state.accumulator,
 			_ => {
 				let address = self.resolve_address(state, byte1, byte2);
 				state.read_mem(address)
@@ -73,6 +74,9 @@ impl AddressingMode
 	}
 
 	pub fn write(self: &AddressingMode, state: &mut ProgramState, byte1: u8, byte2: u8, new_val: u8) {
-		state.write_mem(self.resolve_address(state, byte1, byte2), new_val);
+		match self {
+			AddressingMode::Accumulator => { state.accumulator = new_val }
+			_ => state.write_mem(self.resolve_address(state, byte1, byte2), new_val)
+		}
 	}
 }
