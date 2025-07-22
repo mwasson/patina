@@ -145,7 +145,7 @@ impl Instruction
 				Self::compare(state, addr_mode, b1, b2, state.index_y);
 			}
 			Instruction::DEC => {
-				let new_val = addr_mode.deref(state, b1, b2) - 1;
+				let new_val = (addr_mode.deref(state, b1, b2) as i8 - 1) as u8;
 				addr_mode.write(state, b1, b2, new_val);
 				state.update_zero_neg_flags(new_val);
 			}
