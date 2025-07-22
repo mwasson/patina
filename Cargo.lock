@@ -472,6 +472,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hertz"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e572f8a4e164332d3b1929175e5ae71f42f967092cfd27112decf26f6c3918c"
+
+[[package]]
 name = "hexf-parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -903,6 +909,7 @@ dependencies = [
 name = "patina"
 version = "0.1.0"
 dependencies = [
+ "hertz",
  "log",
  "pixels",
  "winit",

@@ -9,6 +9,7 @@ use crate::cpu::{Operation, ProgramState};
 
 mod window;
 mod ppu;
+mod processor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");

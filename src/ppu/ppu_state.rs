@@ -1,7 +1,3 @@
-use std::ptr::null;
-use std::sync::{Arc, Mutex};
-use pixels::wgpu::DeviceType::Cpu;
-use crate::cpu;
 use crate::cpu::{CoreMemory, ProgramState};
 use crate::rom::Rom;
 
@@ -9,6 +5,7 @@ use crate::ppu::palette::Palette;
 use crate::ppu::ppu_registers::PPURegister;
 use crate::ppu::ppu_registers::PPURegister::{PPUCTRL, PPUSTATUS};
 use crate::ppu::Tile;
+use crate::processor::Processor;
 
 const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
 const OAM_SIZE : usize = 256;
@@ -28,6 +25,12 @@ pub struct PPUState {
     memory: CoreMemory,
 }
 
+impl Processor for PPUState {
+    fn clock_speed(&self) -> u64 {
+        1790000*3 /* 3x as fast as the CPU */
+    }
+}
+
 impl PPUState {
 
     pub fn from_rom(rom: &Rom, memory: CoreMemory) -> PPUState {
@@ -41,7 +44,7 @@ impl PPUState {
             vram,
             oam,
             secondary_oam: [0; SECONDARY_OAM_SIZE],
-            memory: memory
+            memory
         }
     }
 

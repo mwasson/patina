@@ -3,6 +3,7 @@ use crate::cpu;
 use crate::cpu::{AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE, RAM_MEMORY_START};
 use crate::cpu::core_memory::CoreMemory;
 use crate::ppu::PPUState;
+use crate::processor::Processor;
 use crate::rom::Rom;
 
 pub struct ProgramState
@@ -15,6 +16,13 @@ pub struct ProgramState
 	pub status: u8,
 	memory: CoreMemory,
 	ppu: PPUState,
+}
+
+impl Processor for ProgramState
+{
+	fn clock_speed(&self) -> u64 {
+		1790000 /* 1.79 MHz */
+	}
 }
 
 impl ProgramState
