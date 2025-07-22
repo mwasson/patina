@@ -196,6 +196,12 @@ impl Instruction
 			Instruction::STA => {
 				addr_mode.write(state, b1, b2, state.accumulator);
 			}
+			Instruction::STX => {
+				addr_mode.write(state, b1, b2, state.index_x);
+			}
+			Instruction::STY => {
+				addr_mode.write(state, b1, b2, state.index_y);
+			}
 			Instruction::TXS => {
 				state.s_register = state.index_x
 			}
@@ -299,12 +305,18 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x79 => (Instruction::ADC, AbsoluteY, 4, 3), /*boundary*/
 		0x7d => (Instruction::ADC, AbsoluteX, 4, 3), /*boundary*/
 		0x81 => (Instruction::STA, IndirectX, 6, 2),
+		0x84 => (Instruction::STY, ZeroPage, 3, 2),
 		0x85 => (Instruction::STA, ZeroPage, 3, 2),
+		0x86 => (Instruction::STX, ZeroPage, 3, 2),
 		0x88 => (Instruction::DEY, Implicit, 2, 1),
+		0x8c => (Instruction::STY, Absolute, 4, 3),
 		0x8d => (Instruction::STA, Absolute, 4, 3),
+		0x8e => (Instruction::STX, Absolute, 4, 3),
 		0x90 => (Instruction::BCC, Relative, 2, 2), /*boundary*/
 		0x91 => (Instruction::STA, IndirectY, 6, 2),
+		0x94 => (Instruction::STY, ZeroPageX, 4, 2),
 		0x95 => (Instruction::STA, ZeroPageX, 4, 3),
+		0x96 => (Instruction::STX, ZeroPageY, 4, 2),
 		0x99 => (Instruction::STA, AbsoluteY, 5, 3),
 		0x9a => (Instruction::TXS, Implicit, 2, 1),
 		0x9d => (Instruction::STA, AbsoluteX, 5, 3),
