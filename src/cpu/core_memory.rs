@@ -6,16 +6,23 @@ use crate::cpu::{MEMORY_SIZE};
 pub struct CoreMemory
 {
     address_mapper: fn(u16) -> Option<u16>,
-    memory: Arc<Mutex<[u8; MEMORY_SIZE]>>
+    internals: Arc<Mutex<CoreMemoryInternals>>
+
+}
+
+struct CoreMemoryInternals
+{
+    memory: [u8; MEMORY_SIZE],
+    nmi_triggered: bool
 }
 
 impl CoreMemory {
     pub fn write(&mut self, addr: u16, data: u8) {
-        self.memory.lock().unwrap()[self.map_address(addr)] = data;
+        self.internals.lock().unwrap().memory[self.map_address(addr)] = data;
     }
 
     pub fn read(&self, addr: u16) -> u8 {
-        self.memory.lock().unwrap()[self.map_address(addr)]
+        self.internals.lock().unwrap().memory[self.map_address(addr)]
     }
 
     fn map_address(&self, addr: u16) -> usize {
@@ -26,15 +33,30 @@ impl CoreMemory {
     pub fn clone(&self) -> CoreMemory {
         CoreMemory {
             address_mapper: self.address_mapper,
-            memory: Arc::clone(&self.memory)
+            internals: Arc::clone(&self.internals)
         }
     }
 
     pub fn new(memory: [u8; MEMORY_SIZE]) -> CoreMemory {
         CoreMemory {
             address_mapper: CoreMemory::ppu_mirror(),
-            memory: Arc::new(Mutex::new(memory))
+            internals: Arc::new(Mutex::new(CoreMemoryInternals{
+                memory,
+                nmi_triggered: false
+            }))
         }
+    }
+
+    pub fn nmi_triggered(&self) -> bool {
+        self.internals.lock().unwrap().nmi_triggered
+    }
+
+    pub fn trigger_nmi(&mut self) {
+        self.internals.lock().unwrap().nmi_triggered = true;
+    }
+
+    pub fn reset_nmi(&mut self) {
+        self.internals.lock().unwrap().nmi_triggered = false;
     }
 
     /* the PPU registers are at 0x2000 through 0x2007; they're then remapped every eight bytes up

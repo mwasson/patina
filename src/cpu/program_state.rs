@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
 use crate::cpu;
-use crate::cpu::{AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE, RAM_MEMORY_START};
+use crate::cpu::{operation_from_memory, AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE, RAM_MEMORY_START};
 use crate::cpu::core_memory::CoreMemory;
-use crate::ppu::PPUState;
+use crate::cpu::instruction::Instruction;
+use crate::ppu::PPURegister;
 use crate::processor::Processor;
 use crate::rom::Rom;
 
@@ -117,5 +117,16 @@ impl ProgramState
 	
 	pub fn clone_memory(&self) -> CoreMemory {
 		self.memory.clone()
+	}
+
+	fn trigger_nmi(&mut self) {
+		self.memory.reset_nmi();
+		PPURegister::PPUCTRL.set_flag_off(&mut self.memory, 7);
+		/* push PC onto stack */
+		self.push_memory_loc(self.program_counter);
+		/* push processor status register on stack */
+		self.push(self.status);
+		/* read NMI handler address from FFFA/FFFB and jump to that address*/
+		self.program_counter = AddressingMode::Indirect.resolve_address_u16(&self, 0xfffa);
 	}
 }

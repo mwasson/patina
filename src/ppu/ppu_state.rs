@@ -74,7 +74,10 @@ impl PPUState {
 
         /* set vblank flag */
         PPUSTATUS.set_flag_on(&mut self.memory, 7);
-        /* TODO vblank NMI TODO should only be triggered if PPLCTRL flag has it on */
+        /* vblank NMI */
+        if PPUCTRL.read_flag(&mut self.memory, 7) {
+            self.memory.trigger_nmi();
+        }
 
         /* VBlank scanlines */
         self.run_timed(20*341-2, |_unused| {});
@@ -85,7 +88,7 @@ impl PPUState {
     }
 
     fn render_scanline(&mut self, scanline: u8) -> [u8; 256*4]{
-        println!("Rendering line {scanline}");
+        // println!("Rendering line {scanline}");
 
         self.sprite_evaluation(scanline);
 
