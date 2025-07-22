@@ -57,6 +57,8 @@ impl PPUState {
 
     pub fn render_screen(&mut self) {
         /* dummy scanline */
+        /* clear VBlank */
+        PPUSTATUS.set_flag_off(&mut self.memory, 7);
         self.run_timed(341, |_unused| {});
 
         /* visible scanlines */
@@ -67,11 +69,15 @@ impl PPUState {
             })
         }
 
-        /* post-render scanline */
+        /* post-render scanline; first tick of VBlank */
         self.run_timed(341, |_unused| {});
 
+        /* set vblank flag */
+        PPUSTATUS.set_flag_on(&mut self.memory, 7);
+        /* TODO vblank NMI TODO should only be triggered if PPLCTRL flag has it on */
+
         /* VBlank scanlines */
-        self.run_timed(20*341, |_unused| {}); /* TODO: set VBlank flag, do VBlank NMI */
+        self.run_timed(20*341-2, |_unused| {});
     }
 
     pub fn draw_frame(&self, output_buffer: &mut [u8]) {

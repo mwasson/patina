@@ -36,4 +36,14 @@ impl PPURegister
     pub fn write(&self, memory: &mut CoreMemory, data: u8) {
         memory.write(PPURegister::address(self), data);
     }
+
+    pub fn set_flag_on(&self, memory: &mut CoreMemory, bit: u8) {
+        let new_val = self.read(memory);
+        self.write(memory, new_val | (1 << bit));
+    }
+
+    pub fn set_flag_off(&self, memory: &mut CoreMemory, bit: u8) {
+        let new_val = self.read(memory);
+        self.write(memory, new_val & !(1 << bit));
+    }
 }
