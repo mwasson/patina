@@ -53,6 +53,10 @@ pub enum Instruction
 	/* arithmetic */
 	ADC, /* Add With Carry */
 
+	/* rotates */
+	ROL, /* Rotate Left */
+	ROR, /* Rotate Right */
+
     /* TODO others */
 	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
@@ -187,6 +191,14 @@ impl Instruction
 			Instruction::ORA => {
 				state.accumulator |= addr_mode.deref(state, b1, b2)
 			}
+			Instruction::ROL => {
+				let val = addr_mode.deref(state, b1, b2);
+				addr_mode.write(state, b1, b2, (val << 1) | (val >> 7));
+			}
+			Instruction::ROR => {
+				let val = addr_mode.deref(state, b1, b2);
+				addr_mode.write(state, b1, b2, (val >> 1) | (val << 7));
+			}
 			Instruction::RTS => {
 				state.program_counter = state.pop_memory_loc() + 1;
 			}
@@ -252,6 +264,7 @@ impl RealizedInstruction
 		match &self.instruction {
 			Instruction::JMP => {}
 			Instruction::JSR => {}
+			Instruction::RTS => {}
 			_ => {state.program_counter = state.program_counter.wrapping_add(self.bytes as u16);}
 		}
 	}
@@ -281,13 +294,18 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x20 => (Instruction::JSR, Absolute, 6, 3),
 		0x21 => (Instruction::AND, IndirectX, 6, 2),
 		0x25 => (Instruction::AND, ZeroPage, 3, 2),
+		0x26 => (Instruction::ROL, ZeroPage, 5, 2),
 		0x29 => (Instruction::AND, Immediate, 2, 2),
+		0x2a => (Instruction::ROL, Accumulator, 2, 1),
 		0x2d => (Instruction::AND, Absolute, 4, 3),
+		0x2e => (Instruction::ROL, Absolute, 6, 3),
 		0x30 => (Instruction::BMI, Relative, 2, 2), /*boundary*/
 		0x31 => (Instruction::AND, IndirectY, 5, 2), /*boundary*/
 		0x35 => (Instruction::AND, ZeroPageX, 4, 2),
+		0x36 => (Instruction::ROL, ZeroPageX, 6, 2),
 		0x39 => (Instruction::AND, AbsoluteY, 4, 3), /*boundary*/
 		0x3d => (Instruction::AND, AbsoluteX, 4, 3), /*boundary*/
+		0x3e => (Instruction::ROL, AbsoluteX, 7, 3),
 		0x41 => (Instruction::EOR, IndirectX, 6, 2),
 		0x45 => (Instruction::EOR, ZeroPage, 3, 2),
 		0x49 => (Instruction::EOR, Immediate, 2, 2),
@@ -301,15 +319,20 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x60 => (Instruction::RTS, Implicit, 6, 1),
 		0x61 => (Instruction::ADC, IndirectX, 6, 2),
 		0x65 => (Instruction::ADC, ZeroPage, 3, 2),
+		0x66 => (Instruction::ROR, ZeroPage, 5, 2),
 		0x69 => (Instruction::ADC, Immediate, 2, 2),
+		0x6a => (Instruction::ROR, Accumulator, 2, 1),
 		0x6c => (Instruction::JMP, Indirect, 5, 3),
 		0x6d => (Instruction::ADC, Absolute, 4, 3),
+		0x6e => (Instruction::ROR, Absolute, 6, 3),
 		0x70 => (Instruction::BVS, Relative, 2, 2), /*boundary*/
 		0x71 => (Instruction::ADC, IndirectY, 5, 2), /*boundary*/
 		0x75 => (Instruction::ADC, ZeroPageX, 4, 2),
+		0x76 => (Instruction::ROR, ZeroPageX, 6, 2),
 		0x78 => (Instruction::SEI, Implicit, 2, 1),
 		0x79 => (Instruction::ADC, AbsoluteY, 4, 3), /*boundary*/
 		0x7d => (Instruction::ADC, AbsoluteX, 4, 3), /*boundary*/
+		0x7e => (Instruction::ROR, AbsoluteX, 7, 3),
 		0x81 => (Instruction::STA, IndirectX, 6, 2),
 		0x84 => (Instruction::STY, ZeroPage, 3, 2),
 		0x85 => (Instruction::STA, ZeroPage, 3, 2),
