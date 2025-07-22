@@ -23,7 +23,7 @@ impl CoreMemory {
     }
 
     /* TODO: might want to delete this, this was just to get an idea */
-    fn clone(&self) -> CoreMemory {
+    pub fn clone(&self) -> CoreMemory {
         CoreMemory {
             address_mapper: self.address_mapper,
             memory: Arc::clone(&self.memory)

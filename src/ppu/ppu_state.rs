@@ -1,4 +1,5 @@
-use crate::cpu::{CoreMemory, ProgramState};
+use std::ops::Deref;
+use crate::cpu::{CoreMemory};
 use crate::rom::Rom;
 
 use crate::ppu::palette::Palette;
@@ -10,6 +11,8 @@ use crate::processor::Processor;
 const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
 const OAM_SIZE : usize = 256;
 
+const WRITE_BUFFER_SIZE : usize = 256*240*4;
+
 const SECONDARY_OAM_SIZE : usize = 32;
 
 /* TODO: ppumask rendering effects */
@@ -19,10 +22,11 @@ const SECONDARY_OAM_SIZE : usize = 32;
 /* TODO PPU internal registers */
 
 pub struct PPUState {
-    vram: [u8; PPU_MEMORY_SIZE],
-    oam: [u8; OAM_SIZE],
-    secondary_oam: [u8; SECONDARY_OAM_SIZE],
+    vram: Box<[u8; PPU_MEMORY_SIZE]>,
+    oam: Box<[u8; OAM_SIZE]>,
+    secondary_oam: Box<[u8; SECONDARY_OAM_SIZE]>,
     memory: CoreMemory,
+    write_buffer: Box<[u8; WRITE_BUFFER_SIZE]>,
 }
 
 impl Processor for PPUState {
@@ -40,23 +44,52 @@ impl PPUState {
         /* copy over character data; TODO surely this is not correct even in the no-mapper case*/
         vram[0x0000..rom.chr_data.len()].copy_from_slice(&rom.chr_data);
 
+        let write_buffer = [0; WRITE_BUFFER_SIZE];
+
         return PPUState {
-            vram,
-            oam,
-            secondary_oam: [0; SECONDARY_OAM_SIZE],
-            memory
+            vram: Box::new(vram),
+            oam: Box::new(oam),
+            secondary_oam: Box::new([0; SECONDARY_OAM_SIZE]),
+            memory,
+            write_buffer: Box::new(write_buffer)
         }
     }
 
-    fn render_scanline(&self, cpu: &ProgramState, scanline: u8, write_buffer: &mut [u8]) {
-        let write_buffer_num_pixels = write_buffer.len()/4;
-        for (pixel_buffer,i) in write_buffer.chunks_exact_mut(4).zip((0..write_buffer_num_pixels)) {
-            // TODO remove just a placeholder
+    pub fn render_screen(&mut self) {
+        /* dummy scanline */
+        self.run_timed(341, |_unused| {});
+
+        /* visible scanlines */
+        for i in (0..240) {
+            self.run_timed(341, |ppu| {
+                let scanline_pixels= &ppu.render_scanline(i);
+                ppu.write_buffer[Self::pixel_range_for_line(i)].copy_from_slice(scanline_pixels);
+            })
+        }
+
+        /* post-render scanline */
+        self.run_timed(341, |_unused| {});
+
+        /* VBlank scanlines */
+        self.run_timed(20*341, |_unused| {}); /* TODO: set VBlank flag, do VBlank NMI */
+    }
+
+    pub fn draw_frame(&self, output_buffer: &mut [u8]) {
+        output_buffer.copy_from_slice(self.write_buffer.deref());
+    }
+
+    fn render_scanline(&mut self, scanline: u8) -> [u8; 256*4]{
+        println!("Rendering line {scanline}");
+
+        self.sprite_evaluation(scanline);
+
+        let mut line_buffer = [0; 256*4];
+        let line_buffer_num_pixels = line_buffer.len()/4;
+        for (pixel_buffer,i) in line_buffer.chunks_exact_mut(4).zip((0..line_buffer_num_pixels)) {
             let iu8 = i as u8;
-            let sprite = SpriteInfo::from_memory(&self.secondary_oam[0..4]);
-            let (fg_sprite, fg_brightness) = self.find_first_sprite(cpu, iu8, scanline, true);
-            let (bg_pixels, bg_tile_brightness) = self.background_brightness(cpu, iu8, scanline);
-            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(cpu, iu8, scanline, false);
+            let (fg_sprite, fg_brightness) = self.find_first_sprite(iu8, scanline, true);
+            let (bg_pixels, bg_tile_brightness) = self.background_brightness(iu8, scanline);
+            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(iu8, scanline, false);
 
             let pixels = if fg_brightness > 0 {
                 fg_sprite.unwrap().color_from_brightness(self, fg_brightness)
@@ -71,12 +104,18 @@ impl PPUState {
 
             pixel_buffer.copy_from_slice(&pixels);
         }
+
+        line_buffer
     }
 
-    fn find_first_sprite(&self, cpu: &ProgramState, x: u8, y: u8, is_foreground: bool) -> (Option<SpriteInfo>, u8) {
+    fn find_first_sprite(&self, x: u8, y: u8, is_foreground: bool) -> (Option<SpriteInfo>, u8) {
         let mut brightness = 0;
         let mut sprite = Option::None;
         for sprite_data in self.secondary_oam.chunks_exact(4) {
+            /* check if initialized: TODO probably a better way to do this; relying on secondary oam state a lot */
+            if(sprite_data == [0,0,0,0]) {
+                continue;
+            }
             let cur_sprite = SpriteInfo::from_memory(sprite_data);
             if cur_sprite.at_x_position(x) && cur_sprite.is_foreground() == is_foreground {
                 let sprite_brightness = cur_sprite.get_brightness(self, x, y);
@@ -90,8 +129,8 @@ impl PPUState {
         (sprite, brightness)
     }
 
-    fn background_brightness(&self, cpu: &ProgramState, x:u8, y:u8) -> ([u8;4], u8) {
-        let tile = self.tile_for_pixel(cpu, x,y);
+    fn background_brightness(&self, x:u8, y:u8) -> ([u8;4], u8) {
+        let tile = self.tile_for_pixel(x,y);
         let palette = self.palette_for_pixel(x,y);
 
         let tile_origin = (x - x % 8, y  - y%8);
@@ -101,7 +140,7 @@ impl PPUState {
     }
 
     /* TODO; this only uses the first name table */
-    fn tile_for_pixel(&self, cpu: &ProgramState, x:u8, y:u8) -> Tile {
+    fn tile_for_pixel(&self, x:u8, y:u8) -> Tile {
         let offset : usize = (y/8*32 + x/8) as usize;
         let tile_index = self.vram[0x2000 + offset];
         self.get_bg_tile(tile_index)
@@ -128,22 +167,26 @@ impl PPUState {
     }
 
     /* TODO: this is just a sketch; not really sure how I want to use 'cycle' yet */
-    fn sprite_evaluation(&mut self, cpu: &mut ProgramState, scanline_num:u8, cycle:u16) {
-        /* first 64 cycles: clear secondary oam */
-        if(cycle <= 64 && cycle % 2 == 0) {
-            self.secondary_oam[(cycle/2) as usize] = 0xff;
-        /* 65-256: sprite evaluation */
-        } else if (cycle <= 256) {
-            self.write_scanline_sprites(cpu, scanline_num);
-
-        /* 257-320: sprite fetches */
-        } else if (cycle <= 320) {
-
-            /* TODO */
-        /* 321-340 + 0 (?): background render pipeline initialization */
-        } else {
-            /* TODO */
+    fn sprite_evaluation(&mut self, scanline_num:u8) {
+        for i in (0..self.secondary_oam.len()) {
+            self.secondary_oam[i] = 0xff;
         }
+        self.write_scanline_sprites(scanline_num);
+        // /* first 64 cycles: clear secondary oam */
+        // if(cycle <= 64 && cycle % 2 == 0) {
+        //     self.secondary_oam[(cycle/2) as usize] = 0xff;
+        // /* 65-256: sprite evaluation */
+        // } else if (cycle <= 256) {
+        //     self.write_scanline_sprites(cpu, scanline_num);
+        //
+        // /* 257-320: sprite fetches */
+        // } else if (cycle <= 320) {
+        //
+        //     /* TODO */
+        // /* 321-340 + 0 (?): background render pipeline initialization */
+        // } else {
+        //     /* TODO */
+        // }
     }
 
     /* Finds the first eight sprites on the given scanline, determined
@@ -151,13 +194,13 @@ impl PPUState {
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
-    fn write_scanline_sprites(&mut self, cpu: &mut ProgramState, scanline_num: u8) {
+    fn write_scanline_sprites(&mut self, scanline_num: u8) {
         let mut i = 0;
         let sprite_size = 8; /* TODO */
         let mut sprites_found = 0;
         for i in (0..OAM_SIZE/4) {
             let sprite_data = self.slice_as_sprite(i);
-            if sprite_data.in_scanline(i as u8, self) {
+            if sprite_data.in_scanline(scanline_num, self) {
                 /* already found eight sprites, set overflow */
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
                 if(sprites_found >= 8) {
@@ -172,12 +215,7 @@ impl PPUState {
     }
 
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
-        let oam_size = self.oam.len();
-        if(sprite_index + 4 >= oam_size) {
-            log::warn!("Sprite index out of range; wrapping but consider avoiding this");
-        }
-
-        SpriteInfo::from_memory(&self.oam[(sprite_index*4 % OAM_SIZE)..(sprite_index*4+4) % OAM_SIZE])
+        SpriteInfo::from_memory(&self.oam[(sprite_index*4)..(sprite_index*4+4)])
     }
 
     /* sprites are 8 pixels tall unless the 5th bit of PPUCTRL is true, then they're 16 */
@@ -205,6 +243,11 @@ impl PPUState {
 
         Palette::new(palette_data)
     }
+
+    fn pixel_range_for_line(x: u8) -> core::ops::Range<usize> {
+        let x_usize = x as usize;
+        (4*x_usize)..(4*(x_usize+256))
+    }
 }
 
 struct SpriteInfo
@@ -221,7 +264,7 @@ impl SpriteInfo {
     }
 
     fn at_x_position(&self, x: u8) -> bool {
-        self.x <= x && self.x + 8 > x
+        self.x <= x && x - self.x <= 8
     }
 
     fn get_brightness(&self, ppu: &PPUState, x:u8, y:u8) -> u8 {

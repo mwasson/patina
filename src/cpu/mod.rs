@@ -63,13 +63,13 @@ fn zero_page_addr(b1:u8) -> u16 {
 	b1 as u16
 }
 
-fn transition(state: &mut ProgramState) {
+pub fn transition(state: &mut ProgramState) {
 	let operation_loc = state.program_counter;
 	/* TODO: what if this hits the top of program memory */
 	let operation = operation_from_memory(state.read_mem(operation_loc),
 										  state.read_mem(operation_loc.wrapping_add(1)),
 										  state.read_mem(operation_loc.wrapping_add(2)));
-	println!("Running operation: {operation:?}");
+	// println!("Running operation: {operation:?}");
 
 	state.run_timed(operation.realized_instruction.cycles, |state| {
 		operation.apply(state)

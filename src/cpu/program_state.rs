@@ -15,7 +15,6 @@ pub struct ProgramState
 	pub program_counter: u16,
 	pub status: u8,
 	memory: CoreMemory,
-	ppu: PPUState,
 }
 
 impl Processor for ProgramState
@@ -46,8 +45,7 @@ impl ProgramState
 			s_register: 0xff,
 			program_counter: 0x00,
 			status: (0x11) << 4,
-			memory: CoreMemory::new(memory),
-			ppu: PPUState::from_rom(rom, CoreMemory::new(memory)),
+			memory: CoreMemory::new(memory)
 		};
 
 		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&result, INITIAL_PC_LOCATION);
@@ -115,5 +113,9 @@ impl ProgramState
 	                                    hi_byte_addr: u16)
 			-> u16 {
 		cpu::addr(self.read_mem(lo_byte_addr), self.read_mem(hi_byte_addr))
+	}
+	
+	pub fn clone_memory(&self) -> CoreMemory {
+		self.memory.clone()
 	}
 }

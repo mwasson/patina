@@ -3,9 +3,9 @@ use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
-use crate::rom::Rom;
+use crate::ppu::PPUState;
 
-pub fn initialize_ui(rom: Rom) -> Result<(), Box<dyn std::error::Error>> {
+pub fn initialize_ui() -> Result<(), Box<dyn std::error::Error>> {
 	let event_loop = EventLoop::new();
 	let window = WindowBuilder::new()
 		.with_title("Patina")
@@ -31,7 +31,7 @@ pub fn initialize_ui(rom: Rom) -> Result<(), Box<dyn std::error::Error>> {
 					pixel.copy_from_slice(&[0, 0, 0, 255]);
 				}
 
-				rom.render(frame,256);
+				// ppu.draw_frame(frame);
 
 				// draw_circle(frame, 640 / 2, 480 / 2, 100);
 
