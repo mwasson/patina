@@ -61,6 +61,7 @@ pub enum Instruction
 	/* jumps */
 	JMP, /* Jump */
 	JSR, /* Jump to Subroutine */
+	RTS, /* Return from Subroutine */
 }
 
 impl Instruction
@@ -186,6 +187,9 @@ impl Instruction
 			Instruction::ORA => {
 				state.accumulator |= addr_mode.deref(state, b1, b2)
 			}
+			Instruction::RTS => {
+				state.program_counter = state.pop_memory_loc() + 1;
+			}
 			Instruction::SEI => {
 				/* TODO: The effect is delayed "one instruction".
 				 * Does that mean one cycle, or until the next instruction?
@@ -294,6 +298,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x55 => (Instruction::EOR, ZeroPageX, 4, 2),
 		0x59 => (Instruction::EOR, AbsoluteY, 4, 3), /*boundary*/
 		0x5d => (Instruction::EOR, AbsoluteX, 4, 3), /*boundary*/
+		0x60 => (Instruction::RTS, Implicit, 6, 1),
 		0x61 => (Instruction::ADC, IndirectX, 6, 2),
 		0x65 => (Instruction::ADC, ZeroPage, 3, 2),
 		0x69 => (Instruction::ADC, Immediate, 2, 2),
