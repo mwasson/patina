@@ -50,6 +50,7 @@ pub enum Instruction
 	ASL, /* Arithmetic Shift Left */
 	BIT, /* Bit Test */
 	EOR, /* Bitwise XOR */
+	LSR, /* Logical Shift Right */
 	ORA, /* Bitwise OR */
 
 	/* arithmetic */
@@ -196,6 +197,13 @@ impl Instruction
 				state.index_y = addr_mode.deref(state, b1, b2);
 				state.update_zero_neg_flags(state.index_y);
 			}
+			Instruction::LSR => {
+				let val = addr_mode.deref(state, b1, b2);
+				let new_val = val >> 1;
+				addr_mode.write(state, b1, b2, new_val);
+				state.update_flag(StatusFlag::Carry, (val & 0x1) != 0);
+				state.update_flag(StatusFlag::Zero, new_val == 0);
+			}
 			Instruction::ORA => {
 				state.accumulator |= addr_mode.deref(state, b1, b2)
 			}
@@ -339,14 +347,19 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x3e => (Instruction::ROL, AbsoluteX, 7, 3),
 		0x41 => (Instruction::EOR, IndirectX, 6, 2),
 		0x45 => (Instruction::EOR, ZeroPage, 3, 2),
+		0x46 => (Instruction::LSR, ZeroPage, 5, 2),
 		0x49 => (Instruction::EOR, Immediate, 2, 2),
+		0x4a => (Instruction::LSR, Accumulator, 2, 1),
 		0x4c => (Instruction::JMP, Absolute, 3, 3),
 		0x4d => (Instruction::EOR, Absolute, 4, 3),
+		0x4e => (Instruction::LSR, Absolute, 6, 3),
 		0x50 => (Instruction::BVC, Relative, 2, 2), /*boundary*/
 		0x51 => (Instruction::EOR, IndirectY, 5, 2), /*boundary*/
 		0x55 => (Instruction::EOR, ZeroPageX, 4, 2),
+		0x56 => (Instruction::LSR, ZeroPageX, 6, 2),
 		0x59 => (Instruction::EOR, AbsoluteY, 4, 3), /*boundary*/
 		0x5d => (Instruction::EOR, AbsoluteX, 4, 3), /*boundary*/
+		0x5e => (Instruction::LSR, AbsoluteX, 7, 3),
 		0x60 => (Instruction::RTS, Implicit, 6, 1),
 		0x61 => (Instruction::ADC, IndirectX, 6, 2),
 		0x65 => (Instruction::ADC, ZeroPage, 3, 2),
