@@ -19,15 +19,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let rom = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
 	//let rom = parse_file("/Users/mwasson/instr_misc.nes")?; /* temporary, for testing */
 
-	// TODO: start CPU
 	let mut cpu = ProgramState::from_rom(&rom);
-
-	// TODO: start PPU
 	let mut ppu = PPUState::from_rom(&rom, cpu.clone_memory());
 
 	thread::spawn(move || {
 		loop {
-			cpu::transition(&mut cpu);
+			cpu.transition();
 		}
 	});
 

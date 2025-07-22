@@ -53,6 +53,27 @@ impl ProgramState
 		result
 	}
 
+	pub fn transition(&mut self) {
+		if(self.memory.nmi_triggered()) {
+			self.trigger_nmi();
+		}
+
+		let operation_loc = self.program_counter;
+		/* TODO: what if this hits the top of program memory */
+		let operation = operation_from_memory(self.read_mem(operation_loc),
+											  self.read_mem(operation_loc.wrapping_add(1)),
+											  self.read_mem(operation_loc.wrapping_add(2)));
+		match operation.realized_instruction.instruction {
+			Instruction::BPL => {}
+			Instruction::LDA => {}
+			_ => { println!("Running operation: {operation:?}"); }
+		}
+
+		self.run_timed(operation.realized_instruction.cycles, |state| {
+			operation.apply(state)
+		});
+	}
+
 	pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {
 		flag.update_bool(self, new_val);
 	}
