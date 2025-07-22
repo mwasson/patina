@@ -17,6 +17,7 @@ pub enum Instruction
 	/* transfer opcodes */
     TAX, /* transfer value from A into X; can set zero flag */
     TAY, /* transfer value from A into Y; can set zero flag */
+	TSX, /* transfer value from Stack Pointer to X; can set zero flag */
 	TXS, /* Transfer X to Stack Pointer */
     TXA, /* transfer value from X into A; can set zero flag */
     TYA,  /* transfer value from Y into A; can set zero flag */
@@ -225,8 +226,29 @@ impl Instruction
 			Instruction::STY => {
 				addr_mode.write(state, b1, b2, state.index_y);
 			}
+			Instruction::TAX => {
+				state.index_x = state.accumulator;
+				state.update_zero_neg_flags(state.index_x);
+			}
+			Instruction::TAY => {
+				state.index_y = state.accumulator;
+				state.update_zero_neg_flags(state.index_y);
+			}
+			Instruction::TSX => {
+				state.index_x = state.s_register;
+				state.update_zero_neg_flags(state.index_x);
+			}
+			Instruction::TXA => {
+				state.accumulator = state.index_x;
+				state.update_zero_neg_flags(state.accumulator);
+			}
 			Instruction::TXS => {
-				state.s_register = state.index_x
+				state.s_register = state.index_x;
+				/* doesn't update flags! multiple sources agree on this ? */
+			}
+			Instruction::TYA => {
+				state.accumulator = state.index_y;
+				state.update_zero_neg_flags(state.accumulator);
 			}
 			_ => panic!("Unimplemented")
 		}
@@ -347,6 +369,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x85 => (Instruction::STA, ZeroPage, 3, 2),
 		0x86 => (Instruction::STX, ZeroPage, 3, 2),
 		0x88 => (Instruction::DEY, Implicit, 2, 1),
+		0x8a => (Instruction::TXA, Implicit, 2, 1),
 		0x8c => (Instruction::STY, Absolute, 4, 3),
 		0x8d => (Instruction::STA, Absolute, 4, 3),
 		0x8e => (Instruction::STX, Absolute, 4, 3),
@@ -355,6 +378,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x94 => (Instruction::STY, ZeroPageX, 4, 2),
 		0x95 => (Instruction::STA, ZeroPageX, 4, 3),
 		0x96 => (Instruction::STX, ZeroPageY, 4, 2),
+		0x98 => (Instruction::TYA, Implicit, 2, 1),
 		0x99 => (Instruction::STA, AbsoluteY, 5, 3),
 		0x9a => (Instruction::TXS, Implicit, 2, 1),
 		0x9d => (Instruction::STA, AbsoluteX, 5, 3),
@@ -365,6 +389,8 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xa6 => (Instruction::LDX, ZeroPage, 3, 2),
 		0xa9 => (Instruction::LDA, Immediate, 2, 2),
 		0xa1 => (Instruction::LDA, IndirectX, 6, 2),
+		0xa8 => (Instruction::TAY, Implicit, 2, 1),
+		0xaa => (Instruction::TAX, Implicit, 2, 1),
 		0xac => (Instruction::LDY, Absolute, 4, 3),
 		0xad => (Instruction::LDA, Absolute, 4, 3),
 		0xae => (Instruction::LDX, Absolute, 4, 3),
@@ -374,6 +400,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xb5 => (Instruction::LDA, ZeroPageY, 4, 2),
 		0xb6 => (Instruction::LDX, ZeroPageY, 4, 2),
 		0xb9 => (Instruction::LDA, AbsoluteY, 4, 3), /*boundary*/
+		0xba => (Instruction::TSX, Implicit, 2, 1),
 		0xbc => (Instruction::LDY, AbsoluteX, 4, 3), /*boundary*/
 		0xbd => (Instruction::LDA, AbsoluteX, 4, 3), /*boundary*/
 		0xbe => (Instruction::LDX, AbsoluteY, 4, 3), /*boundary*/
