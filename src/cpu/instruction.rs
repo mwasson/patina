@@ -137,11 +137,11 @@ impl Instruction
 				state.update_zero_neg_flags(new_val);
 			}
 			Instruction::DEX => {
-				state.index_x -= 1;
+				state.index_x = (state.index_x as i8).wrapping_sub(1) as u8;
 				state.update_zero_neg_flags(state.index_x);
 			}
 			Instruction::DEY => {
-				state.index_y -= 1;
+				state.index_y = (state.index_y as i8).wrapping_sub(1) as u8;
 				state.update_zero_neg_flags(state.index_y);
 			}
 			Instruction::EOR => {
@@ -223,7 +223,8 @@ impl Instruction
 		let mem_val = addr_mode.deref(state, b1, b2);
 
 		state.update_flag(StatusFlag::Carry, compare_val >= mem_val);
-		state.update_zero_neg_flags((compare_val as i8 - mem_val as i8) as u8) ;
+		state.update_flag(StatusFlag::Zero, compare_val == mem_val);
+		state.update_flag(StatusFlag::Negative, compare_val < mem_val);
 	}
 }
 
