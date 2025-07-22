@@ -217,7 +217,7 @@ impl Instruction
 		let mem_val = addr_mode.deref(state, b1, b2);
 
 		state.update_flag(StatusFlag::Carry, compare_val >= mem_val);
-		state.update_zero_neg_flags(compare_val - mem_val);
+		state.update_zero_neg_flags((compare_val as i8 - mem_val as i8) as u8) ;
 	}
 }
 
@@ -235,10 +235,14 @@ impl RealizedInstruction
 {
 	pub fn apply(&self, state: &mut ProgramState, b1: u8, b2: u8) {
 		self.instruction.apply(state, &self.addr_mode, b1, b2);
-		/* note that this holds even for branching instructions: program counter needs to be
-		 * incremented by number of bytes for instruction, arguments
+		/* note that this holds even for branching instructions (but not jump instructions): program counter needs to be
+		 * incremented by the number of bytes for instruction, arguments
 		 */
-		state.program_counter = state.program_counter.wrapping_add(self.bytes as u16);
+		match &self.instruction {
+			Instruction::JMP => {}
+			Instruction::JSR => {}
+			_ => {state.program_counter = state.program_counter.wrapping_add(self.bytes as u16);}
+		}
 	}
 }
 
