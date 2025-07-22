@@ -47,6 +47,7 @@ pub enum Instruction
 	/* bitwise operators */
 	AND, /* Bitwise AND */
 	ASL, /* Arithmetic Shift Left */
+	BIT, /* Bit Test */
 	EOR, /* Bitwise XOR */
 	ORA, /* Bitwise OR */
 
@@ -105,6 +106,12 @@ impl Instruction
 			}
 			Instruction::BEQ => {
 				Self::branch_instr(state, StatusFlag::Zero, true, b1)
+			}
+			Instruction::BIT => {
+				let val = state.accumulator & addr_mode.deref(state, b1, b2);
+				state.update_flag(StatusFlag::Zero, val == 0);
+				state.update_flag(StatusFlag::Overflow, val & 0x40 != 0);
+				state.update_flag(StatusFlag::Negative, val & 0x80 != 0);
 			}
 			Instruction::BMI => {
 				Self::branch_instr(state, StatusFlag::Negative, true, b1)
@@ -293,10 +300,12 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x1e => (Instruction::ASL, AbsoluteX, 7, 3),
 		0x20 => (Instruction::JSR, Absolute, 6, 3),
 		0x21 => (Instruction::AND, IndirectX, 6, 2),
+		0x24 => (Instruction::BIT, ZeroPage, 3, 2),
 		0x25 => (Instruction::AND, ZeroPage, 3, 2),
 		0x26 => (Instruction::ROL, ZeroPage, 5, 2),
 		0x29 => (Instruction::AND, Immediate, 2, 2),
 		0x2a => (Instruction::ROL, Accumulator, 2, 1),
+		0x2c => (Instruction::BIT, Absolute, 4, 3),
 		0x2d => (Instruction::AND, Absolute, 4, 3),
 		0x2e => (Instruction::ROL, Absolute, 6, 3),
 		0x30 => (Instruction::BMI, Relative, 2, 2), /*boundary*/
