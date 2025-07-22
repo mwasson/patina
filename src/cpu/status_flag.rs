@@ -1,5 +1,6 @@
 use crate::cpu::program_state::ProgramState;
 
+#[derive(Debug)]
 pub enum StatusFlag
 {
 	Carry,
@@ -29,12 +30,12 @@ impl StatusFlag
 		state.status & self.mask() != 0
 	}
 
-	pub fn update_bool(self, state: &mut ProgramState, new_val: bool) {
+	pub fn update_bool(&self, state: &mut ProgramState, new_val: bool) {
 		let new_val_as_number = if new_val { 1 } else { 0 };
-		self.update(state, new_val_as_number);
-	}
-
-	pub fn update(self, state: &mut ProgramState, new_val: u8) {
-		state.status = state.status & (new_val << self.mask());
+		if new_val {
+			state.status = state.status | (1 << self.mask());
+		} else {
+			state.status = state.status & !(1 << self.mask());
+		}
 	}
 }
