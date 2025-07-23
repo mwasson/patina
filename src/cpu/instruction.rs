@@ -60,10 +60,13 @@ pub enum Instruction
 	ROL, /* Rotate Left */
 	ROR, /* Rotate Right */
 
+	/* set flags */
+	SEC, /* Set Carry Flag */
+	SEI, /* Set InterruptDisable */
+
     /* TODO others */
 	BRK, /* Break (software IRQ) */
 	CLD, /* Clear Decimal */
-	SEI, /* Set InterruptDisable */
 
 	/* stack operations */
 	PHA, /* Push A */
@@ -231,6 +234,9 @@ impl Instruction
 			Instruction::RTS => {
 				state.program_counter = state.pop_memory_loc() + 1;
 			}
+			Instruction::SEC => {
+				StatusFlag::Carry.update_bool(state, true);
+			}
 			Instruction::SEI => {
 				/* TODO: The effect is delayed "one instruction".
 				 * Does that mean one cycle, or until the next instruction?
@@ -355,6 +361,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x31 => (Instruction::AND, IndirectY, 5, 2), /*boundary*/
 		0x35 => (Instruction::AND, ZeroPageX, 4, 2),
 		0x36 => (Instruction::ROL, ZeroPageX, 6, 2),
+		0x38 => (Instruction::SEC, Implicit, 2, 1),
 		0x39 => (Instruction::AND, AbsoluteY, 4, 3), /*boundary*/
 		0x3d => (Instruction::AND, AbsoluteX, 4, 3), /*boundary*/
 		0x3e => (Instruction::ROL, AbsoluteX, 7, 3),
