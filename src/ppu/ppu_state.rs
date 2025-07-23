@@ -300,11 +300,11 @@ struct SpriteInfo
 
 impl SpriteInfo {
     fn in_scanline(&self, scanline: u8, ppu: &PPUState) -> bool {
-            self.y <= scanline &&  scanline < self.y + ppu.sprite_size()
+            self.y <= scanline &&  scanline - self.y < 8 /* TODO ppu.sprite_size() */
     }
 
     fn at_x_position(&self, x: u8) -> bool {
-        self.x <= x && x - self.x <= 8
+        self.x <= x && x - self.x < 8
     }
 
     fn get_brightness(&self, ppu: &PPUState, x:u8, y:u8) -> u8 {

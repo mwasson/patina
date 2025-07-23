@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Palette
 {
     data: [u8; 4]

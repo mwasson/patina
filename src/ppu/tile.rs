@@ -1,5 +1,6 @@
 use crate::rom::Rom;
 
+#[derive(Debug)]
 pub struct Tile
 {
     data: [u8; 16]
@@ -45,8 +46,8 @@ impl Tile
     }
 
     /* checks if a given bit in a bit array is set, and returns 1 if true, 0 otherwise;
- * in this case the highest order bit is the 0th column, lowest order is the 7th column
- * as we work from left to right */
+     * in this case the highest order bit is the 0th column, lowest order is the 7th column
+     * as we work from left to right */
     fn bit_set(&self, bit_array: u8, col: usize) -> u8 {
         (bit_array & (1 << 7 - col)) >> 7 - col
     }
