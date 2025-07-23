@@ -153,16 +153,16 @@ impl Instruction
 				Self::compare(state, addr_mode, b1, b2, state.index_y);
 			}
 			Instruction::DEC => {
-				let new_val = (addr_mode.deref(state, b1, b2) as i8 - 1) as u8;
+				let new_val = addr_mode.deref(state, b1, b2).wrapping_sub(1);
 				addr_mode.write(state, b1, b2, new_val);
 				state.update_zero_neg_flags(new_val);
 			}
 			Instruction::DEX => {
-				state.index_x = (state.index_x as i8).wrapping_sub(1) as u8;
+				state.index_x = state.index_x.wrapping_sub(1);
 				state.update_zero_neg_flags(state.index_x);
 			}
 			Instruction::DEY => {
-				state.index_y = (state.index_y as i8).wrapping_sub(1) as u8;
+				state.index_y = state.index_y.wrapping_sub(1);
 				state.update_zero_neg_flags(state.index_y);
 			}
 			Instruction::EOR => {
@@ -176,11 +176,11 @@ impl Instruction
 				state.update_zero_neg_flags(new_val);
 			}
 			Instruction::INX => {
-				state.index_x += 1;
+				state.index_x = state.index_x.wrapping_add(1);
 				state.update_zero_neg_flags(state.index_x);
 			}
 			Instruction::INY => {
-				state.index_y += 1;
+				state.index_y = state.index_y.wrapping_add(1);
 				state.update_zero_neg_flags(state.index_y);
 			}
 			Instruction::JMP => {
