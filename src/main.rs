@@ -15,6 +15,7 @@ use crate::ppu::PPUState;
 mod window;
 mod ppu;
 mod processor;
+mod read_write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");

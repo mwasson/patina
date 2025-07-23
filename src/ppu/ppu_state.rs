@@ -1,17 +1,13 @@
 use std::ops::Deref;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use crate::cpu::{CoreMemory};
 use crate::rom::Rom;
 
 use crate::ppu::palette::Palette;
 use crate::ppu::ppu_listener::PPUListener;
-use crate::ppu::ppu_registers::PPURegister;
 use crate::ppu::ppu_registers::PPURegister::{PPUCTRL, PPUSTATUS};
-use crate::ppu::Tile;
+use crate::ppu::{Tile, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM};
 use crate::processor::Processor;
-
-pub(crate) const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
-const OAM_SIZE : usize = 256;
 
 const WRITE_BUFFER_SIZE : usize = 256*240*4;
 
@@ -24,8 +20,8 @@ const SECONDARY_OAM_SIZE : usize = 32;
 /* TODO PPU internal registers */
 
 pub struct PPUState {
-    vram: Arc<Mutex<[u8; PPU_MEMORY_SIZE]>>,
-    oam: Box<[u8; OAM_SIZE]>,
+    vram: Arc<Mutex<VRAM>>,
+    oam: Arc<Mutex<OAM>>,
     secondary_oam: Box<[u8; SECONDARY_OAM_SIZE]>,
     memory: CoreMemory,
     write_buffer: Box<[u8; WRITE_BUFFER_SIZE]>,
@@ -35,10 +31,10 @@ pub struct PPUState {
 pub struct PPUInternalRegisters
 {
     /* rendering: scroll position; otherwise: current vram address */
-    pub v: u8,
-    /* rendering: starting coarse-x scroll for scanline, y scroll for screen; o
+    pub v: u16,
+    /* rendering: starting coarse-x scroll for scanline, y scroll for screen;
      * otherwise: holds data to transfer to v */
-    pub t: u8,
+    pub t: u16,
     /* fine-x position of current scroll */
     pub x: u8,
     /* toggles on write to PPUSCROLL or PPUADDR, indicating whether 1st/2nd write; 'write latch' */
@@ -64,7 +60,7 @@ impl PPUState {
 
        Box::new(PPUState {
             vram: Arc::new(Mutex::new(vram)),
-            oam: Box::new(oam),
+            oam: Arc::new(Mutex::new(oam)),
             secondary_oam: Box::new([0; SECONDARY_OAM_SIZE]),
             memory,
             write_buffer: Box::new(write_buffer),
@@ -78,7 +74,7 @@ impl PPUState {
     }
 
     pub fn get_listener(&self) -> PPUListener {
-        PPUListener::new(&self.vram, &self.ppu_internal_registers)
+        PPUListener::new(&self.vram, &self.oam, &self.ppu_internal_registers)
     }
 
     pub fn render_screen(&mut self) {
@@ -253,7 +249,9 @@ impl PPUState {
     }
 
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
-        SpriteInfo::from_memory(&self.oam[(sprite_index*4)..(sprite_index*4+4)])
+        let mut sprite_data = [0u8; 4];
+        sprite_data.copy_from_slice(&self.vram.lock().unwrap()[sprite_index*4..sprite_index*4+4]);
+        SpriteInfo::from_memory(&sprite_data)
     }
 
     /* sprites are 8 pixels tall unless the 5th bit of PPUCTRL is true, then they're 16 */
@@ -263,11 +261,11 @@ impl PPUState {
 
     /* TODO: handle 8x16 sprites */
     fn get_sprite_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, (PPURegister::PPUCTRL.read(&self.memory) & 0x4).count_ones() as usize)
+        self.get_tile(tile_index, (PPUCTRL.read(&self.memory) & 0x4).count_ones() as usize)
     }
 
     fn get_bg_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, (PPURegister::PPUCTRL.read(&self.memory) & 0x8).count_ones() as usize)
+        self.get_tile(tile_index, (PPUCTRL.read(&self.memory) & 0x8).count_ones() as usize)
     }
 
     fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
