@@ -27,7 +27,7 @@ impl StatusFlag
 	}
 
 	pub fn is_set(&self, state: &ProgramState) -> bool {
-		state.status & self.mask() != 0
+		state.status & (1 << self.mask()) != 0
 	}
 
 	pub fn update_bool(&self, state: &mut ProgramState, new_val: bool) {
