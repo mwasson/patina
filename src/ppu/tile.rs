@@ -1,16 +1,16 @@
 use crate::rom::Rom;
 
-pub struct Tile<'a>
+pub struct Tile
 {
-    data: &'a [u8; 16]
+    data: [u8; 16]
 }
 
-impl Tile<'_>
+impl Tile
 {
-    pub fn from_memory(memory: &[u8]) -> Tile {
-        let data : &[u8; 16] = <&[u8; 16]>::try_from(&memory[0..16]).unwrap();
+    pub fn from_memory(memory: [u8; 16]) -> Tile {
+        // let data : &[u8; 16] = <&[u8; 16]>::try_from(&memory[0..16]).unwrap();
         Tile {
-            data
+            data: memory
         }
     }
 

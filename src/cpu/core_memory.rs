@@ -1,28 +1,36 @@
-use std::sync::{Arc, Mutex};
+use std::cell::Ref;
+use std::cmp::PartialEq;
+use std::ops::{Deref, DerefMut};
+use std::rc::{Rc};
+use std::sync::{Arc, Mutex, Weak};
+use std::sync::mpsc::Sender;
 use crate::cpu::{MEMORY_SIZE};
-
+use crate::ppu::{PPUListener, PPURegister, PPUState};
 /* TODO: should this also handle side-effects? */
 
 pub struct CoreMemory
 {
     address_mapper: fn(u16) -> Option<u16>,
-    internals: Arc<Mutex<CoreMemoryInternals>>
-
+    internals: Arc<Mutex<CoreMemoryInternals>>,
+    listener: Option<PPUListener>,
 }
 
 struct CoreMemoryInternals
 {
     memory: [u8; MEMORY_SIZE],
-    nmi_triggered: bool
+    nmi_triggered: bool,
 }
 
 impl CoreMemory {
     pub fn write(&mut self, addr: u16, data: u8) {
         self.internals.lock().unwrap().memory[self.map_address(addr)] = data;
+        self.check_for_listener(addr);
     }
 
     pub fn read(&self, addr: u16) -> u8 {
-        self.internals.lock().unwrap().memory[self.map_address(addr)]
+        let result = self.internals.lock().unwrap().memory[self.map_address(addr)];
+        self.check_for_listener(addr);
+        result
     }
 
     fn map_address(&self, addr: u16) -> usize {
@@ -33,7 +41,8 @@ impl CoreMemory {
     pub fn clone(&self) -> CoreMemory {
         CoreMemory {
             address_mapper: self.address_mapper,
-            internals: Arc::clone(&self.internals)
+            internals: self.internals.clone(),
+            listener: self.listener.clone(),
         }
     }
 
@@ -42,9 +51,15 @@ impl CoreMemory {
             address_mapper: CoreMemory::ppu_mirror(),
             internals: Arc::new(Mutex::new(CoreMemoryInternals{
                 memory,
-                nmi_triggered: false
-            }))
+                nmi_triggered: false,
+            })),
+            listener: None
         }
+    }
+
+    pub fn register_listener(&mut self, listener: PPUListener) {
+        println!("Registering listener!");
+        self.listener = Some(listener);
     }
 
     pub fn nmi_triggered(&self) -> bool {
@@ -70,6 +85,16 @@ impl CoreMemory {
                 return Some(0x2000 | (addr & 0x7));
             } else {
                 return None;
+            }
+        }
+    }
+
+    fn check_for_listener(&self, addr:u16) {
+        if self.listener.is_some() {
+            let possible_register = PPURegister::from_addr(addr);
+            if possible_register.is_some() {
+                let register = possible_register.unwrap();
+                self.listener.clone().unwrap().listen(register);
             }
         }
     }

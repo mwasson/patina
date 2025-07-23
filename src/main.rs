@@ -1,6 +1,9 @@
 use std::{fs, thread};
+use std::cell::RefCell;
 use std::io::{self, ErrorKind};
+use std::ops::Deref;
 use std::process::exit;
+use std::sync::{mpsc, Arc, Mutex, Weak};
 
 mod cpu;
 
@@ -8,7 +11,6 @@ mod rom;
 use rom::Rom;
 use crate::cpu::{Operation, ProgramState};
 use crate::ppu::PPUState;
-use crate::processor::Processor;
 
 mod window;
 mod ppu;
@@ -21,6 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let mut cpu = ProgramState::from_rom(&rom);
 	let mut ppu = PPUState::from_rom(&rom, cpu.clone_memory());
+
+	cpu.register_listener(ppu.get_listener());
 
 	thread::spawn(move || {
 		loop {

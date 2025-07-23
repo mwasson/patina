@@ -1,14 +1,16 @@
 use std::ops::Deref;
+use std::sync::{mpsc, Arc, Mutex};
 use crate::cpu::{CoreMemory};
 use crate::rom::Rom;
 
 use crate::ppu::palette::Palette;
+use crate::ppu::ppu_listener::PPUListener;
 use crate::ppu::ppu_registers::PPURegister;
 use crate::ppu::ppu_registers::PPURegister::{PPUCTRL, PPUSTATUS};
 use crate::ppu::Tile;
 use crate::processor::Processor;
 
-const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
+pub(crate) const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
 const OAM_SIZE : usize = 256;
 
 const WRITE_BUFFER_SIZE : usize = 256*240*4;
@@ -22,11 +24,25 @@ const SECONDARY_OAM_SIZE : usize = 32;
 /* TODO PPU internal registers */
 
 pub struct PPUState {
-    vram: Box<[u8; PPU_MEMORY_SIZE]>,
+    vram: Arc<Mutex<[u8; PPU_MEMORY_SIZE]>>,
     oam: Box<[u8; OAM_SIZE]>,
     secondary_oam: Box<[u8; SECONDARY_OAM_SIZE]>,
     memory: CoreMemory,
     write_buffer: Box<[u8; WRITE_BUFFER_SIZE]>,
+    ppu_internal_registers: Arc<Mutex<PPUInternalRegisters>>
+}
+
+pub struct PPUInternalRegisters
+{
+    /* rendering: scroll position; otherwise: current vram address */
+    pub v: u8,
+    /* rendering: starting coarse-x scroll for scanline, y scroll for screen; o
+     * otherwise: holds data to transfer to v */
+    pub t: u8,
+    /* fine-x position of current scroll */
+    pub x: u8,
+    /* toggles on write to PPUSCROLL or PPUADDR, indicating whether 1st/2nd write; 'write latch' */
+    pub w: u8,
 }
 
 impl Processor for PPUState {
@@ -37,7 +53,7 @@ impl Processor for PPUState {
 
 impl PPUState {
 
-    pub fn from_rom(rom: &Rom, memory: CoreMemory) -> PPUState {
+    pub fn from_rom(rom: &Rom, memory: CoreMemory) -> Box<PPUState> {
         let mut vram: [u8; PPU_MEMORY_SIZE] = [0; PPU_MEMORY_SIZE];
         let oam : [u8; OAM_SIZE] = [0; OAM_SIZE]; /* TODO: link this to CPU memory? */
 
@@ -46,13 +62,23 @@ impl PPUState {
 
         let write_buffer = [0; WRITE_BUFFER_SIZE];
 
-        return PPUState {
-            vram: Box::new(vram),
+       Box::new(PPUState {
+            vram: Arc::new(Mutex::new(vram)),
             oam: Box::new(oam),
             secondary_oam: Box::new([0; SECONDARY_OAM_SIZE]),
             memory,
-            write_buffer: Box::new(write_buffer)
-        }
+            write_buffer: Box::new(write_buffer),
+            ppu_internal_registers: Arc::new(Mutex::new(PPUInternalRegisters {
+                v: 0,
+                t: 0,
+                x: 0,
+                w: 0,
+            }))
+        })
+    }
+
+    pub fn get_listener(&self) -> PPUListener {
+        PPUListener::new(&self.vram, &self.ppu_internal_registers)
     }
 
     pub fn render_screen(&mut self) {
@@ -65,6 +91,9 @@ impl PPUState {
         for i in (0..240) {
             self.run_timed(341, |ppu| {
                 let scanline_pixels= &ppu.render_scanline(i);
+                // if(i == 150 && scanline_pixels[0] != 98) {
+                //     println!("{scanline_pixels:?}");
+                // }
                 ppu.write_buffer[Self::pixel_range_for_line(i)].copy_from_slice(scanline_pixels);
             })
         }
@@ -151,7 +180,7 @@ impl PPUState {
     /* TODO; this only uses the first name table */
     fn tile_for_pixel(&self, x:u8, y:u8) -> Tile {
         let offset : usize = ((y as usize)/8*32 + (x as usize)/8);
-        let tile_index = self.vram[0x2000 + offset];
+        let tile_index = self.vram.lock().unwrap()[0x2000 + offset];
         self.get_bg_tile(tile_index)
     }
 
@@ -159,7 +188,7 @@ impl PPUState {
     fn palette_for_pixel(&self, x:u8, y:u8) -> Palette {
         /* each address controls a 32x32 pixel block; 8 blocks per row */
         let attr_addr = y/32*8 + x/32;
-        let attr_table_value = self.vram[0x23c0 + attr_addr as usize];
+        let attr_table_value = self.vram.lock().unwrap()[0x23c0 + attr_addr as usize];
         /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
          * in order from the lowest bits they are: upper left, upper right, bottom left, bottom right
          */
@@ -243,12 +272,15 @@ impl PPUState {
 
     fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
         let pattern_table_base : usize = 0x1000 * pattern_table_num;
-        Tile::from_memory(&self.vram[pattern_table_base..(pattern_table_base+0x1000)].chunks_exact(16).nth(tile_index as usize).unwrap())
+        let mut memcopy = [0 as u8; 16];
+        memcopy.copy_from_slice(&self.vram.lock().unwrap()[pattern_table_base..(pattern_table_base+0x1000)].chunks_exact(16).nth(tile_index as usize).unwrap());
+        Tile::from_memory(memcopy)
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
         let palette_mem_loc : usize = 0x3f00 + (palette_index as usize)*4;
-        let palette_data = &self.vram[palette_mem_loc..palette_mem_loc+4];
+        let mut palette_data = [0 as u8; 4];
+        palette_data.copy_from_slice(&self.vram.lock().unwrap()[palette_mem_loc..palette_mem_loc+4]);
 
         Palette::new(palette_data)
     }
@@ -290,7 +322,7 @@ impl SpriteInfo {
         self.get_palette(&ppu).brightness_to_pixels(brightness)
     }
 
-    fn get_palette<'a>(&self, ppu: &'a PPUState) -> Palette<'a> {
+    fn get_palette(&self, ppu: &PPUState) -> Palette {
         ppu.get_palette(self.attrs & 0x3)
     }
 

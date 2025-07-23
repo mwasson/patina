@@ -2,7 +2,7 @@ use crate::cpu;
 use crate::cpu::{operation_from_memory, AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE, RAM_MEMORY_START};
 use crate::cpu::core_memory::CoreMemory;
 use crate::cpu::instruction::Instruction;
-use crate::ppu::PPURegister;
+use crate::ppu::{PPUListener, PPURegister};
 use crate::processor::Processor;
 use crate::rom::Rom;
 
@@ -27,7 +27,7 @@ impl Processor for ProgramState
 impl ProgramState
 {
 	/* TODO comment */
-	pub fn from_rom(rom: &Rom) -> Self {
+	pub fn from_rom(rom: &Rom) -> Box<Self> {
 		let mut memory = [0; MEMORY_SIZE];
 
 		/* copy ROM data into memory */
@@ -50,7 +50,7 @@ impl ProgramState
 
 		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&result, INITIAL_PC_LOCATION);
 
-		result
+		Box::new(result)
 	}
 
 	pub fn transition(&mut self) {
@@ -63,11 +63,11 @@ impl ProgramState
 		let operation = operation_from_memory(self.read_mem(operation_loc),
 											  self.read_mem(operation_loc.wrapping_add(1)),
 											  self.read_mem(operation_loc.wrapping_add(2)));
-		match operation.realized_instruction.instruction {
-			Instruction::BPL => {}
-			Instruction::LDA => {}
-			_ => { println!("Running operation: {operation:?}"); }
-		}
+		// match operation.realized_instruction.instruction {
+		// 	Instruction::BPL => {}
+		// 	Instruction::LDA => {}
+		// 	_ => { println!("Running operation: {operation:?}"); }
+		// }
 
 		self.run_timed(operation.realized_instruction.cycles, |state| {
 			operation.apply(state)
@@ -134,6 +134,10 @@ impl ProgramState
 	                                    hi_byte_addr: u16)
 			-> u16 {
 		cpu::addr(self.read_mem(lo_byte_addr), self.read_mem(hi_byte_addr))
+	}
+
+	pub fn register_listener(&mut self, listener: PPUListener) {
+		self.memory.register_listener(listener);
 	}
 	
 	pub fn clone_memory(&self) -> CoreMemory {

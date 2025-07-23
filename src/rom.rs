@@ -21,7 +21,9 @@ impl Rom {
         for i in (0..256) {
             let xy = index_to_pixel(16, i);
             let data_start = i*16;
-            let tile = Tile::from_memory(&pattern_table[data_start..data_start + 16]);
+            let mut tile_data = [0 as u8; 16];
+            tile_data.copy_from_slice(&pattern_table[data_start..data_start + 16]);
+            let tile = Tile::from_memory(tile_data);
             tile.stamp(write_buffer, width, xy.0*8+start_x, xy.1*8);
         }
     }

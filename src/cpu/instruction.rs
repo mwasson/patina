@@ -65,6 +65,10 @@ pub enum Instruction
 	CLD, /* Clear Decimal */
 	SEI, /* Set InterruptDisable */
 
+	/* stack operations */
+	PHA, /* Push A */
+	PLA, /* Pull A */
+
 	/* jumps */
 	JMP, /* Jump */
 	JSR, /* Jump to Subroutine */
@@ -207,6 +211,15 @@ impl Instruction
 			Instruction::ORA => {
 				state.accumulator |= addr_mode.deref(state, b1, b2)
 			}
+			Instruction::PHA => {
+				state.write_mem(0x100 + state.s_register as u16, state.accumulator);
+				state.s_register -= 1;
+			}
+			Instruction::PLA => {
+				state.s_register += 1;
+				state.accumulator = state.read_mem(0x100 + state.s_register as u16);
+				state.update_zero_neg_flags(state.accumulator);
+			}
 			Instruction::ROL => {
 				let val = addr_mode.deref(state, b1, b2);
 				addr_mode.write(state, b1, b2, (val << 1) | (val >> 7));
@@ -348,6 +361,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x41 => (Instruction::EOR, IndirectX, 6, 2),
 		0x45 => (Instruction::EOR, ZeroPage, 3, 2),
 		0x46 => (Instruction::LSR, ZeroPage, 5, 2),
+		0x48 => (Instruction::PHA, Implicit, 3, 1),
 		0x49 => (Instruction::EOR, Immediate, 2, 2),
 		0x4a => (Instruction::LSR, Accumulator, 2, 1),
 		0x4c => (Instruction::JMP, Absolute, 3, 3),
@@ -364,6 +378,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x61 => (Instruction::ADC, IndirectX, 6, 2),
 		0x65 => (Instruction::ADC, ZeroPage, 3, 2),
 		0x66 => (Instruction::ROR, ZeroPage, 5, 2),
+		0x68 => (Instruction::PLA, Implicit, 4, 1),
 		0x69 => (Instruction::ADC, Immediate, 2, 2),
 		0x6a => (Instruction::ROR, Accumulator, 2, 1),
 		0x6c => (Instruction::JMP, Indirect, 5, 3),
