@@ -26,6 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut ppu = PPUState::from_rom(&rom, cpu.clone_memory());
 
 	cpu.register_listener(ppu.get_listener());
+	
+	let write_buffer = ppu.get_write_buffer();
 
 	thread::spawn(move || {
 		loop {
@@ -40,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	});
 
 	// TODO: link PPU to window
-	window::initialize_ui()
+	window::initialize_ui(write_buffer)
 }
 
 fn parse_file(file_ref: &str) -> io::Result<Rom> {

@@ -6,10 +6,8 @@ use crate::rom::Rom;
 use crate::ppu::palette::Palette;
 use crate::ppu::ppu_listener::PPUListener;
 use crate::ppu::ppu_registers::PPURegister::{PPUCTRL, PPUSTATUS};
-use crate::ppu::{Tile, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM};
+use crate::ppu::{Tile, WriteBuffer, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::processor::Processor;
-
-const WRITE_BUFFER_SIZE : usize = 256*240*4;
 
 const SECONDARY_OAM_SIZE : usize = 32;
 
@@ -24,7 +22,7 @@ pub struct PPUState {
     oam: Arc<Mutex<OAM>>,
     secondary_oam: Box<[u8; SECONDARY_OAM_SIZE]>,
     memory: CoreMemory,
-    write_buffer: Box<[u8; WRITE_BUFFER_SIZE]>,
+    write_buffer: Arc<Mutex<WriteBuffer>>,
     ppu_internal_registers: Arc<Mutex<PPUInternalRegisters>>
 }
 
@@ -56,14 +54,14 @@ impl PPUState {
         /* copy over character data; TODO surely this is not correct even in the no-mapper case*/
         vram[0x0000..rom.chr_data.len()].copy_from_slice(&rom.chr_data);
 
-        let write_buffer = [0; WRITE_BUFFER_SIZE];
+        let write_buffer = Arc::new(Mutex::new([0; WRITE_BUFFER_SIZE]));
 
        Box::new(PPUState {
             vram: Arc::new(Mutex::new(vram)),
             oam: Arc::new(Mutex::new(oam)),
             secondary_oam: Box::new([0; SECONDARY_OAM_SIZE]),
             memory,
-            write_buffer: Box::new(write_buffer),
+            write_buffer,
             ppu_internal_registers: Arc::new(Mutex::new(PPUInternalRegisters {
                 v: 0,
                 t: 0,
@@ -87,10 +85,7 @@ impl PPUState {
         for i in (0..240) {
             self.run_timed(341, |ppu| {
                 let scanline_pixels= &ppu.render_scanline(i);
-                // if(i == 150 && scanline_pixels[0] != 98) {
-                //     println!("{scanline_pixels:?}");
-                // }
-                ppu.write_buffer[Self::pixel_range_for_line(i)].copy_from_slice(scanline_pixels);
+                ppu.write_buffer.lock().unwrap()[Self::pixel_range_for_line(i)].copy_from_slice(scanline_pixels);
             })
         }
 
@@ -108,8 +103,8 @@ impl PPUState {
         self.run_timed(20*341-2, |_unused| {});
     }
 
-    pub fn draw_frame(&self, output_buffer: &mut [u8]) {
-        output_buffer.copy_from_slice(self.write_buffer.deref());
+    pub fn get_write_buffer(&self) -> Arc<Mutex<WriteBuffer>> {
+        self.write_buffer.clone()
     }
 
     fn render_scanline(&mut self, scanline: u8) -> [u8; 256*4]{

@@ -27,9 +27,9 @@ impl Palette
          */
         let mut output = pixels;
 
-        output[0] = output[0].saturating_add(((value as u16)*255/4) as u8); /* R */
+        output[0] = output[0].saturating_add(((value as u16) * 255 / 4) as u8); /* R */
         output[1] = output[1].saturating_add((((value as f64) * 255.0 / 4.0) / 0.587) as u8); /* G */
-        output[2] = output[2].saturating_add(((value as u16)*255/4) as u8); /* B */
+        output[2] = output[2].saturating_add(((value as u16) * 255 / 4) as u8); /* B */
 
         output
     }

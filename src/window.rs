@@ -1,15 +1,17 @@
+use std::ops::Deref;
+use std::sync::{Arc, Mutex};
 use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
-use crate::ppu::PPUState;
+use crate::ppu::{PPUState, WriteBuffer};
 
-pub fn initialize_ui() -> Result<(), Box<dyn std::error::Error>> {
+pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>) -> Result<(), Box<dyn std::error::Error>> {
 	let event_loop = EventLoop::new();
 	let window = WindowBuilder::new()
 		.with_title("Patina")
-		.with_inner_size(LogicalSize::new(512 as f64, 256 as f64))
+		.with_inner_size(LogicalSize::new(512, 256))
 		.build(&event_loop)
 		.unwrap();
 
@@ -18,7 +20,7 @@ pub fn initialize_ui() -> Result<(), Box<dyn std::error::Error>> {
 		let surface_texture = SurfaceTexture::new(window_size.width,
 												  window_size.height,
 												  &window);
-		Pixels::new(256, 128, surface_texture)?
+		Pixels::new(256, 240, surface_texture)?
 	};
 
 	event_loop.run(move |event, _, control_flow| {
@@ -31,7 +33,7 @@ pub fn initialize_ui() -> Result<(), Box<dyn std::error::Error>> {
 					pixel.copy_from_slice(&[0, 0, 0, 255]);
 				}
 
-				// ppu.draw_frame(frame);
+				frame.copy_from_slice(write_buffer.lock().unwrap().deref());
 
 				// draw_circle(frame, 640 / 2, 480 / 2, 100);
 
