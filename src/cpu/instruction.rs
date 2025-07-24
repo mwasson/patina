@@ -61,13 +61,11 @@ pub enum Instruction
 	ROL, /* Rotate Left */
 	ROR, /* Rotate Right */
 
-	/* set flags */
+	/* clear & set flags */
+	CLC, /* Clear Carry */
+	CLD, /* Clear Decimal */
 	SEC, /* Set Carry Flag */
 	SEI, /* Set InterruptDisable */
-
-    /* TODO others */
-	BRK, /* Break (software IRQ) */
-	CLD, /* Clear Decimal */
 
 	/* stack operations */
 	PHA, /* Push A */
@@ -77,6 +75,10 @@ pub enum Instruction
 	JMP, /* Jump */
 	JSR, /* Jump to Subroutine */
 	RTS, /* Return from Subroutine */
+	RTI, /* Return from Interrupt */
+
+	/* others */
+	BRK, /* Break (software IRQ) */
 }
 
 impl Instruction
@@ -140,6 +142,9 @@ impl Instruction
 			}
 			Instruction::BVS => {
 				Self::branch_instr(state, StatusFlag::Overflow, true, b1)
+			}
+			Instruction::CLC => {
+				state.update_flag(StatusFlag::Carry, false);
 			}
 			Instruction::CLD => {
 				state.update_flag(StatusFlag::Decimal, false);
@@ -231,6 +236,11 @@ impl Instruction
 			Instruction::ROR => {
 				let val = addr_mode.deref(state, b1, b2);
 				addr_mode.write(state, b1, b2, (val >> 1) | (val << 7));
+			}
+			Instruction::RTI => {
+				state.status = state.pop();
+				state.program_counter = state.pop_memory_loc();
+
 			}
 			Instruction::RTS => {
 				state.program_counter = state.pop_memory_loc() + 1;
@@ -332,6 +342,7 @@ impl RealizedInstruction
 			Instruction::JMP => {}
 			Instruction::JSR => {}
 			Instruction::RTS => {}
+			Instruction::RTI => {}
 			_ => {state.program_counter = state.program_counter.wrapping_add(self.bytes as u16);}
 		}
 	}
@@ -355,6 +366,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x11 => (Instruction::ORA, IndirectY, 5, 2), /*boundary*/
 		0x15 => (Instruction::ORA, ZeroPageX, 3, 2),
 		0x16 => (Instruction::ASL, ZeroPageX, 6, 2),
+		0x18 => (Instruction::CLC, Implicit, 2, 1),
 		0x19 => (Instruction::ORA, AbsoluteY, 4, 3), /*boundary*/
 		0x1d => (Instruction::ORA, AbsoluteX, 4, 3), /*boundary*/
 		0x1e => (Instruction::ASL, AbsoluteX, 7, 3),
@@ -376,6 +388,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x39 => (Instruction::AND, AbsoluteY, 4, 3), /*boundary*/
 		0x3d => (Instruction::AND, AbsoluteX, 4, 3), /*boundary*/
 		0x3e => (Instruction::ROL, AbsoluteX, 7, 3),
+		0x40 => (Instruction::RTI, Implicit, 6, 1),
 		0x41 => (Instruction::EOR, IndirectX, 6, 2),
 		0x45 => (Instruction::EOR, ZeroPage, 3, 2),
 		0x46 => (Instruction::LSR, ZeroPage, 5, 2),
@@ -486,7 +499,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xf9 => (Instruction::SBC, AbsoluteY, 4, 3), /*boundary*/
 		0xfd => (Instruction::SBC, AbsoluteX, 4, 3), /*boundary*/
 		0xfe => (Instruction::INC, AbsoluteX, 7, 3),
-		_ => panic!("Unknown opcode 0x{opcode:x}")
+		_ => handle_unknown_opcode(opcode)
 	};
 
 	RealizedInstruction {
@@ -496,4 +509,8 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
     	cycles,
     	bytes
 	}
+}
+
+fn handle_unknown_opcode(opcode: u8) -> (Instruction, AddressingMode, u16, u8) /* unused */ {
+	panic!("Unknown opcode 0x{opcode:x}");
 }
