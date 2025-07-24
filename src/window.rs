@@ -1,10 +1,12 @@
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::WindowBuilder;
+use winit::window::{Window, WindowBuilder};
 use crate::ppu::{PPUState, WriteBuffer};
 
 pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>) -> Result<(), Box<dyn std::error::Error>> {
@@ -22,6 +24,13 @@ pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>) -> Result<(), Box<d
 												  &window);
 		Pixels::new(256, 240, surface_texture)?
 	};
+
+	thread::spawn(move || {
+		loop {
+			thread::sleep(Duration::from_millis(1000/60));
+			window.request_redraw();
+		}
+	});
 
 	event_loop.run(move |event, _, control_flow| {
 		match event {
