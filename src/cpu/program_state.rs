@@ -95,7 +95,7 @@ impl ProgramState
 
 	pub fn push(&mut self, data: u8) {
 		self.memory.write(cpu::addr(self.s_register, 0x01), data);
-		self.s_register -= 1;
+		self.s_register = self.s_register.wrapping_sub(1);
 	}
 
 	pub fn push_memory_loc(&mut self, mem_loc: u16) {
@@ -156,7 +156,6 @@ impl ProgramState
 
 	fn trigger_nmi(&mut self) {
 		self.memory.reset_nmi();
-		PPURegister::PPUCTRL.set_flag_off(&mut self.memory, 7);
 		/* push PC onto stack */
 		self.push_memory_loc(self.program_counter);
 		/* push processor status register on stack */
