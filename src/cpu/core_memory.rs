@@ -30,7 +30,8 @@ impl CoreMemory {
     }
     
     pub fn copy_range(&self, base_addr: usize, dst: &mut [u8]) {
-        dst.copy_from_slice(&self.internals.lock().unwrap().memory[base_addr..(base_addr+dst.len())]);
+        let mapped_base_addr = self.map_address(base_addr as u16);
+        dst.copy_from_slice(&self.internals.lock().unwrap().memory[mapped_base_addr..(mapped_base_addr+dst.len())]);
     }
 
     fn map_address(&self, addr: u16) -> usize {
