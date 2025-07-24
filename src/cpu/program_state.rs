@@ -99,13 +99,13 @@ impl ProgramState
 	}
 
 	pub fn push_memory_loc(&mut self, mem_loc: u16) {
-		self.push(mem_loc as u8);
 		self.push((mem_loc >> 8) as u8);
+		self.push((mem_loc & 0xff) as u8);
 	}
 
 	pub fn pop_memory_loc(&mut self) -> u16 {
-		let upper = self.pop();
 		let lower = self.pop();
+		let upper = self.pop();
 
 		cpu::addr(lower, upper)
 	}
