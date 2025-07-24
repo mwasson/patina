@@ -177,7 +177,7 @@ impl Instruction
 				state.update_zero_neg_flags(state.accumulator);
 			}
 			Instruction::INC => {
-				let new_val = addr_mode.deref(state, b1, b2) + 1;
+				let new_val = addr_mode.deref(state, b1, b2).wrapping_add(1);
 				addr_mode.write(state, b1, b2, new_val);
 				state.update_zero_neg_flags(new_val);
 			}
@@ -435,20 +435,20 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x90 => (Instruction::BCC, Relative, 2, 2), /*boundary*/
 		0x91 => (Instruction::STA, IndirectY, 6, 2),
 		0x94 => (Instruction::STY, ZeroPageX, 4, 2),
-		0x95 => (Instruction::STA, ZeroPageX, 4, 3),
+		0x95 => (Instruction::STA, ZeroPageX, 4, 2),
 		0x96 => (Instruction::STX, ZeroPageY, 4, 2),
 		0x98 => (Instruction::TYA, Implicit, 2, 1),
 		0x99 => (Instruction::STA, AbsoluteY, 5, 3),
 		0x9a => (Instruction::TXS, Implicit, 2, 1),
 		0x9d => (Instruction::STA, AbsoluteX, 5, 3),
 		0xa0 => (Instruction::LDY, Immediate, 2, 2),
+		0xa1 => (Instruction::LDA, IndirectX, 6, 2),
 		0xa2 => (Instruction::LDX, Immediate, 2, 2),
 		0xa4 => (Instruction::LDY, ZeroPage, 3, 2),
 		0xa5 => (Instruction::LDA, ZeroPage, 3, 2),
 		0xa6 => (Instruction::LDX, ZeroPage, 3, 2),
-		0xa9 => (Instruction::LDA, Immediate, 2, 2),
-		0xa1 => (Instruction::LDA, IndirectX, 6, 2),
 		0xa8 => (Instruction::TAY, Implicit, 2, 1),
+		0xa9 => (Instruction::LDA, Immediate, 2, 2),
 		0xaa => (Instruction::TAX, Implicit, 2, 1),
 		0xac => (Instruction::LDY, Absolute, 4, 3),
 		0xad => (Instruction::LDA, Absolute, 4, 3),
@@ -456,7 +456,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xb0 => (Instruction::BCS, Relative, 3, 2), /*boundary*/
 		0xb1 => (Instruction::LDA, IndirectY, 5, 2), /*boundary*/
 		0xb4 => (Instruction::LDY, ZeroPageX, 4, 2),
-		0xb5 => (Instruction::LDA, ZeroPageY, 4, 2),
+		0xb5 => (Instruction::LDA, ZeroPageX, 4, 2),
 		0xb6 => (Instruction::LDX, ZeroPageY, 4, 2),
 		0xb9 => (Instruction::LDA, AbsoluteY, 4, 3), /*boundary*/
 		0xba => (Instruction::TSX, Implicit, 2, 1),
