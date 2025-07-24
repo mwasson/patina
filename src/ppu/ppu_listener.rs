@@ -50,9 +50,6 @@ impl PPUListener
             }
             (PPUSCROLL, WRITE) => {
                 /* TODO */
-                if(value != 0) {
-                    panic!("PPUSCROLL unimplemented but received non-zero value");
-                }
             }
             (PPUADDR, WRITE) => {
                 /* reads the high byte of the address first */
@@ -62,7 +59,6 @@ impl PPUListener
                     if write_hi { (old_v & 0xff) | ((value as u16) << 8 ) }
                     else { value as u16 | (old_v & 0xff00)};
                 self.registers.lock().unwrap().w = if write_hi { 1 } else { 0 };
-                println!("WRITE TO PPUADDR, VRAM ADDRESS IS NOW 0x{:x}", self.registers.lock().unwrap().v);
             }
             (PPUDATA, READ) => {
                 /* TODO: in actuality, this reads from an internal buffer, not VRAM directly;

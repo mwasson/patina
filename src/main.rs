@@ -20,7 +20,6 @@ mod read_write;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
 	let rom = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
-	//let rom = parse_file("/Users/mwasson/instr_misc.nes")?; /* temporary, for testing */
 
 	let mut cpu = ProgramState::from_rom(&rom);
 	let mut ppu = PPUState::from_rom(&rom, cpu.clone_memory());
