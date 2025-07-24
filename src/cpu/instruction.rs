@@ -231,11 +231,19 @@ impl Instruction
 			}
 			Instruction::ROL => {
 				let val = addr_mode.deref(state, b1, b2);
-				addr_mode.write(state, b1, b2, (val << 1) | (val >> 7));
+				let mut result = if StatusFlag::Carry.is_set(state) { 1 } else { 0 };
+				result = result | (val << 1);
+				addr_mode.write(state, b1, b2, result);
+				state.update_flag(StatusFlag::Carry, val & 0x80 != 0);
+				state.update_zero_neg_flags(result);
 			}
 			Instruction::ROR => {
 				let val = addr_mode.deref(state, b1, b2);
-				addr_mode.write(state, b1, b2, (val >> 1) | (val << 7));
+				let mut result = if StatusFlag::Carry.is_set(state) { 0x80 } else { 0 };
+				result = result | (val >> 1);
+				addr_mode.write(state, b1, b2, result);
+				state.update_flag(StatusFlag::Carry, val & 0x1 != 0);
+				state.update_zero_neg_flags(result);
 			}
 			Instruction::RTI => {
 				state.status = state.pop();
@@ -495,7 +503,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xf0 => (Instruction::BEQ, Relative, 2, 2), /*boundary*/
 		0xf1 => (Instruction::SBC, IndirectY, 5, 2),
 		0xf5 => (Instruction::SBC, ZeroPageX, 4, 2),
-		0xf6 => (Instruction::INC, ZeroPageX, 6, 3),
+		0xf6 => (Instruction::INC, ZeroPageX, 6, 2),
 		0xf9 => (Instruction::SBC, AbsoluteY, 4, 3), /*boundary*/
 		0xfd => (Instruction::SBC, AbsoluteX, 4, 3), /*boundary*/
 		0xfe => (Instruction::INC, AbsoluteX, 7, 3),
