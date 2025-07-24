@@ -34,7 +34,6 @@ impl ProgramState
 		/* copy ROM data into memory */
 		/* TODO: handling RAM, mappers, etc. */
 		memory[RAM_MEMORY_START..(RAM_MEMORY_START+rom.prg_data.len())].copy_from_slice(&*rom.prg_data);
-		memory[(RAM_MEMORY_START-rom.chr_data.len())..RAM_MEMORY_START].copy_from_slice(&*rom.chr_data);
 
 		/* set program counter to value in memory at this location */
 
