@@ -26,11 +26,16 @@ impl PPUListener
         }
     }
 
-    pub fn listen(&self, memory: &CoreMemory, updated_register: PPURegister, read_write: ReadWrite, value: u8) {
+    pub fn listen(&self, memory: &CoreMemory, updated_register: PPURegister, read_write: ReadWrite, value: u8) -> Option<u8> {
+
+        let mut result = None;
 
         match (updated_register, read_write) {
             (PPUCTRL, WRITE) => {
-                /* TODO: Triggered NMI on PPUCTRL write */
+                if value & 0x20 != 0 {
+                    panic!("Uh oh, we're in 16 pixel sprite mode...");
+                }
+                /* TODO writing triggers an immediate NMI when in vblank PPUSTATUS */
             }
             (PPUSTATUS, READ) => {
                 self.registers.lock().unwrap().w = 0;
@@ -45,25 +50,39 @@ impl PPUListener
             }
             (PPUSCROLL, WRITE) => {
                 /* TODO */
+                if(value != 0) {
+                    panic!("PPUSCROLL unimplemented but received non-zero value");
+                }
             }
             (PPUADDR, WRITE) => {
                 /* reads the high byte of the address first */
                 let write_hi = self.registers.lock().unwrap().w == 0;
                 let old_v = self.registers.lock().unwrap().v;
-                println!("PPUADDR: writing 0x{:x} with w = {}", value, write_hi);
                 self.registers.lock().unwrap().v =
                     if write_hi { (old_v & 0xff) | ((value as u16) << 8 ) }
                     else { value as u16 | (old_v & 0xff00)};
                 self.registers.lock().unwrap().w = if write_hi { 1 } else { 0 };
+                println!("WRITE TO PPUADDR, VRAM ADDRESS IS NOW 0x{:x}", self.registers.lock().unwrap().v);
             }
             (PPUDATA, READ) => {
-                /* TODO? */
+                /* TODO: in actuality, this reads from an internal buffer, not VRAM directly;
+                 * for now assuming I can get away without that but it's probably necessary for
+                 * complete fidelity.
+                 */
+                let vram_loc = self.registers.lock().unwrap().v;
+                let new_buffered_val = self.vram.lock().unwrap()[vram_loc as usize];
+
+                result = Some(self.registers.lock().unwrap().read_buffer);
+                self.registers.lock().unwrap().read_buffer = new_buffered_val;
+
+                let increase = if PPUCTRL.read(memory) & 0x4 != 0 { 32 } else { 1 };
+                self.registers.lock().unwrap().v = vram_loc + increase;
             }
             (PPUDATA, WRITE) => {
                 let addr = self.registers.lock().unwrap().v;
-                self.vram.lock().unwrap()[addr as usize] = value;
-                println!("writing 0x{:x} to VRAM 0x{:x}", value, addr);
-                let increase = 1; /* needs to be a function of PPUCTRL */
+
+                self.vram.lock().unwrap()[(addr & 0x3fff) as usize] = value;
+                let increase = if PPUCTRL.read(memory) & 0x4 != 0 { 32 } else { 1 };
                 self.registers.lock().unwrap().v = addr + increase;
             }
             (OAMDMA, WRITE) => {
@@ -72,5 +91,7 @@ impl PPUListener
             }
             _ => {}
         }
+
+        result
     }
 }

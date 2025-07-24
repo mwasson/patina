@@ -24,11 +24,16 @@ impl CoreMemory {
     }
 
     pub fn read(&self, addr: u16) -> u8 {
-        let result = self.internals.lock().unwrap().memory[self.map_address(addr)];
-        self.check_for_listener(addr, ReadWrite::READ, result);
+        let mut result = self.internals.lock().unwrap().memory[self.map_address(addr)];
+        /* in some cases, the listener can modify the results */
+        let listener_result = self.check_for_listener(addr, ReadWrite::READ, result);
+        if listener_result.is_some() {
+            self.internals.lock().unwrap().memory[self.map_address(addr)] = listener_result.unwrap();
+            return listener_result.unwrap()
+        }
         result
     }
-    
+
     pub fn copy_range(&self, base_addr: usize, dst: &mut [u8]) {
         let mapped_base_addr = self.map_address(base_addr as u16);
         dst.copy_from_slice(&self.internals.lock().unwrap().memory[mapped_base_addr..(mapped_base_addr+dst.len())]);
@@ -80,6 +85,11 @@ impl CoreMemory {
      */
     fn ppu_mirror() -> fn(u16) -> Option<u16> {
         |addr:u16| -> Option<u16> {
+            if addr > 0x7ff && addr <= 0x1fff {
+                println!("remapping memory mirror: 0x{:x} to 0x{:x}", addr, addr & 0x7ff);
+                return Some(addr & 0x7ff);
+            }
+
             if addr <= 0x1fff { /* system memory */
                 return Some(addr & 0x7FF);
             }  else if addr >= 0x2000 && addr <= 0x3FFF { /* ppu registers */
@@ -90,13 +100,14 @@ impl CoreMemory {
         }
     }
 
-    fn check_for_listener(&self, addr:u16, read_write: ReadWrite, value: u8) {
+    fn check_for_listener(&self, addr:u16, read_write: ReadWrite, value: u8) -> Option<u8> {
         if self.listener.is_some() {
             let possible_register = PPURegister::from_addr(addr);
             if possible_register.is_some() {
                 let register = possible_register.unwrap();
-                self.listener.clone().unwrap().listen(&self, register, read_write, value);
+                return self.listener.clone().unwrap().listen(&self, register, read_write, value);
             }
         }
+        None
     }
 }

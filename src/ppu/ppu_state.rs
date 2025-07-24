@@ -9,8 +9,6 @@ use crate::ppu::ppu_registers::PPURegister::{PPUCTRL, PPUSTATUS};
 use crate::ppu::{Tile, WriteBuffer, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::processor::Processor;
 
-const SECONDARY_OAM_SIZE : usize = 32;
-
 /* TODO: ppumask rendering effects */
 
 /* TODO ppuscroll scrolling */
@@ -20,7 +18,6 @@ const SECONDARY_OAM_SIZE : usize = 32;
 pub struct PPUState {
     vram: Arc<Mutex<VRAM>>,
     oam: Arc<Mutex<OAM>>,
-    secondary_oam: Box<[u8; SECONDARY_OAM_SIZE]>,
     memory: CoreMemory,
     write_buffer: Arc<Mutex<WriteBuffer>>,
     ppu_internal_registers: Arc<Mutex<PPUInternalRegisters>>
@@ -37,6 +34,8 @@ pub struct PPUInternalRegisters
     pub x: u8,
     /* toggles on write to PPUSCROLL or PPUADDR, indicating whether 1st/2nd write; 'write latch' */
     pub w: u8,
+    /* buffer for reading via PPUDATA */
+    pub read_buffer: u8
 }
 
 impl Processor for PPUState {
@@ -59,7 +58,6 @@ impl PPUState {
        Box::new(PPUState {
             vram: Arc::new(Mutex::new(vram)),
             oam: Arc::new(Mutex::new(oam)),
-            secondary_oam: Box::new([0; SECONDARY_OAM_SIZE]),
             memory,
             write_buffer,
             ppu_internal_registers: Arc::new(Mutex::new(PPUInternalRegisters {
@@ -67,6 +65,7 @@ impl PPUState {
                 t: 0,
                 x: 0,
                 w: 0,
+                read_buffer: 0,
             }))
         })
     }
@@ -79,6 +78,8 @@ impl PPUState {
         /* dummy scanline */
         /* clear VBlank */
         PPUSTATUS.set_flag_off(&mut self.memory, 7);
+        /* clear sprite 0 hit flag */
+        PPUSTATUS.set_flag_off(&mut self.memory, 6);
         self.run_timed(341, |_unused| {});
 
         /* visible scanlines */
@@ -110,15 +111,20 @@ impl PPUState {
     fn render_scanline(&mut self, scanline: u8) -> [u8; 256*4]{
         // println!("Rendering line {scanline}");
 
-        self.sprite_evaluation(scanline);
+        let scanline_sprites = self.sprite_evaluation(scanline);
 
         let mut line_buffer = [0; 256*4];
         let line_buffer_num_pixels = line_buffer.len()/4;
         for (pixel_buffer,i) in line_buffer.chunks_exact_mut(4).zip((0..line_buffer_num_pixels)) {
             let iu8 = i as u8;
-            let (fg_sprite, fg_brightness) = self.find_first_sprite(iu8, scanline, true);
+            let (fg_sprite, fg_brightness) = self.find_first_sprite(iu8, scanline, true, &scanline_sprites);
             let (bg_pixels, bg_tile_brightness) = self.background_brightness(iu8, scanline);
-            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(iu8, scanline, false);
+            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(iu8, scanline, false, &scanline_sprites);
+
+            /* check for sprite zero hits */
+            if fg_brightness > 0 && bg_tile_brightness > 0 && fg_sprite.unwrap().sprite_index == 0 {
+                PPUSTATUS.set_flag_on(&mut self.memory, 6);
+            }
 
             let pixels = if fg_brightness > 0 {
                 fg_sprite.unwrap().color_from_brightness(self, fg_brightness)
@@ -137,20 +143,15 @@ impl PPUState {
         line_buffer
     }
 
-    fn find_first_sprite(&self, x: u8, y: u8, is_foreground: bool) -> (Option<SpriteInfo>, u8) {
+    fn find_first_sprite(&self, x: u8, y: u8, is_foreground: bool, scanline_sprites: &Vec<SpriteInfo>) -> (Option<SpriteInfo>, u8) {
         let mut brightness = 0;
-        let mut sprite = Option::None;
-        for sprite_data in self.secondary_oam.chunks_exact(4) {
-            /* check if initialized: TODO probably a better way to do this; relying on secondary oam state a lot */
-            if sprite_data == [0,0,0,0] || sprite_data == [0xff,0xff,0xff,0xff] {
-                continue;
-            }
-            let cur_sprite = SpriteInfo::from_memory(sprite_data);
+        let mut sprite = None;
+        for cur_sprite in scanline_sprites {
             if cur_sprite.at_x_position(x) && cur_sprite.is_foreground() == is_foreground {
                 let sprite_brightness = cur_sprite.get_brightness(self, x, y);
                 if(sprite_brightness != 0) {
                     brightness = sprite_brightness;
-                    sprite = Some(cur_sprite);
+                    sprite = Some(cur_sprite.clone());
                     break;
                 }
             }
@@ -162,16 +163,17 @@ impl PPUState {
         let tile = self.tile_for_pixel(x,y);
         let palette = self.palette_for_pixel(x,y);
 
-        let tile_origin = (x - x % 8, y  - y%8);
-        let brightness = tile.pixel_intensity((x - tile_origin.0) as usize, (y - tile_origin.1) as usize);
+        let brightness = tile.pixel_intensity((x % 8) as usize, (y % 8) as usize);
 
         (palette.brightness_to_pixels(brightness), brightness)
     }
 
     /* TODO; this only uses the first name table */
     fn tile_for_pixel(&self, x:u8, y:u8) -> Tile {
+        /* TODO: might be using wrong nametable for sprites */
+        let nametable_base_addr : usize = 0x2000 + 0x400 * (PPUCTRL.read(&self.memory) & 0x3) as usize;
         let offset : usize = ((y as usize)/8*32 + (x as usize)/8);
-        let tile_index = self.vram.lock().unwrap()[0x2000 + offset];
+        let tile_index = self.vram.lock().unwrap()[nametable_base_addr + offset];
         self.get_bg_tile(tile_index)
     }
 
@@ -195,58 +197,34 @@ impl PPUState {
         self.get_palette((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
     }
 
-    /* TODO: this is just a sketch; not really sure how I want to use 'cycle' yet */
-    fn sprite_evaluation(&mut self, scanline_num:u8) {
-        for i in (0..self.secondary_oam.len()) {
-            self.secondary_oam[i] = 0xff;
-        }
-        self.write_scanline_sprites(scanline_num);
-        // /* first 64 cycles: clear secondary oam */
-        // if(cycle <= 64 && cycle % 2 == 0) {
-        //     self.secondary_oam[(cycle/2) as usize] = 0xff;
-        // /* 65-256: sprite evaluation */
-        // } else if (cycle <= 256) {
-        //     self.write_scanline_sprites(cpu, scanline_num);
-        //
-        // /* 257-320: sprite fetches */
-        // } else if (cycle <= 320) {
-        //
-        //     /* TODO */
-        // /* 321-340 + 0 (?): background render pipeline initialization */
-        // } else {
-        //     /* TODO */
-        // }
-    }
-
     /* Finds the first eight sprites on the given scanline, determined
      * by position in the OAM. Takes into account whether sprites are 8 or 16
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
-    fn write_scanline_sprites(&mut self, scanline_num: u8) {
-        let mut i = 0;
+    fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo>{
         let sprite_size = 8; /* TODO */
-        let mut sprites_found = 0;
+        let mut scanline_sprites = Vec::new();
         for i in (0..OAM_SIZE/4) {
             let sprite_data = self.slice_as_sprite(i);
             if sprite_data.in_scanline(scanline_num, self) {
                 /* already found eight sprites, set overflow */
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
-                if(sprites_found >= 8) {
+                if(scanline_sprites.len() >= 8) {
                     let old_status = PPUSTATUS.read(&self.memory);
                     PPUSTATUS.write(&mut self.memory, old_status | 0x20);
                     break;
                 }
-                sprite_data.copy_to_mem(&mut self.secondary_oam[(sprites_found*4)..(sprites_found*4+4)]);
-                sprites_found += 1;
+                scanline_sprites.push(sprite_data);
             }
         }
+        scanline_sprites
     }
 
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
         let mut sprite_data = [0u8; 4];
-        sprite_data.copy_from_slice(&self.vram.lock().unwrap()[sprite_index*4..sprite_index*4+4]);
-        SpriteInfo::from_memory(&sprite_data)
+        sprite_data.copy_from_slice(&self.oam.lock().unwrap()[sprite_index*4..sprite_index*4+4]);
+        SpriteInfo::from_memory(&sprite_data, sprite_index as u8)
     }
 
     /* sprites are 8 pixels tall unless the 5th bit of PPUCTRL is true, then they're 16 */
@@ -256,16 +234,16 @@ impl PPUState {
 
     /* TODO: handle 8x16 sprites */
     fn get_sprite_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, (PPUCTRL.read(&self.memory) & 0x4).count_ones() as usize)
+        self.get_tile(tile_index, ((PPUCTRL.read(&self.memory) & 0x8) >> 3) as usize)
     }
 
     fn get_bg_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, (PPUCTRL.read(&self.memory) & 0x8).count_ones() as usize)
+        self.get_tile(tile_index, ((PPUCTRL.read(&self.memory) & 0x10) >> 4) as usize)
     }
 
     fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
         let pattern_table_base : usize = 0x1000 * pattern_table_num;
-        let mut memcopy = [0 as u8; 16];
+        let mut memcopy = [0u8; 16];
         memcopy.copy_from_slice(&self.vram.lock().unwrap()[pattern_table_base..(pattern_table_base+0x1000)].chunks_exact(16).nth(tile_index as usize).unwrap());
         Tile::from_memory(memcopy)
     }
@@ -280,17 +258,19 @@ impl PPUState {
 
     fn pixel_range_for_line(x: u8) -> core::ops::Range<usize> {
         let x_usize = x as usize;
-        (4*x_usize)..(4*(x_usize+256))
+        let range_width = 4*256; /* 4 bytes per pixel, 256 pixels per line */
+        ((x_usize*range_width)..(x_usize+1)*range_width)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct SpriteInfo
 {
     y: u8,
     tile_index: u8,
     attrs: u8,
-    x: u8
+    x: u8,
+    sprite_index: u8,
 }
 
 impl SpriteInfo {
@@ -332,12 +312,13 @@ impl SpriteInfo {
     }
 
     /* create a SpriteInfo from memory */
-    fn from_memory(src_slice: &[u8]) -> SpriteInfo {
+    fn from_memory(src_slice: &[u8], index: u8) -> SpriteInfo {
         SpriteInfo {
             y: src_slice[0],
             tile_index: src_slice[1],
             attrs: src_slice[2],
-            x: src_slice[3]
+            x: src_slice[3],
+            sprite_index: index,
         }
     }
 }
