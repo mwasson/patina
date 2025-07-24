@@ -55,6 +55,7 @@ pub enum Instruction
 
 	/* arithmetic */
 	ADC, /* Add With Carry */
+	SBC, /* Subtract With Carry */
 
 	/* rotates */
 	ROL, /* Rotate Left */
@@ -233,6 +234,16 @@ impl Instruction
 			}
 			Instruction::RTS => {
 				state.program_counter = state.pop_memory_loc() + 1;
+			}
+			Instruction::SBC => {
+				let mem_val = addr_mode.deref(state, b1, b2);
+				let old_a = state.accumulator;
+				let result_carry: i16 = old_a as i16 - mem_val as i16 - (1 - StatusFlag::Carry.is_set(state) as i16);
+				let result = result_carry as u8;
+				state.accumulator = result;
+				state.update_zero_neg_flags(result);
+				state.update_flag(StatusFlag::Carry, result_carry < 0);
+				state.update_flag(StatusFlag::Overflow, (result ^ old_a) & (result ^ !mem_val) & 0x80 != 0);
 			}
 			Instruction::SEC => {
 				StatusFlag::Carry.update_bool(state, true);
@@ -459,13 +470,21 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xdd => (Instruction::CMP, AbsoluteX, 4, 3), /*boundary*/
 		0xde => (Instruction::DEC, AbsoluteX, 7, 3),
 		0xe0 => (Instruction::CPX, Immediate, 2, 2),
+		0xe1 => (Instruction::SBC, IndirectX, 6, 2),
 		0xe4 => (Instruction::CPX, ZeroPage, 3, 2),
+		0xe5 => (Instruction::SBC, ZeroPage, 3, 2),
 		0xe6 => (Instruction::INC, ZeroPage, 5, 2),
 		0xe8 => (Instruction::INX, Implicit, 2, 1),
+		0xe9 => (Instruction::SBC, Immediate, 2, 2),
 		0xec => (Instruction::CPX, Absolute, 4, 3),
+		0xed => (Instruction::SBC, Absolute, 4, 3),
 		0xee => (Instruction::INC, Absolute, 6, 3),
 		0xf0 => (Instruction::BEQ, Relative, 2, 2), /*boundary*/
+		0xf1 => (Instruction::SBC, IndirectY, 5, 2),
+		0xf5 => (Instruction::SBC, ZeroPageX, 4, 2),
 		0xf6 => (Instruction::INC, ZeroPageX, 6, 3),
+		0xf9 => (Instruction::SBC, AbsoluteY, 4, 3), /*boundary*/
+		0xfd => (Instruction::SBC, AbsoluteX, 4, 3), /*boundary*/
 		0xfe => (Instruction::INC, AbsoluteX, 7, 3),
 		_ => panic!("Unknown opcode 0x{opcode:x}")
 	};
