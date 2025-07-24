@@ -15,6 +15,7 @@ pub struct ProgramState
 	pub program_counter: u16,
 	pub status: u8,
 	memory: CoreMemory,
+	instruction_counter: u32,
 }
 
 impl Processor for ProgramState
@@ -45,7 +46,8 @@ impl ProgramState
 			s_register: 0xff,
 			program_counter: 0x00,
 			status: (0x11) << 4,
-			memory: CoreMemory::new(memory)
+			memory: CoreMemory::new(memory),
+			instruction_counter: 0,
 		};
 
 		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&result, INITIAL_PC_LOCATION);
@@ -60,18 +62,26 @@ impl ProgramState
 
 		let operation_loc = self.program_counter;
 		/* TODO: what if this hits the top of program memory */
+		// println!("operation loc 0x{operation_loc:x}");
 		let operation = operation_from_memory(self.read_mem(operation_loc),
 											  self.read_mem(operation_loc.wrapping_add(1)),
 											  self.read_mem(operation_loc.wrapping_add(2)));
 		// match operation.realized_instruction.instruction {
-		// 	Instruction::BPL => {}
-		// 	Instruction::LDA => {}
-		// 	_ => { println!("Running operation: {operation:?}"); }
+			// _ => { println!("Running operation #{}, pc=0x{:x}: {:?}",
+			// 				self.instruction_counter, self.program_counter, operation) }
 		// }
 
 		self.run_timed(operation.realized_instruction.cycles, |state| {
 			operation.apply(state)
 		});
+		self.instruction_counter += 1;
+	}
+
+	/* for debugging */
+	pub fn print_low_memory(&self) {
+		let mut low_mem = [0u8;0x100];
+		self.memory.copy_range(0, &mut low_mem);
+		println!("Low memory: {:?}", low_mem);
 	}
 
 	pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {
