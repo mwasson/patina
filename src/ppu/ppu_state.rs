@@ -170,18 +170,18 @@ impl PPUState {
 
     /* TODO; this only uses the first name table */
     fn tile_for_pixel(&self, x:u8, y:u8) -> Tile {
-        /* TODO: might be using wrong nametable for sprites */
         let nametable_base_addr : usize = 0x2000 + 0x400 * (PPUCTRL.read(&self.memory) & 0x3) as usize;
-        let offset : usize = ((y as usize)/8*32 + (x as usize)/8);
+        let offset : usize = (y as usize)/8*32 + (x as usize)/8;
         let tile_index = self.vram.lock().unwrap()[nametable_base_addr + offset];
         self.get_bg_tile(tile_index)
     }
 
     /* TODO: this only uses the first attribute table */
     fn palette_for_pixel(&self, x:u8, y:u8) -> Palette {
+        let nametable_base = 0x2000 + 0x400 * (PPUCTRL.read(&self.memory) & 0x3) as usize;
         /* each address controls a 32x32 pixel block; 8 blocks per row */
         let attr_addr = y/32*8 + x/32;
-        let attr_table_value = self.vram.lock().unwrap()[0x23c0 + attr_addr as usize];
+        let attr_table_value = self.vram.lock().unwrap()[nametable_base + 0x3c0 + attr_addr as usize];
         /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
          * in order from the lowest bits they are: upper left, upper right, bottom left, bottom right
          */
@@ -243,8 +243,9 @@ impl PPUState {
 
     fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
         let pattern_table_base : usize = 0x1000 * pattern_table_num;
+        let tile_start = pattern_table_base + (tile_index as usize * 16);
         let mut memcopy = [0u8; 16];
-        memcopy.copy_from_slice(&self.vram.lock().unwrap()[pattern_table_base..(pattern_table_base+0x1000)].chunks_exact(16).nth(tile_index as usize).unwrap());
+        memcopy.copy_from_slice(&self.vram.lock().unwrap()[tile_start..tile_start+16]);
         Tile::from_memory(memcopy)
     }
 
@@ -260,6 +261,13 @@ impl PPUState {
         let x_usize = x as usize;
         let range_width = 4*256; /* 4 bytes per pixel, 256 pixels per line */
         ((x_usize*range_width)..(x_usize+1)*range_width)
+    }
+
+    fn print_nametable(&self) {
+        let nametable_size = 0x400;
+        let nametable_base = 0x2400 + ((PPUCTRL.read(&self.memory) as usize ) & 0x3) * 0x400;
+        let nametable = &self.vram.lock().unwrap()[nametable_base..nametable_base+nametable_size];
+        println!("{:?}", nametable);
     }
 }
 
