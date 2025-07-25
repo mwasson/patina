@@ -69,18 +69,15 @@ impl ProgramState
 			// _ => { println!("Running operation #{}, pc=0x{:x}: {:?}",
 			// 				self.instruction_counter, self.program_counter, operation) }
 		// }
+		// if(self.instruction_counter >= 300000) {
+		// 	println!("here we go!");
+		// 	self.memory.write(0x06fc, 0x10);
+		// }
 
-		self.run_timed(operation.realized_instruction.cycles, |state| {
+		self.run_timed(operation.realized_instruction.cycles as u32, |state| {
 			operation.apply(state)
 		});
 		self.instruction_counter += 1;
-	}
-
-	/* for debugging */
-	pub fn print_low_memory(&self) {
-		let mut low_mem = [0u8;0x100];
-		self.memory.copy_range(0, &mut low_mem);
-		println!("Low memory: {:?}", low_mem);
 	}
 
 	pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {

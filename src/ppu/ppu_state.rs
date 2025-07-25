@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use crate::cpu::{CoreMemory};
 use crate::rom::Rom;
 
@@ -71,10 +72,11 @@ impl PPUState {
     }
 
     pub fn get_listener(&self) -> PPUListener {
-        PPUListener::new(&self.vram, &self.oam, &self.ppu_internal_registers)
+        PPUListener::new(&self.vram, &self.oam, &self.ppu_internal_registers, &self.memory)
     }
 
-    pub fn render_screen(&mut self) {
+    pub fn render_screen(&mut self) { ;
+        let start_time = Instant::now();
         /* dummy scanline */
         /* clear VBlank */
         PPUSTATUS.set_flag_off(&mut self.memory, 7);
@@ -82,13 +84,14 @@ impl PPUState {
         PPUSTATUS.set_flag_off(&mut self.memory, 6);
         self.run_timed(341, |_unused| {});
 
-        /* visible scanlines */
-        for i in (0..240) {
-            self.run_timed(341, |ppu| {
-                let scanline_pixels= &ppu.render_scanline(i);
+        self.run_timed(341*240, |ppu| {
+            let test_start = Instant::now();
+            /* visible scanlines */
+            for i in (0..240) {
+                let scanline_pixels = &ppu.render_scanline(i);
                 ppu.write_buffer.lock().unwrap()[Self::pixel_range_for_line(i)].copy_from_slice(scanline_pixels);
-            })
-        }
+            }
+        });
 
         /* post-render scanline; first tick of VBlank */
         self.run_timed(341, |_unused| {});
@@ -102,6 +105,8 @@ impl PPUState {
 
         /* VBlank scanlines */
         self.run_timed(20*341-2, |_unused| {});
+        // println!("Screen rendering time: {}ms", Instant::now().duration_since(start_time).as_millis());
+        self.print_vram_memory(0x23f0, 0x16);
     }
 
     pub fn get_write_buffer(&self) -> Arc<Mutex<WriteBuffer>> {
@@ -110,6 +115,13 @@ impl PPUState {
 
     fn render_scanline(&mut self, scanline: u8) -> [u8; 256*4]{
         // println!("Rendering line {scanline}");
+        for i in (0x23f0..0x2400)
+        {
+            // if i % 8 >= 4 {
+            //     let new_val = self.vram.lock().unwrap()[i - 4];
+            //     self.vram.lock().unwrap()[i] = new_val;
+            // }
+        }
 
         let scanline_sprites = self.sprite_evaluation(scanline);
 
@@ -251,7 +263,7 @@ impl PPUState {
 
     fn get_palette(&self, palette_index: u8) -> Palette {
         let palette_mem_loc : usize = 0x3f00 + (palette_index as usize)*4;
-        let mut palette_data = [0 as u8; 4];
+        let mut palette_data = [0u8; 4];
         palette_data.copy_from_slice(&self.vram.lock().unwrap()[palette_mem_loc..palette_mem_loc+4]);
 
         Palette::new(palette_data)
@@ -266,8 +278,18 @@ impl PPUState {
     fn print_nametable(&self) {
         let nametable_size = 0x400;
         let nametable_base = 0x2400 + ((PPUCTRL.read(&self.memory) as usize ) & 0x3) * 0x400;
-        let nametable = &self.vram.lock().unwrap()[nametable_base..nametable_base+nametable_size];
-        println!("{:?}", nametable);
+        self.print_vram_memory(nametable_base, nametable_size);
+    }
+
+    pub fn print_vram_memory(&self, base_addr: usize, len: usize) {
+        let mut mem = Vec::new();
+        mem.extend_from_slice(&self.vram.lock().unwrap()[base_addr..(base_addr+len)]);
+        let mut output = String::new();
+        output.push_str(format!("VRAM Memory [0x{:x}..0x{:x}] : \n", base_addr, base_addr+len).as_str());
+        for i in 0..len {
+            output.push_str(format!("[0x{:x}]: 0x{:x}\n", base_addr+i, mem[i]).as_str());
+        }
+        println!("{}", output);
     }
 }
 

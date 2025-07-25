@@ -3,7 +3,7 @@ use std::time;
 pub trait Processor {
     fn clock_speed(&self) -> u64;
 
-    fn run_timed<F,U>(&mut self, cycles:u16, f: F) -> U where
+    fn run_timed<F,U>(&mut self, cycles:u32, f: F) -> U where
         F: FnOnce(&mut Self) -> U,
     {
         let start_time = time::Instant::now();

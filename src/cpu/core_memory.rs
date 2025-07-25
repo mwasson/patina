@@ -1,9 +1,11 @@
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use crate::cpu::{MEMORY_SIZE};
 use crate::ppu::{PPUListener, PPURegister};
 use crate::read_write::ReadWrite;
 /* TODO: should this also handle side-effects? */
 
+#[derive(Clone)]
 pub struct CoreMemory
 {
     address_mapper: fn(u16) -> Option<u16>,
@@ -21,6 +23,15 @@ impl CoreMemory {
     pub fn write(&mut self, addr: u16, data: u8) {
         self.internals.lock().unwrap().memory[self.map_address(addr)] = data;
         self.check_for_listener(addr, ReadWrite::WRITE, data);
+        if(addr >= 0x300 && addr < 0x700 && data == 0xaa) {
+            println!("writing 0xaa to: 0x{addr:x}");
+            println!();
+            if(addr == 0x42e) {
+                /* program counter 0x871c */
+                self.print_memory(0x8700,0x100);
+                println!("break here");
+            }
+        }
     }
 
     pub fn read(&self, addr: u16) -> u8 {
@@ -78,6 +89,18 @@ impl CoreMemory {
 
     pub fn reset_nmi(&mut self) {
         self.internals.lock().unwrap().nmi_triggered = false;
+    }
+
+    /* for debugging */
+    pub fn print_memory(&self, base_addr: usize, len: usize) {
+        let mut mem = Vec::new();
+        mem.extend_from_slice(&self.internals.lock().unwrap().memory[base_addr..(base_addr+len)]);
+        let mut output = String::new();
+        output.push_str(format!("Memory [0x{:x}..0x{:x}] : \n", base_addr, base_addr+len).as_str());
+        for i in 0..len {
+            output.push_str(format!("[0x{:x}]: 0x{:x}\n", base_addr+i, mem[i]).as_str());
+        }
+        println!("{}", output);
     }
 
     /* the PPU registers are at 0x2000 through 0x2007; they're then remapped every eight bytes up

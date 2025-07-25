@@ -30,6 +30,10 @@ impl StatusFlag
 		state.status & (1 << self.mask()) != 0
 	}
 
+	pub fn as_num(&self, state: &ProgramState) -> u8 {
+		(state.status & (1 << self.mask())) >> self.mask()
+	}
+
 	pub fn update_bool(&self, state: &mut ProgramState, new_val: bool) {
 		let new_val_as_number = if new_val { 1 } else { 0 };
 		if new_val {

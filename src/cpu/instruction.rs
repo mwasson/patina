@@ -87,15 +87,7 @@ impl Instruction
 			 addr_mode: &AddressingMode, b1: u8, b2: u8) {
 		match self {
 			Instruction::ADC => {
-				let mem_val = addr_mode.deref(state, b1, b2);
-				let old_a = state.accumulator;
-				let result_carry: u16 = old_a as u16 + mem_val as u16 + StatusFlag::Carry.is_set(state) as u16;
-				let result = result_carry as u8;
-				state.accumulator = result;
-				state.update_zero_neg_flags(result);
-				state.update_flag(StatusFlag::Carry, result_carry > 0xff);
-				state.update_flag(StatusFlag::Overflow, (result ^ old_a) & (result ^ mem_val) & 0x80 != 0);
-
+				add_with_carry_and_update(state, addr_mode.deref(state, b1, b2), StatusFlag::Carry.as_num(state));
 			}
 			Instruction::AND => {
 				let mem_val = addr_mode.deref(state, b1, b2);
@@ -254,14 +246,7 @@ impl Instruction
 				state.program_counter = state.pop_memory_loc() + 1;
 			}
 			Instruction::SBC => {
-				let mem_val = addr_mode.deref(state, b1, b2);
-				let old_a = state.accumulator;
-				let result_carry: i16 = old_a as i16 - mem_val as i16 - (1 - StatusFlag::Carry.is_set(state) as i16);
-				let result = result_carry as u8;
-				state.accumulator = result;
-				state.update_zero_neg_flags(result);
-				state.update_flag(StatusFlag::Carry, result_carry < 0);
-				state.update_flag(StatusFlag::Overflow, (result ^ old_a) & (result ^ !mem_val) & 0x80 != 0);
+				add_with_carry_and_update(state, !addr_mode.deref(state, b1, b2), StatusFlag::Carry.as_num(state));
 			}
 			Instruction::SEC => {
 				StatusFlag::Carry.update_bool(state, true);
@@ -521,4 +506,22 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 
 fn handle_unknown_opcode(opcode: u8) -> (Instruction, AddressingMode, u16, u8) /* unused */ {
 	panic!("Unknown opcode 0x{opcode:x}");
+}
+
+fn add_with_carry_and_update(state: &mut ProgramState, mem_val: u8, carry: u8) {
+	let old_a = state.accumulator;
+
+	let (result, carry) = add_with_carry_impl(old_a, mem_val, carry);
+
+	state.accumulator = result;
+	state.update_zero_neg_flags(result);
+	state.update_flag(StatusFlag::Carry, carry);
+	state.update_flag(StatusFlag::Overflow, (result ^ old_a) & (result ^ mem_val) & 0x80 != 0);
+}
+
+fn add_with_carry_impl(a:u8, b:u8, carry:u8) -> (u8, bool) {
+	let first_add_result = a.overflowing_add(b);
+	let second_add_result = first_add_result.0.overflowing_add(carry);
+
+	(second_add_result.0, first_add_result.1 || second_add_result.1)
 }

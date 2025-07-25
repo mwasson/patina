@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use crate::cpu::CoreMemory;
+use crate::cpu::{CoreMemory, ProgramState};
 use crate::ppu::ppu_state::PPUInternalRegisters;
 use crate::ppu::{PPURegister, OAM, VRAM};
 use crate::ppu::PPURegister::*;
@@ -12,17 +12,20 @@ pub struct PPUListener
     vram: Arc<Mutex<VRAM>>,
     oam: Arc<Mutex<OAM>>,
     registers: Arc<Mutex<PPUInternalRegisters>>,
+    memory: Arc<CoreMemory>,
 }
 
 impl PPUListener
 {
     pub fn new(vram: &Arc<Mutex<VRAM>>,
                oam: &Arc<Mutex<OAM>>,
-               registers: &Arc<Mutex<PPUInternalRegisters>>) -> PPUListener {
+               registers: &Arc<Mutex<PPUInternalRegisters>>,
+               memory: &CoreMemory) -> PPUListener {
         PPUListener {
             vram: vram.clone(),
             oam: oam.clone(),
             registers: registers.clone(),
+            memory: Arc::new(memory.clone()),
         }
     }
 
@@ -75,11 +78,16 @@ impl PPUListener
                 self.registers.lock().unwrap().v = vram_loc + increase;
             }
             (PPUDATA, WRITE) => {
-                let addr = self.registers.lock().unwrap().v;
+                let addr = (self.registers.lock().unwrap().v & 0x3fff) as usize;
 
-                self.vram.lock().unwrap()[(addr & 0x3fff) as usize] = value;
+                self.vram.lock().unwrap()[addr] = value;
                 let increase = if PPUCTRL.read(memory) & 0x4 != 0 { 32 } else { 1 };
-                self.registers.lock().unwrap().v = addr + increase;
+                self.registers.lock().unwrap().v = addr as u16 + increase;
+
+                if addr == 0x23f5 && value == 0xaa {
+                    println!("VRAM write: [0x{addr:x}] = 0x{value:x}");
+                    // self.memory.print_memory(36539 - 36539 % 0x100, 0x100);
+                }
             }
             (OAMDMA, WRITE) => {
                 let base_addr = ((value as u16) << 8) as usize;
