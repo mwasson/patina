@@ -1,5 +1,5 @@
 use crate::cpu;
-use crate::cpu::{operation_from_memory, AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE, RAM_MEMORY_START};
+use crate::cpu::{operation_from_memory, AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
 use crate::cpu::core_memory::CoreMemory;
 use crate::cpu::instruction::Instruction;
 use crate::ppu::{PPUListener, PPURegister};
@@ -33,7 +33,7 @@ impl ProgramState
 
 		/* copy ROM data into memory */
 		/* TODO: handling RAM, mappers, etc. */
-		memory[RAM_MEMORY_START..(RAM_MEMORY_START+rom.prg_data.len())].copy_from_slice(&*rom.prg_data);
+		memory[(0x10000 - rom.prg_data.len())..0x10000].copy_from_slice(&*rom.prg_data);
 
 		/* set program counter to value in memory at this location */
 
