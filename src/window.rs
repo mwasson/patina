@@ -13,7 +13,7 @@ pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>) -> Result<(), Box<d
 	let event_loop = EventLoop::new();
 	let window = WindowBuilder::new()
 		.with_title("Patina")
-		.with_inner_size(LogicalSize::new(512, 256))
+		.with_inner_size(LogicalSize::new(276, 256))
 		.build(&event_loop)
 		.unwrap();
 
