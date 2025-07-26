@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use crate::cpu::{CoreMemory, ProgramState};
 use crate::ppu::ppu_state::PPUInternalRegisters;
-use crate::ppu::{PPURegister, OAM, VRAM};
+use crate::ppu::{PPURegister, PPUState, OAM, VRAM};
 use crate::ppu::PPURegister::*;
 use crate::read_write::ReadWrite;
 use crate::read_write::ReadWrite::*;
@@ -36,8 +36,14 @@ impl PPUListener
         match (updated_register, read_write) {
             (PPUCTRL, WRITE) => {
                 if value & 0x20 != 0 {
-                    panic!("Uh oh, we're in 16 pixel sprite mode...");
+                    panic!("Uh oh, we're in 16 pixel sprite mode..."); /* TODO unimplemented */
                 }
+                /* copy low 2 bits into t's 11th and 12th bits, for scrolling control */
+                self.registers.lock().and_then(|mut registers| {
+                   let old_t = registers.t;
+                    registers.t = (old_t & !0x0c00) | ((value as u16 & 0x3) << 10);
+                    Ok(())
+                }).expect("");
                 /* TODO writing triggers an immediate NMI when in vblank PPUSTATUS */
             }
             (PPUSTATUS, READ) => {
@@ -81,7 +87,7 @@ impl PPUListener
                  * complete fidelity.
                  */
                 let vram_loc = self.registers.lock().unwrap().v;
-                let new_buffered_val = self.vram.lock().unwrap()[vram_loc as usize];
+                let new_buffered_val = self.vram.lock().unwrap()[PPUState::vram_address_mirror(vram_loc)];
 
                 result = Some(self.registers.lock().unwrap().read_buffer);
                 self.registers.lock().unwrap().read_buffer = new_buffered_val;
@@ -90,13 +96,13 @@ impl PPUListener
                 self.registers.lock().unwrap().v = vram_loc + increase;
             }
             (PPUDATA, WRITE) => {
-                let addr = (self.registers.lock().unwrap().v & 0x3fff) as usize;
+                let addr = self.registers.lock().unwrap().v & 0x3fff;
 
-                self.vram.lock().unwrap()[addr] = value;
+                self.vram.lock().unwrap()[PPUState::vram_address_mirror(addr)] = value;
                 let increase = if PPUCTRL.read(memory) & 0x4 != 0 { 32 } else { 1 };
                 self.registers.lock().unwrap().v = addr as u16 + increase;
 
-                if addr == 0x23f5 && value == 0xaa {
+                if addr == 0x3f00 || addr == 0x3f10 {
                     println!("VRAM write: [0x{addr:x}] = 0x{value:x}");
                     // self.memory.print_memory(36539 - 36539 % 0x100, 0x100);
                 }

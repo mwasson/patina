@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use crate::cpu::{CoreMemory};
@@ -106,7 +105,6 @@ impl PPUState {
         /* VBlank scanlines */
         self.run_timed(20*341-2, |_unused| {});
         // println!("Screen rendering time: {}ms", Instant::now().duration_since(start_time).as_millis());
-        self.print_vram_memory(0x23f0, 0x16);
     }
 
     pub fn get_write_buffer(&self) -> Arc<Mutex<WriteBuffer>> {
@@ -114,53 +112,57 @@ impl PPUState {
     }
 
     fn render_scanline(&mut self, scanline: u8) -> [u8; 256*4]{
-        // println!("Rendering line {scanline}");
-        for i in (0x23f0..0x2400)
-        {
-            // if i % 8 >= 4 {
-            //     let new_val = self.vram.lock().unwrap()[i - 4];
-            //     self.vram.lock().unwrap()[i] = new_val;
-            // }
-        }
-
         let scanline_sprites = self.sprite_evaluation(scanline);
 
         let mut line_buffer = [0; 256*4];
         let line_buffer_num_pixels = line_buffer.len()/4;
-        for (pixel_buffer,i) in line_buffer.chunks_exact_mut(4).zip((0..line_buffer_num_pixels)) {
-            let iu8 = i as u8;
-            let (fg_sprite, fg_brightness) = self.find_first_sprite(iu8, scanline, true, &scanline_sprites);
-            let (bg_pixels, bg_tile_brightness) = self.background_brightness(iu8, scanline);
-            let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(iu8, scanline, false, &scanline_sprites);
+        let mut sprite_zero_hit = false;
+        let ppuctrl = PPUCTRL.read(&self.memory);
+        let _ = self.vram.lock().and_then(|vram| {
+            for (pixel_buffer,i) in line_buffer.chunks_exact_mut(4).zip((0..line_buffer_num_pixels)) {
+                let start2 = Instant::now();
+                let iu8 = i as u8;
+                let (fg_sprite, fg_brightness) = self.find_first_sprite(&vram, ppuctrl, iu8, scanline, true, &scanline_sprites);
+                let (bg_pixels, bg_tile_brightness) = self.background_brightness(&vram, ppuctrl, iu8, scanline);
+                let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(&vram, ppuctrl, iu8, scanline, false, &scanline_sprites);
 
-            /* check for sprite zero hits */
-            if fg_brightness > 0 && bg_tile_brightness > 0 && fg_sprite.unwrap().sprite_index == 0 {
-                PPUSTATUS.set_flag_on(&mut self.memory, 6);
+                let brightness_checks_time = start2.elapsed();
+
+                /* check for sprite zero hits */
+                if fg_brightness > 0 && bg_tile_brightness > 0 && fg_sprite.unwrap().sprite_index == 0 {
+                    sprite_zero_hit = true;
+                }
+
+                let pixels = if fg_brightness > 0 {
+                    fg_sprite.unwrap().color_from_brightness(&vram, self, fg_brightness)
+                } else if bg_tile_brightness > 0 {
+                    bg_pixels
+                } else if bg_sprite_brightness > 0 {
+                    bg_sprite.unwrap().color_from_brightness(&vram, self, bg_sprite_brightness)
+                } else {
+                    /* use the master background color, stored in color 0 of palette 0 */
+                    self.get_palette_no_locking(&vram,0).brightness_to_pixels(0)
+                };
+
+                pixel_buffer.copy_from_slice(&pixels);
             }
+            Result::from(Ok(()))
+        });
 
-            let pixels = if fg_brightness > 0 {
-                fg_sprite.unwrap().color_from_brightness(self, fg_brightness)
-            } else if bg_tile_brightness > 0 {
-                bg_pixels
-            } else if bg_sprite_brightness > 0 {
-                bg_sprite.unwrap().color_from_brightness(self, bg_sprite_brightness)
-            } else {
-                /* use the master background color, stored in color 0 of palette 0 */
-                self.get_palette(0).brightness_to_pixels(0)
-            };
-
-            pixel_buffer.copy_from_slice(&pixels);
+        /* out here to simplify mutexes */
+        if sprite_zero_hit {
+            PPUSTATUS.set_flag_on(&mut self.memory, 6);
         }
 
         line_buffer
     }
 
-    fn find_first_sprite(&self, x: u8, y: u8, is_foreground: bool, scanline_sprites: &Vec<SpriteInfo>) -> (Option<SpriteInfo>, u8) {
+    fn find_first_sprite(&self, vram: &VRAM, ppuctrl: u8, x: u8, y: u8, is_foreground: bool, scanline_sprites: &Vec<SpriteInfo>) -> (Option<SpriteInfo>, u8) {
         let mut brightness = 0;
         let mut sprite = None;
         for cur_sprite in scanline_sprites {
             if cur_sprite.at_x_position(x) && cur_sprite.is_foreground() == is_foreground {
-                let sprite_brightness = cur_sprite.get_brightness(self, x, y);
+                let sprite_brightness = cur_sprite.get_brightness_no_locking(vram, ppuctrl, self, x, y);
                 if(sprite_brightness != 0) {
                     brightness = sprite_brightness;
                     sprite = Some(cur_sprite.clone());
@@ -171,29 +173,26 @@ impl PPUState {
         (sprite, brightness)
     }
 
-    fn background_brightness(&self, x:u8, y:u8) -> ([u8;4], u8) {
-        let tile = self.tile_for_pixel(x,y);
-        let palette = self.palette_for_pixel(x,y);
-
+    fn background_brightness(&self, vram: &VRAM, ppuctrl:u8, x:u8, y:u8) -> ([u8;4], u8) {
+        let tile = self.tile_for_pixel(vram, ppuctrl, x, y);
+        let palette = self.palette_for_pixel(&vram, ppuctrl, x, y);
         let brightness = tile.pixel_intensity((x % 8) as usize, (y % 8) as usize);
-
         (palette.brightness_to_pixels(brightness), brightness)
     }
 
-    /* TODO; this only uses the first name table */
-    fn tile_for_pixel(&self, x:u8, y:u8) -> Tile {
-        let nametable_base_addr : usize = 0x2000 + 0x400 * (PPUCTRL.read(&self.memory) & 0x3) as usize;
+    fn tile_for_pixel(&self, vram: &VRAM, ppuctrl: u8, x:u8, y:u8) -> Tile {
+        let nametable_base_addr : usize = 0x2000 + 0x400 * ((ppuctrl & 0x3) as usize);
         let offset : usize = (y as usize)/8*32 + (x as usize)/8;
-        let tile_index = self.vram.lock().unwrap()[nametable_base_addr + offset];
-        self.get_bg_tile(tile_index)
+        /* TODO implement vram mirroring */
+        let tile_index = vram[nametable_base_addr + offset];
+        self.get_bg_tile(vram, tile_index, ppuctrl)
     }
 
-    /* TODO: this only uses the first attribute table */
-    fn palette_for_pixel(&self, x:u8, y:u8) -> Palette {
-        let nametable_base = 0x2000 + 0x400 * (PPUCTRL.read(&self.memory) & 0x3) as usize;
+    fn palette_for_pixel(&self, vram: &VRAM, ppuctrl: u8, x:u8, y:u8) -> Palette {
+        let nametable_base = 0x2000 + 0x400 * (ppuctrl as u16 & 0x3);
         /* each address controls a 32x32 pixel block; 8 blocks per row */
         let attr_addr = y/32*8 + x/32;
-        let attr_table_value = self.vram.lock().unwrap()[nametable_base + 0x3c0 + attr_addr as usize];
+        let attr_table_value = vram[Self::vram_address_mirror(nametable_base + 0x3c0 + attr_addr as u16)];
         /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
          * in order from the lowest bits they are: upper left, upper right, bottom left, bottom right
          */
@@ -206,7 +205,7 @@ impl PPUState {
         } else {
             6
         };
-        self.get_palette((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
+        self.get_palette_no_locking(vram,(attr_table_value >> attr_table_offset) & 3) /* only need two bits */
     }
 
     /* Finds the first eight sprites on the given scanline, determined
@@ -245,26 +244,30 @@ impl PPUState {
     }
 
     /* TODO: handle 8x16 sprites */
-    fn get_sprite_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, ((PPUCTRL.read(&self.memory) & 0x8) >> 3) as usize)
+    fn get_sprite_tile(&self, vram: &VRAM, ppuctrl: u8, tile_index: u8) -> Tile {
+        self.get_tile(vram, tile_index, ((ppuctrl & 0x8) >> 3) as usize)
     }
 
-    fn get_bg_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, ((PPUCTRL.read(&self.memory) & 0x10) >> 4) as usize)
+    fn get_bg_tile(&self, vram: &VRAM, tile_index: u8, ppuctrl: u8) -> Tile {
+        self.get_tile(vram, tile_index, ((ppuctrl & 0x10) >> 4) as usize)
     }
 
-    fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
+    fn get_tile(&self, vram: &VRAM, tile_index: u8, pattern_table_num: usize) -> Tile {
         let pattern_table_base : usize = 0x1000 * pattern_table_num;
         let tile_start = pattern_table_base + (tile_index as usize * 16);
         let mut memcopy = [0u8; 16];
-        memcopy.copy_from_slice(&self.vram.lock().unwrap()[tile_start..tile_start+16]);
+        memcopy.copy_from_slice(&vram[tile_start..tile_start+16]);
         Tile::from_memory(memcopy)
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
+        self.get_palette_no_locking(&self.vram.lock().unwrap(), palette_index)
+    }
+
+    fn get_palette_no_locking(&self, vram: &VRAM, palette_index: u8) -> Palette {
         let palette_mem_loc : usize = 0x3f00 + (palette_index as usize)*4;
         let mut palette_data = [0u8; 4];
-        palette_data.copy_from_slice(&self.vram.lock().unwrap()[palette_mem_loc..palette_mem_loc+4]);
+        palette_data.copy_from_slice(&vram[palette_mem_loc..palette_mem_loc+4]);
 
         Palette::new(palette_data)
     }
@@ -291,6 +294,24 @@ impl PPUState {
         }
         println!("{}", output);
     }
+
+    pub fn vram_address_mirror(addr: u16) -> usize {
+        let mut result = addr;
+
+        /* palettes are repeated above 0x3f1f */
+        if result > 0x3f1f {
+            result = 0x3f00 | (result & 0xff);
+        }
+        /* the first color of corresponding background and sprite palettes are shared;
+         * this doesn't have any real effect, except if the true background color is
+         * written to at 0x3f10
+         */
+        if result & 0xfff0 == 0x3f10 && result % 4 == 0 {
+            result -= 0x10;
+        }
+
+        result as usize
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -311,18 +332,17 @@ impl SpriteInfo {
     fn at_x_position(&self, x: u8) -> bool {
         self.x <= x && x - self.x < 8
     }
-
-    fn get_brightness(&self, ppu: &PPUState, x:u8, y:u8) -> u8 {
-        self.get_brightness_localized(ppu,x-self.x,y-self.y)
+    fn get_brightness_no_locking(&self, vram: &VRAM, ppuctrl: u8, ppu: &PPUState, x: u8, y: u8) -> u8 {
+        self.get_brightness_localized_no_locking(vram, ppuctrl, ppu, x-self.x,y-self.y)
     }
 
-    fn get_brightness_localized(&self, ppu: &PPUState, x:u8, y:u8) -> u8 {
-        let tile = ppu.get_sprite_tile(self.tile_index); /* TODO is this right? */
+    fn get_brightness_localized_no_locking(&self, vram: &VRAM, ppuctrl: u8, ppu: &PPUState, x: u8, y: u8) -> u8 {
+        let tile = ppu.get_sprite_tile(vram, ppuctrl, self.tile_index); /* TODO is this right? */
         tile.pixel_intensity(x as usize, y as usize)
     }
 
-    fn color_from_brightness(&self, ppu: &PPUState, brightness: u8) -> [u8; 4] {
-        self.get_palette(&ppu).brightness_to_pixels(brightness)
+    fn color_from_brightness(&self, vram: &VRAM, ppu: &PPUState, brightness: u8) -> [u8; 4] {
+        ppu.get_palette_no_locking(vram,self.attrs & 0x3).brightness_to_pixels(brightness)
     }
 
     fn get_palette(&self, ppu: &PPUState) -> Palette {
