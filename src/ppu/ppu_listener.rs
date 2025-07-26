@@ -52,7 +52,19 @@ impl PPUListener
                 /* TODO: increment OAMADDR */
             }
             (PPUSCROLL, WRITE) => {
-                /* TODO */
+                let is_first_right = self.registers.lock().unwrap().w == 0;
+                let t = self.registers.lock().unwrap().t;
+
+                if is_first_right {
+                    /* top five bits of the input become the bottom five bits of t */
+                    self.registers.lock().unwrap().t = (t & !0x1f) | ((value as u16 & 0x1f) >> 3) ;
+                    self.registers.lock().unwrap().x = value & 0x7; /* bottom three bits */;
+                    self.registers.lock().unwrap().w = 1;
+                /* second write */
+                } else {
+                    self.registers.lock().unwrap().t = 0;
+                    self.registers.lock().unwrap().w = 0;
+                }
             }
             (PPUADDR, WRITE) => {
                 /* reads the high byte of the address first */
