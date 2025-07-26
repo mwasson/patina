@@ -79,6 +79,7 @@ pub enum Instruction
 
 	/* others */
 	BRK, /* Break (software IRQ) */
+	NOP, /* No-op */
 }
 
 impl Instruction
@@ -97,9 +98,8 @@ impl Instruction
 			Instruction::ASL => {
 				let old_val: u8 = addr_mode.deref(state, b1, b2);
 				let result = old_val << 1;
-				state.update_flag(StatusFlag::Carry, (old_val >> 7) != 0);
-				state.update_flag(StatusFlag::Negative, (result >> 7) != 0);
-				state.update_flag(StatusFlag::Zero, result == 0);
+				state.update_flag(StatusFlag::Carry, old_val & 0x80 != 0);
+				state.update_zero_neg_flags(result);
 				addr_mode.write(state, b1, b2, result);
 			}
 			Instruction::BCC => {
@@ -208,9 +208,14 @@ impl Instruction
 				addr_mode.write(state, b1, b2, new_val);
 				state.update_flag(StatusFlag::Carry, (val & 0x1) != 0);
 				state.update_flag(StatusFlag::Zero, new_val == 0);
+				state.update_flag(StatusFlag::Negative, false);
+			}
+			Instruction::NOP => {
+				/* nothing */
 			}
 			Instruction::ORA => {
-				state.accumulator |= addr_mode.deref(state, b1, b2)
+				state.accumulator |= addr_mode.deref(state, b1, b2);
+				state.update_zero_neg_flags(state.accumulator);
 			}
 			Instruction::PHA => {
 				state.write_mem(0x100 + state.s_register as u16, state.accumulator);
@@ -223,7 +228,7 @@ impl Instruction
 			}
 			Instruction::ROL => {
 				let val = addr_mode.deref(state, b1, b2);
-				let mut result = if StatusFlag::Carry.is_set(state) { 1 } else { 0 };
+				let mut result = StatusFlag::Carry.as_num(state);
 				result = result | (val << 1);
 				addr_mode.write(state, b1, b2, result);
 				state.update_flag(StatusFlag::Carry, val & 0x80 != 0);
@@ -231,7 +236,7 @@ impl Instruction
 			}
 			Instruction::ROR => {
 				let val = addr_mode.deref(state, b1, b2);
-				let mut result = if StatusFlag::Carry.is_set(state) { 0x80 } else { 0 };
+				let mut result = StatusFlag::Carry.as_num(state) << 7;
 				result = result | (val >> 1);
 				addr_mode.write(state, b1, b2, result);
 				state.update_flag(StatusFlag::Carry, val & 0x1 != 0);
@@ -482,6 +487,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xe6 => (Instruction::INC, ZeroPage, 5, 2),
 		0xe8 => (Instruction::INX, Implicit, 2, 1),
 		0xe9 => (Instruction::SBC, Immediate, 2, 2),
+		0xea => (Instruction::NOP, Implicit, 2, 1),
 		0xec => (Instruction::CPX, Absolute, 4, 3),
 		0xed => (Instruction::SBC, Absolute, 4, 3),
 		0xee => (Instruction::INC, Absolute, 6, 3),
