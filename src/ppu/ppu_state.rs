@@ -84,12 +84,15 @@ impl PPUState {
         self.run_timed(341, |_unused| {});
 
         self.run_timed(341*240, |ppu| {
-            let test_start = Instant::now();
+            /* slightly faster to avoid either constantly locking or locking for a long time */
+            let mut tmp_write_buffer = [0; WRITE_BUFFER_SIZE];
             /* visible scanlines */
             for i in (0..240) {
-                let scanline_pixels = &ppu.render_scanline(i);
-                ppu.write_buffer.lock().unwrap()[Self::pixel_range_for_line(i)].copy_from_slice(scanline_pixels);
+                let test_start = Instant::now();
+                let scanline_pixels = &ppu.render_scanline_take_2(i);
+                tmp_write_buffer[Self::pixel_range_for_line(i)].copy_from_slice(scanline_pixels);
             }
+            ppu.write_buffer.lock().unwrap().copy_from_slice(&tmp_write_buffer);
         });
 
         /* post-render scanline; first tick of VBlank */
@@ -104,57 +107,84 @@ impl PPUState {
 
         /* VBlank scanlines */
         self.run_timed(20*341-2, |_unused| {});
-        // println!("Screen rendering time: {}ms", Instant::now().duration_since(start_time).as_millis());
     }
 
     pub fn get_write_buffer(&self) -> Arc<Mutex<WriteBuffer>> {
         self.write_buffer.clone()
     }
 
-    fn render_scanline(&mut self, scanline: u8) -> [u8; 256*4]{
+    fn render_scanline_take_2(&mut self, scanline: u8) -> [u8; 256*4] {
         let scanline_sprites = self.sprite_evaluation(scanline);
+        let ppuctrl = PPUCTRL.read(&self.memory);
 
         let mut line_buffer = [0; 256*4];
-        let line_buffer_num_pixels = line_buffer.len()/4;
-        let mut sprite_zero_hit = false;
-        let ppuctrl = PPUCTRL.read(&self.memory);
+
         let _ = self.vram.lock().and_then(|vram| {
-            for (pixel_buffer,i) in line_buffer.chunks_exact_mut(4).zip((0..line_buffer_num_pixels)) {
-                let start2 = Instant::now();
-                let iu8 = i as u8;
-                let (fg_sprite, fg_brightness) = self.find_first_sprite(&vram, ppuctrl, iu8, scanline, true, &scanline_sprites);
-                let (bg_pixels, bg_tile_brightness) = self.background_brightness(&vram, ppuctrl, iu8, scanline);
-                let (bg_sprite, bg_sprite_brightness) = self.find_first_sprite(&vram, ppuctrl, iu8, scanline, false, &scanline_sprites);
-
-                let brightness_checks_time = start2.elapsed();
-
-                /* check for sprite zero hits */
-                if fg_brightness > 0 && bg_tile_brightness > 0 && fg_sprite.unwrap().sprite_index == 0 {
-                    sprite_zero_hit = true;
+            self.render_sprites(&scanline_sprites, &vram, ppuctrl, scanline, &mut line_buffer, true);
+            /* background tiles */
+            for x in (0..0xff).step_by(8) {
+                let tile = self.tile_for_pixel(&vram, ppuctrl, x, scanline);
+                let palette = self.palette_for_pixel(&vram, ppuctrl, x, scanline);
+                for pixel_offset in 0..8 {
+                    let brightness = tile.pixel_intensity(pixel_offset as usize, (scanline % 8) as usize);
+                    let index = (x+pixel_offset) as usize * 4;
+                    if brightness > 0 && line_buffer[index+3] == 0 {
+                        /* TODO doesn't handle 16 pixel tall sprites */
+                        line_buffer[(index)..(index+4)].copy_from_slice(&palette.brightness_to_pixels(brightness));
+                    }
                 }
-
-                let pixels = if fg_brightness > 0 {
-                    fg_sprite.unwrap().color_from_brightness(&vram, self, fg_brightness)
-                } else if bg_tile_brightness > 0 {
-                    bg_pixels
-                } else if bg_sprite_brightness > 0 {
-                    bg_sprite.unwrap().color_from_brightness(&vram, self, bg_sprite_brightness)
-                } else {
-                    /* use the master background color, stored in color 0 of palette 0 */
-                    self.get_palette_no_locking(&vram,0).brightness_to_pixels(0)
-                };
-
-                pixel_buffer.copy_from_slice(&pixels);
             }
-            Result::from(Ok(()))
+            self.render_sprites(&scanline_sprites, &vram, ppuctrl, scanline, &mut line_buffer, false);
+
+            /* background color */
+            let bg_pixels = self.get_palette_no_locking(&vram, 0).brightness_to_pixels(0);
+            for x in (0..0x100) {
+                if line_buffer[x*4 + 3] == 0 {
+                    line_buffer[(x*4)..(x*4+4)].copy_from_slice(&bg_pixels);
+                }
+            }
+
+            Ok(())
         });
 
-        /* out here to simplify mutexes */
-        if sprite_zero_hit {
-            PPUSTATUS.set_flag_on(&mut self.memory, 6);
-        }
+        self.check_for_sprite_zero_hit(scanline, ppuctrl);
 
         line_buffer
+    }
+
+    fn check_for_sprite_zero_hit(&mut self, scanline: u8, ppuctrl: u8) {
+        let vram = self.vram.lock().unwrap();
+        /* TODO: don't do anything if it's already been set, should be a ppu temp local variable */
+        /* TODO it'd be nice if unlocked vram and ppuctrl and maybe others could just be ppu local variables ... */
+        let sprite0 = self.slice_as_sprite(0);
+        if sprite0.in_scanline(scanline, self) {
+            for x in 0..8 {
+                if sprite0.get_brightness_localized_no_locking(&vram, ppuctrl, self, x, scanline - sprite0.y) > 0 {
+                    let bg_tile = self.tile_for_pixel(&vram, ppuctrl, sprite0.x + x, scanline);
+                    if  bg_tile.pixel_intensity(((sprite0.x + x) % 8) as usize, (scanline % 8) as usize) > 0 {
+                        PPUSTATUS.set_flag_on(&mut self.memory, 6);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    fn render_sprites(&self, scanline_sprites: &Vec<SpriteInfo>, vram: &VRAM, ppuctrl: u8, scanline: u8, line_buffer: &mut [u8], is_foreground: bool) {
+        for sprite in scanline_sprites {
+            if(sprite.is_foreground() != is_foreground) {
+                continue;
+            }
+            let sprite_palette = sprite.get_palette_no_locking(&vram, &self);
+            /* sprites */
+            for i in (0..8) {
+                let brightness = sprite.get_brightness_localized_no_locking(&vram, ppuctrl, self, i, scanline - sprite.y);
+                let pixel_index = sprite.x.wrapping_add(i) as usize * 4;
+                if(brightness > 0 && line_buffer[pixel_index+3] == 0) {
+                    line_buffer[pixel_index..pixel_index+4].copy_from_slice(&sprite_palette.brightness_to_pixels(brightness));
+                }
+            }
+        }
     }
 
     fn find_first_sprite(&self, vram: &VRAM, ppuctrl: u8, x: u8, y: u8, is_foreground: bool, scanline_sprites: &Vec<SpriteInfo>) -> (Option<SpriteInfo>, u8) {
@@ -326,7 +356,7 @@ struct SpriteInfo
 
 impl SpriteInfo {
     fn in_scanline(&self, scanline: u8, ppu: &PPUState) -> bool {
-            self.y <= scanline &&  scanline - self.y < 8 /* TODO ppu.sprite_size() */
+            self.y <= scanline && scanline - self.y < 8 /* TODO ppu.sprite_size() */
     }
 
     fn at_x_position(&self, x: u8) -> bool {
@@ -347,6 +377,10 @@ impl SpriteInfo {
 
     fn get_palette(&self, ppu: &PPUState) -> Palette {
         ppu.get_palette(self.attrs & 0x3)
+    }
+
+    fn get_palette_no_locking(&self, vram: &VRAM, ppu: &PPUState) -> Palette {
+        ppu.get_palette_no_locking(&vram, self.attrs & 0x3)
     }
 
     /* write this sprite as a byte array into memory */
