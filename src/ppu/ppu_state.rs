@@ -368,7 +368,15 @@ impl SpriteInfo {
 
     fn get_brightness_localized_no_locking(&self, vram: &VRAM, ppuctrl: u8, ppu: &PPUState, x: u8, y: u8) -> u8 {
         let tile = ppu.get_sprite_tile(vram, ppuctrl, self.tile_index); /* TODO is this right? */
-        tile.pixel_intensity(x as usize, y as usize)
+        let mut x_to_use = x as usize;
+        if self.attrs & 0x40 != 0 { /* flipped horizontally */
+            x_to_use = 7-x_to_use;
+        }
+        let mut y_to_use = y as usize;
+        if self.attrs & 0x80 != 0 { /* flipped horizontally */
+            y_to_use = 7-y_to_use;
+        }
+        tile.pixel_intensity(x_to_use, y_to_use)
     }
 
     fn color_from_brightness(&self, vram: &VRAM, ppu: &PPUState, brightness: u8) -> [u8; 4] {
