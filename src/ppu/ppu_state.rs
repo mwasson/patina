@@ -388,7 +388,7 @@ impl SpriteInfo {
     }
 
     fn get_palette_no_locking(&self, vram: &VRAM, ppu: &PPUState) -> Palette {
-        ppu.get_palette_no_locking(&vram, self.attrs & 0x3)
+        ppu.get_palette_no_locking(&vram, (self.attrs & 0x3) + 4)
     }
 
     /* write this sprite as a byte array into memory */
