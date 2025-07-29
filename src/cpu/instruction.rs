@@ -315,7 +315,7 @@ impl Instruction
 
 		state.update_flag(StatusFlag::Carry, compare_val >= mem_val);
 		state.update_flag(StatusFlag::Zero, compare_val == mem_val);
-		state.update_flag(StatusFlag::Negative, compare_val < mem_val);
+		state.update_flag(StatusFlag::Negative, compare_val.wrapping_sub(mem_val) & 0x80 != 0);
 	}
 }
 
