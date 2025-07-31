@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use crate::cpu::{CoreMemory, ProgramState};
+use crate::ppu::PPURegister::PPUCTRL;
 
 #[derive(Debug)]
 pub enum PPURegister
@@ -50,7 +51,7 @@ impl PPURegister
         memory.read(PPURegister::address(self))
     }
 
-    pub fn write(&self, memory: &mut CoreMemory, data: u8) {
+    pub fn write(&self, memory: &CoreMemory, data: u8) {
         memory.write(PPURegister::address(self), data);
     }
 
@@ -58,12 +59,18 @@ impl PPURegister
         self.read(memory) & (1 << bit) != 0
     }
 
-    pub fn set_flag_on(&self, memory: &mut CoreMemory, bit: u8) {
+    pub fn set_flag_on(&self, memory: &CoreMemory, bit: u8) {
+        if(bit == 6 && PPURegister::address(self) == PPURegister::address(&PPURegister::PPUSTATUS) && !self.read_flag(memory, bit)) {
+            println!("SETTING SPRITE ZERO HIT");
+        }
         let new_val = self.read(memory);
         self.write(memory, new_val | (1 << bit));
     }
 
-    pub fn set_flag_off(&self, memory: &mut CoreMemory, bit: u8) {
+    pub fn set_flag_off(&self, memory: &CoreMemory, bit: u8) {
+        if(bit == 6 && PPURegister::address(self) == PPURegister::address(&PPURegister::PPUSTATUS) && self.read_flag(memory, bit)) {
+            println!("CLEARING SPRITE ZERO HIT");
+        }
         let new_val = self.read(memory);
         self.write(memory, new_val & !(1 << bit));
     }

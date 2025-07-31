@@ -35,15 +35,6 @@ impl Operation
 	}
 }
 
-fn operation_from_memory(opcode: u8, byte1: u8, byte2: u8) -> Operation
-{
-	Operation {
-		realized_instruction: from_opcode(opcode),
-		byte1,
-		byte2
-	}
-}
-
 /**
  * Converts a pair of bytes into a u16 to look up an address in memory.
  * The 6502 is little-endian, so this expects the low-order byte first.

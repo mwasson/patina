@@ -1,8 +1,10 @@
+use std::time;
+use std::time::Instant;
 use crate::cpu;
-use crate::cpu::{operation_from_memory, AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
+use crate::cpu::{from_opcode, AddressingMode, Operation, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
 use crate::cpu::core_memory::CoreMemory;
 use crate::cpu::instruction::Instruction;
-use crate::ppu::{PPUListener, PPURegister};
+use crate::ppu::{PPUListener};
 use crate::processor::Processor;
 use crate::rom::Rom;
 
@@ -16,12 +18,28 @@ pub struct ProgramState
 	pub status: u8,
 	memory: CoreMemory,
 	instruction_counter: u32,
+	current_instruction: Instruction,
+	timing: Instant,
 }
 
 impl Processor for ProgramState
 {
 	fn clock_speed(&self) -> u64 {
 		1790000 /* 1.79 MHz */
+	}
+
+	fn run_time_with_start<F,U>(&mut self, start_time: Instant, cycles:u32, f: F) -> U where
+		F: FnOnce(&mut Self) -> U,
+	{
+		let result = f(self);
+		let ns = (1e9 as u64)*(cycles as u64)/(self.clock_speed());
+		let frame_duration = time::Duration::from_nanos(ns);
+		if(start_time.elapsed() > 3*frame_duration) {
+			println!("YOOO TOOK AT LEAST THREE TIMES LONGER THAN EXPECTED ({} cycles, pc={}, instruction={:?}): {}x)", cycles, self.program_counter, self.current_instruction, start_time.elapsed().as_nanos()/frame_duration.as_nanos());
+		}
+		std::thread::sleep(frame_duration.saturating_sub(start_time.elapsed()));
+
+		result
 	}
 }
 
@@ -46,7 +64,9 @@ impl ProgramState
 			program_counter: 0x00,
 			status: (0x11) << 4,
 			memory: CoreMemory::new(memory),
+			current_instruction: Instruction::NOP,
 			instruction_counter: 0,
+			timing: Instant::now(),
 		};
 
 		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&result, INITIAL_PC_LOCATION);
@@ -55,6 +75,7 @@ impl ProgramState
 	}
 
 	pub fn transition(&mut self) {
+		let start_time = Instant::now();
 		if(self.memory.nmi_triggered()) {
 			self.trigger_nmi();
 		}
@@ -62,20 +83,33 @@ impl ProgramState
 		let operation_loc = self.program_counter;
 		/* TODO: what if this hits the top of program memory */
 		// println!("operation loc 0x{operation_loc:x}");
-		let operation = operation_from_memory(self.read_mem(operation_loc),
-											  self.read_mem(operation_loc.wrapping_add(1)),
-											  self.read_mem(operation_loc.wrapping_add(2)));
+		let operation = self.operation_from_memory(operation_loc);
 		// match operation.realized_instruction.instruction {
 			// _ => { println!("Running operation #{}, pc=0x{:x}: {:?}",
 			// 				self.instruction_counter, self.program_counter, operation) }
 		// }
-		// if(self.instruction_counter >= 300000) {
-		// 	println!("here we go!");
-		// 	self.memory.write(0x06fc, 0x10);
-		// }
 
-		self.run_timed(operation.realized_instruction.cycles as u32, |state| {
-			operation.apply(state)
+		self.run_time_with_start(start_time, operation.realized_instruction.cycles as u32, |state| {
+			state.current_instruction = operation.realized_instruction.instruction.clone();
+			operation.apply(state);
+			match operation.realized_instruction.instruction {
+				// Instruction::RTI => {
+				// 	println!("NMI TOTAL TIME: {}ms", state.timing.elapsed().as_millis());
+				// }
+				// Instruction::JSR => {
+				// 	println!("JSR CALLED IN NMI, instruction count = {}", state.instruction_counter);
+				// }
+				// Instruction::RTS => {
+				// 	println!("RTS CALLED IN NMI, instruction count = {}", state.instruction_counter);
+				// }
+				// Instruction::ROR => {
+				// 	println!("ROR CALLED IN NMI, instruction count = {}", state.instruction_counter);
+				// }
+				// Instruction::BCC => {
+				// 	println!("HEY BCC, instruction count = {}", state.instruction_counter);
+				// }
+				_ => {}
+			}
 		});
 		self.instruction_counter += 1;
 	}
@@ -90,7 +124,7 @@ impl ProgramState
 	}
 
 	pub fn push(&mut self, data: u8) {
-		self.memory.write(cpu::addr(self.s_register, 0x01), data);
+		self.write_mem(cpu::addr(self.s_register, 0x01), data);
 		self.s_register = self.s_register.wrapping_sub(1);
 	}
 
@@ -124,10 +158,41 @@ impl ProgramState
 	}
 
 	pub fn read_mem(&self, addr: u16) -> u8 {
-		self.memory.read(addr)
+		let result = self.memory.read(addr);
+		// if addr == 0x03ad {
+		// 	println!("READING PLAYER REL X POS: 0x{:x}, pc = 0x{:x}", result, self.program_counter);
+		// }
+		// if addr == 0x03b8 {
+		// 	println!("READING PLAYER REL Y POS: 0x{:x}, pc = 0x{:x}", result, self.program_counter);
+		// }
+		// println!("READING MEM");
+		result
 	}
 
 	pub fn write_mem(&mut self, addr: u16, data: u8) {
+		// if addr == 0xce {
+		// 	println!("WRITING player_y: 0x{data:x}");
+		// 	println!("-- program counter: 0x{:x}", self.program_counter);
+		// }
+		// if addr == 0x0770 {
+		// 	println!("WRITING OperMode: 0x{:x}, pc = 0x{:x}", data, self.program_counter);
+		// }
+		// if addr == 0x03ad {
+		// 	println!("WRITING PLAYER REL X POS: 0x{:x}, pc = 0x{:x}", data, self.program_counter);
+		// }
+		// if addr == 0x03b8 {
+		// 	println!("WRITING PLAYER REL Y POS: 0x{:x}, pc = 0x{:x}", data, self.program_counter);
+		// }
+		// if addr == 0x0204 {
+		// 	println!("WRITING TO 0x0204, BUFFER PLAYER SPRITE Y POS 0x{:x}, pc = 0x{:x}", data, self.program_counter);
+		// }
+		// if addr == 0x0776 {
+		// 	println!("WRITING TO GAME PAUSE STATUS 0x{:x}, pc = 0x{:x}", data, self.program_counter);
+		// }
+		// if addr == 0x03d0 {
+		// 	println!("WRITING PLAYER OFFSCREEN BITS: 0x{:x}, pc = 0x{:x}", data, self.program_counter);
+		// }
+		// println!("WRITING MEM");
 		self.memory.write(addr, data);
 	}
 
@@ -151,6 +216,7 @@ impl ProgramState
 	}
 
 	fn trigger_nmi(&mut self) {
+		println!("nmi triggered (instruction count = {})", self.instruction_counter);
 		self.memory.reset_nmi();
 		/* push PC onto stack */
 		self.push_memory_loc(self.program_counter);
@@ -158,5 +224,17 @@ impl ProgramState
 		self.push(self.status);
 		/* read NMI handler address from FFFA/FFFB and jump to that address*/
 		self.program_counter = AddressingMode::Indirect.resolve_address_u16(&self, 0xfffa);
+		self.timing = Instant::now();
+	}
+
+	fn operation_from_memory(&self, addr: u16) -> Operation
+	{
+		let mut data = [0; 3];
+		self.memory.copy_range(addr as usize, &mut data);
+		Operation {
+			realized_instruction: from_opcode(data[0]),
+			byte1: data[1],
+			byte2: data[2],
+		}
 	}
 }

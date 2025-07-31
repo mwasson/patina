@@ -38,15 +38,15 @@ impl PPUListener
                 if value & 0x20 != 0 {
                     panic!("Uh oh, we're in 16 pixel sprite mode..."); /* TODO unimplemented */
                 }
-                /* copy low 2 bits into t's 11th and 12th bits, for scrolling control */
-                self.registers.lock().and_then(|mut registers| {
-                   let old_t = registers.t;
-                    registers.t = (old_t & !0x0c00) | ((value as u16 & 0x3) << 10);
-                    Ok(())
-                }).expect("");
+                /* scrolling: nametable */
+                self.registers.lock().unwrap().scroll.nametable = value & 0x3;
                 /* TODO writing triggers an immediate NMI when in vblank PPUSTATUS */
             }
+            (PPUMASK, WRITE) => {
+                // println!("writing PPUMASK");
+            }
             (PPUSTATUS, READ) => {
+                println!("READING PPUSTATUS, SPRITE ZERO HIT = {}", value & 0x40  != 0);
                 self.registers.lock().unwrap().w = 0;
             }
             (OAMADDR, WRITE) => {
@@ -58,18 +58,18 @@ impl PPUListener
                 /* TODO: increment OAMADDR */
             }
             (PPUSCROLL, WRITE) => {
-                let is_first_right = self.registers.lock().unwrap().w == 0;
-                let t = self.registers.lock().unwrap().t;
+                let mut regs = self.registers.lock().unwrap();
 
-                if is_first_right {
-                    /* top five bits of the input become the bottom five bits of t */
-                    self.registers.lock().unwrap().t = (t & !0x1f) | ((value as u16 & 0x1f) >> 3) ;
-                    self.registers.lock().unwrap().x = value & 0x7; /* bottom three bits */;
-                    self.registers.lock().unwrap().w = 1;
-                /* second write */
+                /* first or second write? */
+                if regs.w == 0 {
+                    regs.scroll.coarse_x = (value >> 3) & 0x1f;
+                    regs.scroll.fine_x = value & 0x7;
+                    println!("Updating X: coarse_x = {}, fine_x = {}", regs.scroll.coarse_x, regs.scroll.fine_x);
+                    regs.w = 1;
                 } else {
-                    self.registers.lock().unwrap().t = 0;
-                    self.registers.lock().unwrap().w = 0;
+                    regs.scroll.coarse_y = (value >> 3) & 0x1f;
+                    regs.scroll.fine_y = value & 0x7;
+                    regs.w = 0;
                 }
             }
             (PPUADDR, WRITE) => {
@@ -103,7 +103,7 @@ impl PPUListener
                 self.registers.lock().unwrap().v = addr as u16 + increase;
 
                 if addr == 0x3f00 || addr == 0x3f10 {
-                    println!("VRAM write: [0x{addr:x}] = 0x{value:x}");
+                    // println!("VRAM write: [0x{addr:x}] = 0x{value:x}");
                     // self.memory.print_memory(36539 - 36539 % 0x100, 0x100);
                 }
             }

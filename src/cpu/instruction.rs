@@ -3,7 +3,7 @@ use crate::cpu::{AddressingMode, StatusFlag};
 use AddressingMode::*;
 use crate::cpu::program_state::ProgramState;
 
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy)]
 pub enum Instruction
 {
     /* load/store opcodes */

@@ -20,22 +20,14 @@ struct CoreMemoryInternals
 }
 
 impl CoreMemory {
-    pub fn write(&mut self, addr: u16, data: u8) {
+    pub fn write(&self, addr: u16, data: u8) {
         self.internals.lock().unwrap().memory[self.map_address(addr)] = data;
         self.check_for_listener(addr, ReadWrite::WRITE, data);
-        if(addr >= 0x300 && addr < 0x700 && data == 0xaa) {
-            println!("writing 0xaa to: 0x{addr:x}");
-            println!();
-            if(addr == 0x42e) {
-                /* program counter 0x871c */
-                self.print_memory(0x8700,0x100);
-                println!("break here");
-            }
-        }
     }
 
     pub fn read(&self, addr: u16) -> u8 {
         let mut result = self.internals.lock().unwrap().memory[self.map_address(addr)];
+
         /* in some cases, the listener can modify the results */
         let listener_result = self.check_for_listener(addr, ReadWrite::READ, result);
         if listener_result.is_some() {
@@ -75,7 +67,7 @@ impl CoreMemory {
     }
 
     pub fn register_listener(&mut self, listener: PPUListener) {
-        println!("Registering listener!");
+        // println!("Registering listener!");
         self.listener = Some(listener);
     }
 
@@ -96,10 +88,11 @@ impl CoreMemory {
         let mut mem = Vec::new();
         mem.extend_from_slice(&self.internals.lock().unwrap().memory[base_addr..(base_addr+len)]);
         let mut output = String::new();
-        output.push_str(format!("Memory [0x{:x}..0x{:x}] : \n", base_addr, base_addr+len).as_str());
+        output.push_str("[");
         for i in 0..len {
-            output.push_str(format!("[0x{:x}]: 0x{:x}\n", base_addr+i, mem[i]).as_str());
+            output.push_str(format!("0x{:x},", mem[i]).as_str());
         }
+        output.push_str("]");
         println!("{}", output);
     }
 
@@ -109,7 +102,7 @@ impl CoreMemory {
     fn ppu_mirror() -> fn(u16) -> Option<u16> {
         |addr:u16| -> Option<u16> {
             if addr > 0x7ff && addr <= 0x1fff {
-                println!("remapping memory mirror: 0x{:x} to 0x{:x}", addr, addr & 0x7ff);
+                // println!("remapping memory mirror: 0x{:x} to 0x{:x}", addr, addr & 0x7ff);
                 return Some(addr & 0x7ff);
             }
 

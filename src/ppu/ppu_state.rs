@@ -23,6 +23,7 @@ pub struct PPUState {
     ppu_internal_registers: Arc<Mutex<PPUInternalRegisters>>
 }
 
+#[derive(Clone)]
 pub struct PPUInternalRegisters
 {
     /* rendering: scroll position; otherwise: current vram address */
@@ -35,7 +36,18 @@ pub struct PPUInternalRegisters
     /* toggles on write to PPUSCROLL or PPUADDR, indicating whether 1st/2nd write; 'write latch' */
     pub w: u8,
     /* buffer for reading via PPUDATA */
-    pub read_buffer: u8
+    pub read_buffer: u8,
+    pub scroll: PPUScrollState,
+}
+
+#[derive(Clone, Debug)]
+pub struct PPUScrollState
+{
+    pub coarse_x: u8, /* 5 bits */
+    pub coarse_y: u8, /* 5 bits */
+    pub fine_x: u8, /* 3 bits */
+    pub fine_y: u8, /* 3 bits */
+    pub nametable: u8, /* 2 bits */
 }
 
 impl Processor for PPUState {
@@ -66,6 +78,13 @@ impl PPUState {
                 x: 0,
                 w: 0,
                 read_buffer: 0,
+                scroll: PPUScrollState {
+                    coarse_x: 0,
+                    coarse_y: 0,
+                    fine_x: 0,
+                    fine_y: 0,
+                    nametable: 0,
+                },
             }))
         })
     }
@@ -76,63 +95,87 @@ impl PPUState {
 
     pub fn render_screen(&mut self) { ;
         let start_time = Instant::now();
-        /* dummy scanline */
-        /* clear VBlank */
-        PPUSTATUS.set_flag_off(&mut self.memory, 7);
-        /* clear sprite 0 hit flag */
-        PPUSTATUS.set_flag_off(&mut self.memory, 6);
-        self.run_timed(341, |_unused| {});
 
-        self.run_timed(341*240, |ppu| {
+        let (mut scroll, mut tmp_write_buffer) = self.run_timed(341, |ppu| {
+            /* dummy scanline */
+            /* clear VBlank */
+            // println!("clearing vblank");
+            PPUSTATUS.set_flag_off(&mut ppu.memory, 7);
+            /* clear sprite 0 hit flag */
+            PPUSTATUS.set_flag_off(&mut ppu.memory, 6);
+
+            (ppu.ppu_internal_registers.lock().unwrap().scroll.clone(), [0; WRITE_BUFFER_SIZE])
+        });
+
+        // let mut scroll = self.ppu_internal_registers.lock().unwrap().scroll.clone();
+        // println!("rendering");
+        // println!("rendering screen with coarse_x={}, fine_x={}, nametable_horiz={}", scroll.coarse_x, scroll.fine_x, scroll.nametable&1);
             /* slightly faster to avoid either constantly locking or locking for a long time */
-            let mut tmp_write_buffer = [0; WRITE_BUFFER_SIZE];
-            /* visible scanlines */
-            for i in (0..240) {
-                let test_start = Instant::now();
-                let scanline_pixels = &ppu.render_scanline_take_2(i);
+        // let mut tmp_write_buffer = [0; WRITE_BUFFER_SIZE];
+        /* visible scanlines */
+        for i in (0..240) {
+            self.run_timed(341, |ppu| {
+                let scanline_pixels = &ppu.render_scanline_take_2(i, &mut scroll);
                 tmp_write_buffer[Self::pixel_range_for_line(i)].copy_from_slice(scanline_pixels);
-            }
+            });
+        }
+
+        /* post-render scanline; first tick of VBlank */
+        self.run_timed(341, |ppu| {
             ppu.write_buffer.lock().unwrap().copy_from_slice(&tmp_write_buffer);
         });
 
-        /* post-render scanline; first tick of VBlank */
-        self.run_timed(341, |_unused| {});
-
-        /* set vblank flag */
-        PPUSTATUS.set_flag_on(&mut self.memory, 7);
-        /* vblank NMI */
-        if PPUCTRL.read_flag(&mut self.memory, 7) {
-            self.memory.trigger_nmi();
-        }
 
         /* VBlank scanlines */
-        self.run_timed(20*341-2, |_unused| {});
+        self.run_timed(20*341, |ppu| {
+            // println!("in vblank");
+            /* set vblank flag */
+            PPUSTATUS.set_flag_on(&mut ppu.memory, 7);
+            /* vblank NMI */
+            if PPUCTRL.read_flag(&mut ppu.memory, 7) {
+                ppu.memory.trigger_nmi();
+            }
+        });
     }
 
     pub fn get_write_buffer(&self) -> Arc<Mutex<WriteBuffer>> {
         self.write_buffer.clone()
     }
 
-    fn render_scanline_take_2(&mut self, scanline: u8) -> [u8; 256*4] {
+    fn render_scanline_take_2(&mut self, scanline: u8, scroll: &mut PPUScrollState) -> [u8; 256*4] {
         let scanline_sprites = self.sprite_evaluation(scanline);
         let ppuctrl = PPUCTRL.read(&self.memory);
 
-        let mut line_buffer = [0; 256*4];
+        let original_coarse_x = scroll.coarse_x;
+        let original_nametable = scroll.nametable;
 
-        let _ = self.vram.lock().and_then(|vram| {
+        let mut line_buffer = [0; 256*4];
+        // println!("RENDERING SCANLINE {}", scanline);
+        // println!("SCANLINE {}, coarse_x = {}", scanline, scroll.coarse_x);
+        {
+            let vram = &self.vram.lock().unwrap();
             self.render_sprites(&scanline_sprites, &vram, ppuctrl, scanline, &mut line_buffer, true);
             /* background tiles */
             for x in (0..0xff).step_by(8) {
-                let tile = self.tile_for_pixel(&vram, ppuctrl, x, scanline);
+                // let old_tile = self.tile_for_pixel(&vram, ppuctrl, x, scanline);
+                let tile = self.get_bg_tile(&vram,
+                                            vram[Self::vram_address_mirror(0x2000
+                                                            | (scroll.nametable as u16) << 10
+                                                            | (scroll.coarse_y as u16) << 5
+                                                            | (scroll.coarse_x as u16))],
+                                            ppuctrl);
                 let palette = self.palette_for_pixel(&vram, ppuctrl, x, scanline);
                 for pixel_offset in 0..8 {
-                    let brightness = tile.pixel_intensity(pixel_offset as usize, (scanline % 8) as usize);
+                    let brightness = tile.pixel_intensity(((pixel_offset + scroll.fine_x) % 8) as usize, (scroll.fine_y % 8) as usize);
                     let index = (x+pixel_offset) as usize * 4;
                     if brightness > 0 && line_buffer[index+3] == 0 {
                         /* TODO doesn't handle 16 pixel tall sprites */
                         line_buffer[(index)..(index+4)].copy_from_slice(&palette.brightness_to_pixels(brightness));
                     }
                 }
+                self.coarse_x_increment(scroll);
+                /* TODO probably wrong now */
+                self.check_for_sprite_zero_hit(scanline, ppuctrl, &vram);
             }
             self.render_sprites(&scanline_sprites, &vram, ppuctrl, scanline, &mut line_buffer, false);
 
@@ -143,17 +186,25 @@ impl PPUState {
                     line_buffer[(x*4)..(x*4+4)].copy_from_slice(&bg_pixels);
                 }
             }
+        }
 
-            Ok(())
-        });
+        self.y_increment(scroll);
+        /* doesn't seem to matter which one of these we do... */
+        // scroll.coarse_x = self.ppu_internal_registers.lock().unwrap().scroll.coarse_x;
+        // let saved_nametable = self.ppu_internal_registers.lock().unwrap().scroll.nametable;
+        // scroll.nametable = (scroll.nametable & !0x1) | (saved_nametable & 0x1);
+        // scroll.coarse_x = original_coarse_x;
+        // scroll.nametable = (scroll.nametable & !0x1) | (original_nametable & 0x1);
 
-        self.check_for_sprite_zero_hit(scanline, ppuctrl);
+        // scroll.fine_x = self.ppu_internal_registers.lock().unwrap().scroll.fine_x;
+        scroll.coarse_x = self.ppu_internal_registers.lock().unwrap().scroll.coarse_x;
+        let old_nametable = scroll.nametable;
+        scroll.nametable = (old_nametable & !1) | (self.ppu_internal_registers.lock().unwrap().scroll.coarse_x & 1);
 
         line_buffer
     }
 
-    fn check_for_sprite_zero_hit(&mut self, scanline: u8, ppuctrl: u8) {
-        let vram = self.vram.lock().unwrap();
+    fn check_for_sprite_zero_hit(&self, scanline: u8, ppuctrl: u8, vram: &VRAM) {
         /* TODO: don't do anything if it's already been set, should be a ppu temp local variable */
         /* TODO it'd be nice if unlocked vram and ppuctrl and maybe others could just be ppu local variables ... */
         let sprite0 = self.slice_as_sprite(0);
@@ -162,7 +213,7 @@ impl PPUState {
                 if sprite0.get_brightness_localized_no_locking(&vram, ppuctrl, self, x, scanline - sprite0.y) > 0 {
                     let bg_tile = self.tile_for_pixel(&vram, ppuctrl, sprite0.x + x, scanline);
                     if  bg_tile.pixel_intensity(((sprite0.x + x) % 8) as usize, (scanline % 8) as usize) > 0 {
-                        PPUSTATUS.set_flag_on(&mut self.memory, 6);
+                        PPUSTATUS.set_flag_on(&self.memory, 6);
                         return;
                     }
                 }
@@ -341,6 +392,31 @@ impl PPUState {
         }
 
         result as usize
+    }
+
+    fn y_increment(&self, scroll: &mut PPUScrollState) {
+        if scroll.fine_y < 7 { /* keep on incrementing fine_y until we can't */
+            scroll.fine_y += 1;
+        } else { /* wrap fine y, go to next vertical name table, being careful of attr table */
+            scroll.fine_y = 0;
+            if(scroll.coarse_y == 29) {
+                scroll.coarse_y = 0;
+                scroll.nametable =  (scroll.nametable ^ 0x2) | (scroll.nametable & 0x1);/* switch vertical nametable */
+            } else if(scroll.coarse_y == 31) {
+                scroll.coarse_y = 0;
+            } else {
+                scroll.coarse_y += 1;
+            }
+        }
+    }
+
+    fn coarse_x_increment(&self, scroll: &mut PPUScrollState) {
+        if scroll.coarse_x == 31 {
+            scroll.coarse_x = 0;
+            scroll.nametable =  (scroll.nametable ^ 0x1) | (scroll.nametable & 0x2);/* switch horizontal nametable */
+        } else {
+            scroll.coarse_x += 1;
+        }
     }
 }
 
