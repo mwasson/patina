@@ -27,8 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let write_buffer = ppu.get_write_buffer();
 
 	thread::spawn(move || {
+		let start_time = Instant::now();
 		loop {
-			cpu.transition();
+			cpu.transition(start_time);
 		}
 	});
 

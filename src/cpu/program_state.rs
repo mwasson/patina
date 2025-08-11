@@ -21,6 +21,7 @@ pub struct ProgramState
 	listener: PPUListener,
 	instruction_counter: u32,
 	ppu_state_receiver: Receiver<PpuToCpuMessage>,
+	cycle_counter: u128,
 }
 
 impl Processor for ProgramState
@@ -53,6 +54,7 @@ impl ProgramState
 			listener: PPUListener::new(rom, update_sender),
 			instruction_counter: 0,
 			ppu_state_receiver,
+			cycle_counter: 0,
 		};
 
 		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&mut result, INITIAL_PC_LOCATION);
@@ -60,19 +62,19 @@ impl ProgramState
 		Box::new(result)
 	}
 
-	pub fn transition(&mut self) {
+	pub fn transition(&mut self, start_time:Instant) {
 		if self.handle_messages_and_check_for_nmi() {
 			self.trigger_nmi();
 		}
 
-		let start_time = Instant::now();
 		let operation_loc = self.program_counter;
 		/* TODO: what if this hits the top of program memory */
 		let operation = operation_from_memory(self.read_mem(operation_loc),
 											  self.read_mem(operation_loc.wrapping_add(1)),
 											  self.read_mem(operation_loc.wrapping_add(2)));
 
-		self.run_timed_from_start(operation.realized_instruction.cycles as u128, start_time, |state| {
+		self.cycle_counter += operation.realized_instruction.cycles as u128;
+		self.run_timed_from_start(self.cycle_counter, start_time, |state| {
 			operation.apply(state);
 		});
 		self.instruction_counter += 1;
