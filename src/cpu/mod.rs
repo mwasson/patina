@@ -3,18 +3,18 @@ mod addressing_mode;
 mod instruction;
 mod status_flag;
 mod program_state;
-mod core_memory;
+pub mod ppu_listener;
+pub mod cpu_to_ppu_message;
 
-use std::sync::{Arc, Mutex};
+use std::time::Instant;
 pub use addressing_mode::AddressingMode;
-pub use core_memory::CoreMemory;
 pub use instruction::RealizedInstruction;
 pub use program_state::ProgramState;
 pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
-use crate::processor::Processor;
-
 pub const MEMORY_SIZE: usize = 1<<16;
+
+type CoreMemory = [u8; MEMORY_SIZE];
 
 const INITIAL_PC_LOCATION: u16 = 0xfffc;
 

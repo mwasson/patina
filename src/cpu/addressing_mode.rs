@@ -21,7 +21,7 @@ pub enum AddressingMode
 impl AddressingMode
 {
 	/* behavior based on: https://www.nesdev.org/obelisk-6502-guide/addressing.html */
-	pub fn resolve_address(self: &AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> u16 {
+	pub fn resolve_address(self: &AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u16 {
 		let result = match self  {
 			AddressingMode::Implicit =>
 				panic!("Should never be explicitly referenced--remove?"),
@@ -60,11 +60,11 @@ impl AddressingMode
 	}
 
 	/* convenience method for when you have a u16 representing an entire memory address */
-	pub fn resolve_address_u16(&self, state: &ProgramState, addr:u16) -> u16 {
+	pub fn resolve_address_u16(&self, state: &mut ProgramState, addr:u16) -> u16 {
 		self.resolve_address(state, (addr & 0xff) as u8, (addr >> 8) as u8)
 	}
 
-	pub fn deref(self: &AddressingMode, state: &ProgramState, byte1:u8, byte2:u8) -> u8 {
+	pub fn deref(self: &AddressingMode, state: &mut ProgramState, byte1:u8, byte2:u8) -> u8 {
 		match self {
 			AddressingMode::Immediate => byte1,
 			AddressingMode::Accumulator => state.accumulator,
@@ -78,7 +78,10 @@ impl AddressingMode
 	pub fn write(self: &AddressingMode, state: &mut ProgramState, byte1: u8, byte2: u8, new_val: u8) {
 		match self {
 			AddressingMode::Accumulator => { state.accumulator = new_val }
-			_ => state.write_mem(self.resolve_address(state, byte1, byte2), new_val)
+			_ => {
+				let resolved_addr = self.resolve_address(state, byte1, byte2);
+				state.write_mem(resolved_addr, new_val)
+			}
 		}
 	}
 }

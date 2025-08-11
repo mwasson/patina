@@ -3,7 +3,7 @@ use crate::cpu::{AddressingMode, StatusFlag};
 use AddressingMode::*;
 use crate::cpu::program_state::ProgramState;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Instruction
 {
     /* load/store opcodes */
@@ -88,7 +88,8 @@ impl Instruction
 			 addr_mode: &AddressingMode, b1: u8, b2: u8) {
 		match self {
 			Instruction::ADC => {
-				add_with_carry_and_update(state, addr_mode.deref(state, b1, b2), StatusFlag::Carry.as_num(state));
+				let val = addr_mode.deref(state, b1, b2);
+				add_with_carry_and_update(state, val, StatusFlag::Carry.as_num(state));
 			}
 			Instruction::AND => {
 				let mem_val = addr_mode.deref(state, b1, b2);
@@ -251,7 +252,8 @@ impl Instruction
 				state.program_counter = state.pop_memory_loc() + 1;
 			}
 			Instruction::SBC => {
-				add_with_carry_and_update(state, !addr_mode.deref(state, b1, b2), StatusFlag::Carry.as_num(state));
+				let val = addr_mode.deref(state, b1, b2);
+				add_with_carry_and_update(state, !val, StatusFlag::Carry.as_num(state));
 			}
 			Instruction::SEC => {
 				StatusFlag::Carry.update_bool(state, true);
@@ -296,14 +298,13 @@ impl Instruction
 				state.accumulator = state.index_y;
 				state.update_zero_neg_flags(state.accumulator);
 			}
-			_ => panic!("Unimplemented")
 		}
 	}
 
 	fn branch_instr(state: &mut ProgramState, flag: StatusFlag,
 	                is_positive: bool, offset: u8) {
 		if is_positive == flag.is_set(state) {
-			state.program_counter = AddressingMode::Relative.resolve_address(
+			state.program_counter = Relative.resolve_address(
 			                        state, offset, 0);
 		}
 	}
@@ -323,7 +324,6 @@ impl Instruction
 pub struct RealizedInstruction
 {
     pub instruction: Instruction,
-    pub opcode: u8,
     pub addr_mode: AddressingMode,
     pub cycles: u16,
     pub bytes: u8,
@@ -336,6 +336,7 @@ impl RealizedInstruction
 		/* note that this holds even for branching instructions (but not jump instructions): program counter needs to be
 		 * incremented by the number of bytes for instruction, arguments
 		 */
+
 		match &self.instruction {
 			Instruction::JMP => {}
 			Instruction::JSR => {}
@@ -503,7 +504,6 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 
 	RealizedInstruction {
     	instruction,
-    	opcode,
     	addr_mode,
     	cycles,
     	bytes

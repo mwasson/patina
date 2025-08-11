@@ -1,6 +1,3 @@
-use std::ops::Deref;
-use crate::cpu::{CoreMemory, ProgramState};
-
 #[derive(Debug)]
 pub enum PPURegister
 {
@@ -46,25 +43,25 @@ impl PPURegister
         }
     }
 
-    pub fn read(&self, memory: &CoreMemory) -> u8 {
-        memory.read(PPURegister::address(self))
-    }
-
-    pub fn write(&self, memory: &mut CoreMemory, data: u8) {
-        memory.write(PPURegister::address(self), data);
-    }
-
-    pub fn read_flag(&self, memory: &CoreMemory, bit: u8) -> bool {
-        self.read(memory) & (1 << bit) != 0
-    }
-
-    pub fn set_flag_on(&self, memory: &mut CoreMemory, bit: u8) {
-        let new_val = self.read(memory);
-        self.write(memory, new_val | (1 << bit));
-    }
-
-    pub fn set_flag_off(&self, memory: &mut CoreMemory, bit: u8) {
-        let new_val = self.read(memory);
-        self.write(memory, new_val & !(1 << bit));
-    }
+    // pub fn read(&self, memory: &CoreMemory) -> u8 {
+    //     memory.read(PPURegister::address(self))
+    // }
+    //
+    // pub fn write(&self, memory: &mut CoreMemory, data: u8) {
+    //     memory.write(PPURegister::address(self), data);
+    // }
+    //
+    // pub fn read_flag(&self, memory: &CoreMemory, bit: u8) -> bool {
+    //     self.read(memory) & (1 << bit) != 0
+    // }
+    //
+    // pub fn set_flag_on(&self, memory: &mut CoreMemory, bit: u8) {
+    //     let new_val = self.read(memory);
+    //     self.write(memory, new_val | (1 << bit));
+    // }
+    //
+    // pub fn set_flag_off(&self, memory: &mut CoreMemory, bit: u8) {
+    //     let new_val = self.read(memory);
+    //     self.write(memory, new_val & !(1 << bit));
+    // }
 }

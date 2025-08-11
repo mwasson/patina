@@ -35,7 +35,6 @@ impl StatusFlag
 	}
 
 	pub fn update_bool(&self, state: &mut ProgramState, new_val: bool) {
-		let new_val_as_number = if new_val { 1 } else { 0 };
 		if new_val {
 			state.status = state.status | (1 << self.mask());
 		} else {

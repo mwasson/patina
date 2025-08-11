@@ -1,8 +1,11 @@
+use std::sync::mpsc::{Receiver, Sender};
+use std::time::Instant;
 use crate::cpu;
-use crate::cpu::{operation_from_memory, AddressingMode, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
-use crate::cpu::core_memory::CoreMemory;
-use crate::cpu::instruction::Instruction;
+use crate::cpu::{operation_from_memory, AddressingMode, CoreMemory, Operation, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
+use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
 use crate::ppu::{PPUListener, PPURegister};
+use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage;
+use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::PpuStatus;
 use crate::processor::Processor;
 use crate::rom::Rom;
 
@@ -15,7 +18,9 @@ pub struct ProgramState
 	pub program_counter: u16,
 	pub status: u8,
 	memory: CoreMemory,
+	listener: PPUListener,
 	instruction_counter: u32,
+	ppu_state_receiver: Receiver<PpuToCpuMessage>,
 }
 
 impl Processor for ProgramState
@@ -28,7 +33,7 @@ impl Processor for ProgramState
 impl ProgramState
 {
 	/* TODO comment */
-	pub fn from_rom(rom: &Rom) -> Box<Self> {
+	pub fn from_rom(rom: &Rom, ppu_state_receiver: Receiver<PpuToCpuMessage>, update_sender: Sender<CpuToPpuMessage>) -> Box<Self> {
 		let mut memory = [0; MEMORY_SIZE];
 
 		/* copy ROM data into memory */
@@ -37,7 +42,6 @@ impl ProgramState
 
 		/* set program counter to value in memory at this location */
 
-
 		let mut result = Self  {
 			accumulator: 0x00,
 			index_x: 0x00,
@@ -45,37 +49,31 @@ impl ProgramState
 			s_register: 0xff,
 			program_counter: 0x00,
 			status: (0x11) << 4,
-			memory: CoreMemory::new(memory),
+			memory,
+			listener: PPUListener::new(rom, update_sender),
 			instruction_counter: 0,
+			ppu_state_receiver,
 		};
 
-		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&result, INITIAL_PC_LOCATION);
+		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&mut result, INITIAL_PC_LOCATION);
 
 		Box::new(result)
 	}
 
 	pub fn transition(&mut self) {
-		if(self.memory.nmi_triggered()) {
+		if self.handle_messages_and_check_for_nmi() {
 			self.trigger_nmi();
 		}
 
+		let start_time = Instant::now();
 		let operation_loc = self.program_counter;
 		/* TODO: what if this hits the top of program memory */
-		// println!("operation loc 0x{operation_loc:x}");
 		let operation = operation_from_memory(self.read_mem(operation_loc),
 											  self.read_mem(operation_loc.wrapping_add(1)),
 											  self.read_mem(operation_loc.wrapping_add(2)));
-		// match operation.realized_instruction.instruction {
-			// _ => { println!("Running operation #{}, pc=0x{:x}: {:?}",
-			// 				self.instruction_counter, self.program_counter, operation) }
-		// }
-		// if(self.instruction_counter >= 300000) {
-		// 	println!("here we go!");
-		// 	self.memory.write(0x06fc, 0x10);
-		// }
 
-		self.run_timed(operation.realized_instruction.cycles as u32, |state| {
-			operation.apply(state)
+		self.run_timed_from_start(operation.realized_instruction.cycles as u128, start_time, |state| {
+			operation.apply(state);
 		});
 		self.instruction_counter += 1;
 	}
@@ -90,7 +88,7 @@ impl ProgramState
 	}
 
 	pub fn push(&mut self, data: u8) {
-		self.memory.write(cpu::addr(self.s_register, 0x01), data);
+		self.write_mem(cpu::addr(self.s_register, 0x01), data);
 		self.s_register = self.s_register.wrapping_sub(1);
 	}
 
@@ -108,7 +106,7 @@ impl ProgramState
 
 	pub fn pop(&mut self) -> u8 {
 		self.s_register += 1;
-		let value = self.memory.read(0x0100 + self.s_register as u16);
+		let value = self.read_mem(0x0100 + self.s_register as u16);
 		value
 	}
 
@@ -123,40 +121,75 @@ impl ProgramState
 		/* TODO: jump to IRQ handler */
 	}
 
-	pub fn read_mem(&self, addr: u16) -> u8 {
-		self.memory.read(addr)
-	}
-
-	pub fn write_mem(&mut self, addr: u16, data: u8) {
-		self.memory.write(addr, data);
-	}
-
-	pub fn addr_from_mem(&self, addr_to_lookup: u16) -> u16 {
+	pub fn addr_from_mem(&mut self, addr_to_lookup: u16) -> u16 {
 		self.addr_from_mem_separate_bytes(addr_to_lookup, addr_to_lookup+1)
 	}
 
-	pub fn addr_from_mem_separate_bytes(&self,
+	pub fn addr_from_mem_separate_bytes(&mut self,
 	                                    lo_byte_addr: u16,
 	                                    hi_byte_addr: u16)
 			-> u16 {
 		cpu::addr(self.read_mem(lo_byte_addr), self.read_mem(hi_byte_addr))
 	}
 
-	pub fn register_listener(&mut self, listener: PPUListener) {
-		self.memory.register_listener(listener);
-	}
-	
-	pub fn clone_memory(&self) -> CoreMemory {
-		self.memory.clone()
+	fn handle_messages_and_check_for_nmi(&mut self) -> bool {
+		let mut has_nmi = false;
+
+		for message in self.ppu_state_receiver.try_recv() {
+			match message {
+				PpuToCpuMessage::NMI => {
+					has_nmi = true;
+				}
+				PpuStatus(status) => {
+					self.listener.ppu_status = status;
+				}
+			}
+		}
+
+		has_nmi
 	}
 
 	fn trigger_nmi(&mut self) {
-		self.memory.reset_nmi();
 		/* push PC onto stack */
 		self.push_memory_loc(self.program_counter);
 		/* push processor status register on stack */
 		self.push(self.status);
-		/* read NMI handler address from FFFA/FFFB and jump to that address*/
-		self.program_counter = AddressingMode::Indirect.resolve_address_u16(&self, 0xfffa);
+		/* read NMI handler address from 0xFFFA/0xFFFB and jump to that address*/
+		self.program_counter = AddressingMode::Indirect.resolve_address_u16(self, 0xfffa);
+	}
+
+	pub fn write_mem(&mut self, addr: u16, data: u8) {
+		let mapped_addr = self.map_address(addr) as u16;
+		let possible_ppu_register = PPURegister::from_addr(mapped_addr);
+		if possible_ppu_register.is_some() {
+			let register = possible_ppu_register.unwrap();
+			self.listener.listen_write(&mut self.memory, &register, data);
+		} else {
+			self.memory[self.map_address(addr)] = data;
+		}
+	}
+
+	pub fn read_mem(&mut self, addr: u16) -> u8 {
+		let mapped_addr = self.map_address(addr) as u16;
+		/* in some cases, the listener can modify the results */
+		let possible_ppu_register = PPURegister::from_addr(mapped_addr);
+		if possible_ppu_register.is_some() {
+			let register = possible_ppu_register.unwrap();
+			self.listener.listen_read(&register)
+		} else {
+			self.memory[self.map_address(addr)]
+		}
+	}
+
+	fn map_address(&self, addr: u16) -> usize {
+		let mapped_addr = if addr > 0x7ff && addr <= 0x1fff {
+			addr & 0x7ff
+		} else if addr >= 0x2000 && addr <= 0x3FFF { /* ppu registers */
+			0x2000 | (addr & 0x7)
+		} else {
+			addr
+		};
+
+		mapped_addr as usize
 	}
 }

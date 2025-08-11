@@ -1,30 +1,28 @@
 use std::{fs, thread};
-use std::cell::RefCell;
 use std::io::{self, ErrorKind};
-use std::ops::Deref;
-use std::process::exit;
-use std::sync::{mpsc, Arc, Mutex, Weak};
+use std::sync::mpsc::channel;
+use std::time::Instant;
 
 mod cpu;
 
 mod rom;
 use rom::Rom;
-use crate::cpu::{Operation, ProgramState};
+use crate::cpu::{ProgramState};
 use crate::ppu::PPUState;
 
 mod window;
 mod ppu;
 mod processor;
-mod read_write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
 	let rom = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
 
-	let mut cpu = ProgramState::from_rom(&rom);
-	let mut ppu = PPUState::from_rom(&rom, cpu.clone_memory());
+	let (nmi_sender, nmi_receiver) = channel();
+	let (update_sender, update_receiver) = channel();
 
-	cpu.register_listener(ppu.get_listener());
+	let mut cpu = ProgramState::from_rom(&rom, nmi_receiver, update_sender);
+	let mut ppu = PPUState::from_rom(&rom, nmi_sender, update_receiver);
 	
 	let write_buffer = ppu.get_write_buffer();
 

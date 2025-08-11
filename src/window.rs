@@ -6,8 +6,8 @@ use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
-use crate::ppu::{PPUState, WriteBuffer};
+use winit::window::{WindowBuilder};
+use crate::ppu::{WriteBuffer};
 
 pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>) -> Result<(), Box<dyn std::error::Error>> {
 	let event_loop = EventLoop::new();
