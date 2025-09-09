@@ -94,6 +94,9 @@ impl Instruction
 			Instruction::AND => {
 				let mem_val = addr_mode.deref(state, b1, b2);
 				state.accumulator = state.accumulator & mem_val;
+				if mem_val == 0x40 {
+					// println!("CPU CHECKING FOR SPRITE ZERO HIT; hit: {}", state.accumulator != 0);
+				}
 				state.update_zero_neg_flags(state.accumulator);
 			}
 			Instruction::ASL => {
@@ -122,6 +125,7 @@ impl Instruction
 				Self::branch_instr(state, StatusFlag::Negative, true, b1)
 			}
 			Instruction::BNE => {
+				// println!("Doing a BNE, checking that statusflag zero is false, it is: {}", StatusFlag::Zero.is_set(state));
 				Self::branch_instr(state, StatusFlag::Zero, false, b1)
 			}
 			Instruction::BPL => {
@@ -181,6 +185,7 @@ impl Instruction
 			Instruction::INY => {
 				state.index_y = state.index_y.wrapping_add(1);
 				state.update_zero_neg_flags(state.index_y);
+				// println!("DOING AN INY");
 			}
 			Instruction::JMP => {
 				/* TODO: if this directly sets PC to the value in memory,
@@ -190,6 +195,7 @@ impl Instruction
 			Instruction::JSR => {
 				state.push_memory_loc(state.program_counter + 2);
 				state.program_counter = addr_mode.resolve_address(state,b1,b2);
+				// println!("JSR TO 0x{:x}",state.program_counter);
 			}
 			Instruction::LDA => {
 				state.accumulator = addr_mode.deref(state, b1, b2);
@@ -246,10 +252,11 @@ impl Instruction
 			Instruction::RTI => {
 				state.status = state.pop();
 				state.program_counter = state.pop_memory_loc();
-
+				// println!("Returning from interrupt!");
 			}
 			Instruction::RTS => {
 				state.program_counter = state.pop_memory_loc() + 1;
+				// println!("returning from subroutine");
 			}
 			Instruction::SBC => {
 				let val = addr_mode.deref(state, b1, b2);

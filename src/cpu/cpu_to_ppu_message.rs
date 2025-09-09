@@ -1,4 +1,4 @@
-use crate::ppu::OAM_SIZE;
+use crate::ppu::{PPUScrollState, OAM_SIZE};
 
 pub(crate) enum CpuToPpuMessage
 {
@@ -6,4 +6,6 @@ pub(crate) enum CpuToPpuMessage
     Oam([u8; OAM_SIZE]),
     PpuCtrl(u8), /* writes to PPUCTRL */
     PpuMask(u8), /* writes to PPUMASK */
+    ScrollX(u8, u8), /* coarse x, fine x */
+    ScrollY(u8, u8), /* coarse y, fine y */
 }

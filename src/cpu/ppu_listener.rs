@@ -2,7 +2,7 @@ use std::sync::mpsc::Sender;
 use crate::cpu::{CoreMemory};
 use crate::ppu::{PPURegister, PPUState, OAM_SIZE, PPU_MEMORY_SIZE, VRAM};
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
-use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage::{Memory, Oam};
+use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage::{Memory, Oam, ScrollX, ScrollY};
 use crate::ppu::PPURegister::*;
 use crate::rom::Rom;
 
@@ -44,7 +44,7 @@ impl PPUListener
                 }
                 /* TODO: effects on scroll controls */
                 self.ppu_ctrl = value;
-                self.send_update(CpuToPpuMessage::PpuCtrl(value));
+                self.send_update(CpuToPpuMessage::PpuCtrl(value)); /* includes nametable update */
                 /* TODO writing triggers an immediate NMI when in vblank PPUSTATUS */
             }
             PPUMASK => {
@@ -59,7 +59,13 @@ impl PPUListener
                 /* TODO: increment OAMADDR */
             }
             PPUSCROLL => {
-                /* TODO: effects on scroll controls */
+                if self.first_write {
+                    // println!("Sending scroll message, PPUSCROLL = {:b}", value);
+                    self.send_update(ScrollX((value >> 3) & 0x1f, value & 0x7));
+                } else {
+                    self.send_update(ScrollY((value >> 3) & 0x1f, value & 0x7));
+                }
+                self.first_write = !self.first_write;
             }
             PPUADDR => {
                 /* writes high byte first */
@@ -81,6 +87,7 @@ impl PPUListener
                 let base_addr = ((value as u16) << 8) as usize;
                 let mut copied_block: [u8; OAM_SIZE] = [0; OAM_SIZE];
                 copied_block.copy_from_slice(&memory[base_addr..base_addr + OAM_SIZE]);
+                // println!("OAM update!!!");
                 self.send_update(Oam(copied_block));
             }
             _ => { panic!("unimplemented") }

@@ -64,6 +64,7 @@ impl ProgramState
 
 	pub fn transition(&mut self, start_time:Instant) {
 		if self.handle_messages_and_check_for_nmi() {
+			// println!("starting NMI");
 			self.trigger_nmi();
 		}
 
@@ -143,6 +144,7 @@ impl ProgramState
 					has_nmi = true;
 				}
 				PpuStatus(status) => {
+					// println!("CPU read a PPU status update: {:b}", status);
 					self.listener.ppu_status = status;
 				}
 			}

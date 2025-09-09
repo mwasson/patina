@@ -1,9 +1,10 @@
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
+use std::time::Instant;
 use crate::rom::Rom;
 
 use crate::ppu::palette::Palette;
-use crate::ppu::{Tile, WriteBuffer, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
+use crate::ppu::{PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage;
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::{PpuStatus, NMI};
@@ -11,17 +12,15 @@ use crate::processor::Processor;
 
 /* TODO: ppumask rendering effects */
 
-/* TODO ppuscroll scrolling */
-
-/* TODO PPU internal registers */
-
 pub struct PPUState {
     vram: VRAM,
     oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
     /* shared registers */
     ppu_ctrl: u8,
+    ppu_mask: u8,
     ppu_status: u8,
+    scroll: PPUScrollState,
     /* communication back to cpu */
     ppu_update_sender: Sender<PpuToCpuMessage>,
     update_receiver: Receiver<CpuToPpuMessage>
@@ -50,12 +49,15 @@ impl PPUState {
             write_buffer,
            ppu_status: 0,
            ppu_ctrl: 0,
+           ppu_mask: 0,
            ppu_update_sender,
            update_receiver,
-        })
+           scroll: PPUScrollState::default(),
+       })
     }
 
     pub fn render_screen(&mut self) {
+        // println!("starting screen render");
         self.run_timed(341, |ppu| {
             /* dummy scanline */
             /* clear VBlank */
@@ -65,19 +67,22 @@ impl PPUState {
             ppu.send_status_update();
         });
 
+        // println!("rendering pixels");
         /* actually render the screen, storing pixels in the write buffer */
         self.run_timed(341*240, |ppu| {
             let mut tmp_write_buffer = [0; WRITE_BUFFER_SIZE];
+            let mut scroll = ppu.scroll.clone();
             /* visible scanlines */
             for i in 0..240 {
-                let scanline_pixels = &ppu.render_scanline(i);
+                let scanline_pixels = &ppu.render_scanline(i, &mut scroll);
                 tmp_write_buffer[Self::pixel_range_for_line(i)].copy_from_slice(scanline_pixels);
             }
             ppu.write_buffer.lock().unwrap().copy_from_slice(&tmp_write_buffer);
         });
 
-        /* post-render scanline; first tick of VBlank */
-        self.run_timed(341, |ppu| {
+        // println!("Post render");
+        /* post-render scanline; first tick of VBlank, VBlank scanlines */
+        self.run_timed(21*341-2, |ppu| {
             ppu.handle_update();
             /* set vblank flag */
             ppu.ppu_status = set_bit_on(ppu.ppu_status, 7);
@@ -87,16 +92,14 @@ impl PPUState {
                 ppu.send_update(NMI);
             }
         });
-
-        /* VBlank scanlines */
-        self.run_timed(20*341-2, |_unused| {});
     }
 
     pub fn get_write_buffer(&self) -> Arc<Mutex<WriteBuffer>> {
         self.write_buffer.clone()
     }
 
-    fn render_scanline(&mut self, scanline: u8) -> [u8; 256*4] {
+    fn render_scanline(&mut self, scanline: u8, scroll: &mut PPUScrollState) -> [u8; 256*4] {
+        // println!("SCANLINE {}: coarse_x = {}", scanline, scroll.coarse_x);
         self.handle_update();
         let scanline_sprites = self.sprite_evaluation(scanline);
 
@@ -105,16 +108,22 @@ impl PPUState {
         self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, true);
         /* background tiles */
         for x in (0..0xff).step_by(8) {
-            let tile = self.tile_for_pixel(x, scanline);
+            let tile = self.get_bg_tile(self.vram[Self::vram_address_mirror((0x2000
+                | (scroll.nametable as u16) << 10
+                | (scroll.coarse_y as u16) << 5
+                | (scroll.coarse_x as u16)) as usize)]);
             let palette = self.palette_for_pixel(x, scanline);
             for pixel_offset in 0..8 {
-                let brightness = tile.pixel_intensity(pixel_offset as usize, (scanline % 8) as usize);
+                let brightness = tile.pixel_intensity(((pixel_offset /*+ scroll.fine_x*/) % 8) as usize,
+                                                      (scroll.fine_y % 8) as usize);
+
                 let index = (x+pixel_offset) as usize * 4;
                 if brightness > 0 && line_buffer[index+3] == 0 {
                     /* TODO doesn't handle 16 pixel tall sprites */
                     line_buffer[index..(index+4)].copy_from_slice(&palette.brightness_to_pixels(brightness));
                 }
             }
+            scroll.coarse_x_increment();
         }
         self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, false);
 
@@ -126,18 +135,32 @@ impl PPUState {
             }
         }
 
-        self.check_for_sprite_zero_hit(scanline);
+        /* TODO just for testing--instead of sprite zero check, be deterministic */
+        if scanline == 25 {
+            // println!("doing synthetic sprite zero hit");
+            self.ppu_status = set_bit_on(self.ppu_status, 6);
+            self.send_status_update();
+            // self.check_for_sprite_zero_hit(scanline);
+        }
+
+        /* update scrolling TODO explain */
+        scroll.y_increment();
+        if scroll.coarse_x != self.scroll.coarse_x {
+            // println!("Updating coarse_x at scanline {}, from {} to {}", scanline, scroll.coarse_x, self.scroll.coarse_x);
+        }
+        scroll.coarse_x = self.scroll.coarse_x;
+        scroll.nametable = (scroll.nametable & !1) | (self.scroll.nametable & 1);
 
         line_buffer
     }
 
     fn check_for_sprite_zero_hit(&mut self, scanline: u8) {
         /* TODO: don't do anything if it's already been set, should be a ppu temp local variable */
-        /* TODO it'd be nice if unlocked vram and ppuctrl and maybe others could just be ppu local variables ... */
         let sprite0 = self.slice_as_sprite(0);
         if sprite0.in_scanline(scanline, self) {
             for x in 0..8 {
                 if sprite0.get_brightness_localized(self, x, scanline - sprite0.y) > 0 {
+                    /* TODO: this doesn't take into account scrolling */
                     let bg_tile = self.tile_for_pixel(sprite0.x + x, scanline);
                     if  bg_tile.pixel_intensity(((sprite0.x + x) % 8) as usize, (scanline % 8) as usize) > 0 {
                         self.ppu_status = set_bit_on(self.ppu_status, 6);
@@ -310,9 +333,20 @@ impl PPUState {
                 }
                 CpuToPpuMessage::PpuCtrl(value) => {
                     self.ppu_ctrl = value;
+                    self.scroll.nametable = value & 0x3;
                 }
                 CpuToPpuMessage::PpuMask(value) => {
-                    /* TODO */
+                    // println!("updating ppu_mask to {:b}", value);
+                    self.ppu_mask = value;
+                },
+                CpuToPpuMessage::ScrollX(coarse_x, fine_x) => {
+                    // println!("Received message: set coarse x to {} ", coarse_x);
+                    self.scroll.coarse_x = coarse_x;
+                    self.scroll.fine_x = fine_x;
+                },
+                CpuToPpuMessage::ScrollY(coarse_y, fine_y) => {
+                    self.scroll.coarse_y = coarse_y;
+                    self.scroll.fine_y = fine_y;
                 }
             }
         }
