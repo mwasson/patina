@@ -13,6 +13,7 @@ use crate::ppu::PPUState;
 mod window;
 mod ppu;
 mod processor;
+mod scheduler;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
@@ -27,16 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let write_buffer = ppu.get_write_buffer();
 
 	thread::spawn(move || {
-		let start_time = Instant::now();
-		loop {
-			cpu.transition(start_time);
-		}
-	});
-
-	thread::spawn(move || {
-		loop {
-			ppu.render_screen();
-		}
+		scheduler::simulate(&mut cpu, &mut ppu);
 	});
 
 	// TODO: link PPU to window

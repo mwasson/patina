@@ -1,9 +1,14 @@
+use std::ops::Add;
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::Instant;
+use std::thread::Thread;
+use std::time::{Duration, Instant};
+
+use priority_queue::PriorityQueue;
+
 use crate::cpu;
 use crate::cpu::{operation_from_memory, AddressingMode, CoreMemory, Operation, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
-use crate::ppu::{PPUListener, PPURegister};
+use crate::ppu::{PPUListener, PPURegister, PPUState};
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage;
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::PpuStatus;
 use crate::processor::Processor;
@@ -19,9 +24,7 @@ pub struct ProgramState
 	pub status: u8,
 	memory: CoreMemory,
 	listener: PPUListener,
-	instruction_counter: u32,
 	ppu_state_receiver: Receiver<PpuToCpuMessage>,
-	cycle_counter: u128,
 }
 
 impl Processor for ProgramState
@@ -52,9 +55,7 @@ impl ProgramState
 			status: (0x11) << 4,
 			memory,
 			listener: PPUListener::new(rom, update_sender),
-			instruction_counter: 0,
 			ppu_state_receiver,
-			cycle_counter: 0,
 		};
 
 		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&mut result, INITIAL_PC_LOCATION);
@@ -62,9 +63,9 @@ impl ProgramState
 		Box::new(result)
 	}
 
-	pub fn transition(&mut self, start_time:Instant) {
+	/* performs one operation, and then returns when the next operation should run */
+	pub fn transition(&mut self, start_time: Instant) -> Instant {
 		if self.handle_messages_and_check_for_nmi() {
-			// println!("starting NMI");
 			self.trigger_nmi();
 		}
 
@@ -74,11 +75,9 @@ impl ProgramState
 											  self.read_mem(operation_loc.wrapping_add(1)),
 											  self.read_mem(operation_loc.wrapping_add(2)));
 
-		self.cycle_counter += operation.realized_instruction.cycles as u128;
-		self.run_timed_from_start(self.cycle_counter, start_time, |state| {
-			operation.apply(state);
-		});
-		self.instruction_counter += 1;
+		operation.apply(self);
+
+		start_time.add(self.cycles_to_duration(operation.realized_instruction.cycles))
 	}
 
 	pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {
@@ -144,7 +143,6 @@ impl ProgramState
 					has_nmi = true;
 				}
 				PpuStatus(status) => {
-					// println!("CPU read a PPU status update: {:b}", status);
 					self.listener.ppu_status = status;
 				}
 			}

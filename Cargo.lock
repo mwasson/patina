@@ -905,6 +905,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "pixels",
+ "priority-queue",
  "winit",
 ]
 
@@ -952,6 +953,17 @@ name = "pollster"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22686f4785f02a4fcc856d3b3bb19bf6c8160d103f7a99cc258bddd0251dc7f2"
+
+[[package]]
+name = "priority-queue"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5676d703dda103cbb035b653a9f11448c0a7216c7926bd35fcb5865475d0c970"
+dependencies = [
+ "autocfg",
+ "equivalent",
+ "indexmap 2.8.0",
+]
 
 [[package]]
 name = "proc-macro-crate"

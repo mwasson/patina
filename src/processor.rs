@@ -1,8 +1,12 @@
 use std::time;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub trait Processor {
     fn clock_speed(&self) -> u64;
+    
+    fn cycles_to_duration(&self, cycles: u16) -> Duration {
+        Duration::from_nanos((1e9 as u64)*(cycles as u64)/(self.clock_speed()))
+    }
 
     fn run_timed<F,U>(&mut self, cycles:u128, f:F) -> U where
         F: FnOnce(&mut Self) -> U,

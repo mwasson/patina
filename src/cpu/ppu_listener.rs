@@ -60,7 +60,6 @@ impl PPUListener
             }
             PPUSCROLL => {
                 if self.first_write {
-                    // println!("Sending scroll message, PPUSCROLL = {:b}", value);
                     self.send_update(ScrollX((value >> 3) & 0x1f, value & 0x7));
                 } else {
                     self.send_update(ScrollY((value >> 3) & 0x1f, value & 0x7));
@@ -87,7 +86,6 @@ impl PPUListener
                 let base_addr = ((value as u16) << 8) as usize;
                 let mut copied_block: [u8; OAM_SIZE] = [0; OAM_SIZE];
                 copied_block.copy_from_slice(&memory[base_addr..base_addr + OAM_SIZE]);
-                // println!("OAM update!!!");
                 self.send_update(Oam(copied_block));
             }
             _ => { panic!("unimplemented") }
