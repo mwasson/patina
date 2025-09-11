@@ -404,7 +404,7 @@ impl SpriteInfo {
     }
 
     pub fn is_foreground(&self) -> bool {
-        self.attrs & 0x10 == 0
+        self.attrs & 0x20 == 0
     }
 
     /* create a SpriteInfo from memory */
