@@ -132,12 +132,7 @@ impl PPUState {
             }
         }
 
-        /* TODO just for testing--instead of sprite zero check, be deterministic */
-        if scanline == 30 {
-            self.ppu_status = set_bit_on(self.ppu_status, 6);
-            self.send_status_update();
-        }
-        // self.check_for_sprite_zero_hit(scanline);
+        self.check_for_sprite_zero_hit(scanline);
 
         /* update scrolling TODO explain */
         self.tmp_scroll.y_increment();
@@ -150,16 +145,26 @@ impl PPUState {
         if self.ppu_status & (1<<6) != 0 {
             return;
         }
+
+        let mut scroll_data = self.tmp_scroll.clone();
+        scroll_data.coarse_x = self.scroll.coarse_x;
+        scroll_data.nametable = self.scroll.nametable;
         let sprite0 = self.slice_as_sprite(0);
         if sprite0.in_scanline(scanline, self) {
+            let mut x_val = sprite0.x;
+            while x_val >= 8 {
+                scroll_data.coarse_x_increment();
+                x_val -= 8;
+            }
             for x in 0..8 {
-                if sprite0.get_brightness_localized(self, x, scanline - sprite0.y) > 0 {
-                    let tile = self.get_bg_tile(self.vram[Self::vram_address_mirror((0x2000
-                        | (self.tmp_scroll.nametable as u16) << 10
-                        | (self.tmp_scroll.coarse_y as u16) << 5
-                        | (self.tmp_scroll.coarse_x as u16)) as usize)]);
-                    /* TODO: this doesn't take into account scrolling */
-                    let bg_tile = self.tile_for_pixel(sprite0.x + x, scanline);
+                if x_val + x >= 8 {
+                    scroll_data.coarse_x_increment();
+                }
+                if sprite0.get_brightness_localized(self, x, scanline - sprite0.get_y()) > 0 {
+                    let bg_tile = self.get_bg_tile(self.vram[Self::vram_address_mirror((0x2000
+                        | (scroll_data.nametable as u16) << 10
+                        | (scroll_data.coarse_y as u16) << 5
+                        | (scroll_data.coarse_x as u16)) as usize)]);
                     if  bg_tile.pixel_intensity(((sprite0.x + x) % 8) as usize, (scanline % 8) as usize) > 0 {
                         self.ppu_status = set_bit_on(self.ppu_status, 6);
                         self.send_status_update();
@@ -178,7 +183,7 @@ impl PPUState {
             let sprite_palette = sprite.get_palette(&self);
             /* sprites */
             for i in 0..min(8,0xff-sprite.x+1) {
-                let brightness = sprite.get_brightness_localized(self, i, scanline - sprite.y);
+                let brightness = sprite.get_brightness_localized(self, i, scanline - sprite.get_y());
                 let pixel_index = sprite.x.wrapping_add(i) as usize * 4;
                 let mut pixels = sprite_palette.brightness_to_pixels(brightness);
                 if sprite.sprite_index == 0 {
@@ -367,6 +372,7 @@ impl PPUState {
 #[derive(Debug, Clone, Copy)]
 struct SpriteInfo
 {
+    /* NB: this is one less than the top of the sprite! you'll have to add 1 whenever you use it (see get_y) */
     y: u8,
     tile_index: u8,
     attrs: u8,
@@ -376,14 +382,18 @@ struct SpriteInfo
 
 impl SpriteInfo {
     fn in_scanline(&self, scanline: u8, ppu: &PPUState) -> bool {
-            self.y <= scanline && scanline - self.y < 8 /* TODO ppu.sprite_size() */
+            self.get_y() <= scanline && scanline - self.get_y() < 8 /* TODO ppu.sprite_size() */
+    }
+
+    fn get_y(&self) -> u8 {
+        self.y+1
     }
 
     fn at_x_position(&self, x: u8) -> bool {
         self.x <= x && x - self.x < 8
     }
     fn get_brightness(&self, ppu: &PPUState, x: u8, y: u8) -> u8 {
-        self.get_brightness_localized(ppu, x-self.x, y-self.y)
+        self.get_brightness_localized(ppu, x-self.x, y-self.get_y())
     }
 
     fn get_brightness_localized(&self, ppu: &PPUState, x: u8, y: u8) -> u8 {
