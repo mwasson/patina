@@ -71,6 +71,10 @@ impl PPUListener
                 self.vram_addr =
                     if self.first_write { (self.vram_addr & 0xff) | ((0x3f & value as usize) << 8 ) }
                     else { value as usize | (self.vram_addr & 0xff00)};
+                /* TODO HACK REMOVE */
+                if(self.first_write) {
+                    self.send_update(CpuToPpuMessage::PpuCtrl((self.ppu_ctrl & !3) | ((value & 0xa) >> 2)))
+                }
                 self.first_write = !self.first_write;
             }
             PPUDATA => {
