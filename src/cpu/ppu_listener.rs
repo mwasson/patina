@@ -124,6 +124,9 @@ impl PPUListener
                 self.ppu_status &= !0x80;
                 result
             }
+            PPUADDR => {
+                self.vram_addr as u8
+            }
             PPUDATA => {
                 let new_buffered_val = self.local_vram_copy[PPUState::vram_address_mirror(self.vram_addr)];
 
@@ -138,7 +141,7 @@ impl PPUListener
             CONTROLLER => {
                 self.controller.get_next_byte()
             }
-            _ => { panic!("unimplemented") }
+            _ => { panic!("unimplemented {:?}", updated_register) }
         }
     }
 
