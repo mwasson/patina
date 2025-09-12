@@ -113,10 +113,11 @@ impl Instruction
 				Self::branch_instr(state, StatusFlag::Zero, true, b1)
 			}
 			Instruction::BIT => {
-				let val = state.accumulator & addr_mode.deref(state, b1, b2);
+				let mem = addr_mode.deref(state, b1, b2);
+				let val = state.accumulator & mem;
 				state.update_flag(StatusFlag::Zero, val == 0);
-				state.update_flag(StatusFlag::Overflow, val & 0x40 != 0);
-				state.update_flag(StatusFlag::Negative, val & 0x80 != 0);
+				state.update_flag(StatusFlag::Overflow, mem & 0x40 != 0);
+				state.update_flag(StatusFlag::Negative, mem & 0x80 != 0);
 			}
 			Instruction::BMI => {
 				Self::branch_instr(state, StatusFlag::Negative, true, b1)
