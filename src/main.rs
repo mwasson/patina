@@ -1,4 +1,4 @@
-use std::{fs, thread};
+use std::{env, fs, thread};
 use std::collections::HashSet;
 use std::io::{self, ErrorKind};
 use std::sync::{Arc, Mutex};
@@ -19,7 +19,14 @@ mod scheduler;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
-	let rom = parse_file("/Users/mwasson/smb.nes")?; /* temporary, for testing */
+	let args = env::args().collect::<Vec<_>>();
+
+	let rom = if let Some(rom_path) = args.get(1) {
+		let path = &*rom_path.clone();
+		parse_file(path)?
+	} else {
+		return Result::Err(Box::new(std::io::Error::new(ErrorKind::Other, "First argument must be ROM file path")));
+	};
 
 	let (nmi_sender, nmi_receiver) = channel();
 	let (update_sender, update_receiver) = channel();
