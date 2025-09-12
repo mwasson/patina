@@ -106,7 +106,9 @@ impl PPUListener
             }
             PPUSTATUS => {
                 self.first_write = true;
-                self.ppu_status
+                let result = self.ppu_status;
+                self.ppu_status &= !0x80;
+                result
             }
             PPUDATA => {
                 let new_buffered_val = self.local_vram_copy[PPUState::vram_address_mirror(self.vram_addr)];
