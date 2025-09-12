@@ -19,7 +19,7 @@ impl PPUScrollState
             self.fine_y = 0;
             if (self.coarse_y == 29) {
                 self.coarse_y = 0;
-                self.nametable = (self.nametable ^ 0x2) | (self.nametable & 0x1);/* switch vertical nametable */
+                self.nametable ^= 0x2;/* switch vertical nametable */
             } else if (self.coarse_y == 31) {
                 self.coarse_y = 0;
             } else {
@@ -31,7 +31,7 @@ impl PPUScrollState
     pub fn coarse_x_increment(&mut self) {
         if self.coarse_x == 31 {
             self.coarse_x = 0;
-            self.nametable = (self.nametable ^ 0x1) | (self.nametable & 0x2);/* switch horizontal nametable */
+            self.nametable ^= 0x1; /* switch horizontal nametable */
         } else {
             self.coarse_x += 1;
         }
