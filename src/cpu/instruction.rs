@@ -69,7 +69,9 @@ pub enum Instruction
 
 	/* stack operations */
 	PHA, /* Push A */
+	PHP, /* Push Processor Status */
 	PLA, /* Pull A */
+	PLP, /* Pull Processor Status */
 
 	/* jumps */
 	JMP, /* Jump */
@@ -223,10 +225,22 @@ impl Instruction
 				state.write_mem(0x100 + state.s_register as u16, state.accumulator);
 				state.s_register -= 1;
 			}
+			Instruction::PHP => {
+				/* pushes status onto the stack, with the 'B' flag (bit 4) on */
+				state.write_mem(0x100 + state.s_register as u16, state.status | (1<<4));
+				state.s_register -= 1;
+
+			}
 			Instruction::PLA => {
 				state.s_register += 1;
 				state.accumulator = state.read_mem(0x100 + state.s_register as u16);
 				state.update_zero_neg_flags(state.accumulator);
+			}
+			Instruction::PLP => {
+				/* reads status from the stack, except for bits 4 and 5 */
+				state.s_register += 1;
+				let val = state.read_mem(0x100 + state.s_register as u16);
+				state.status = (state.status & 0x30) | (val & !0x30);
 			}
 			Instruction::ROL => {
 				let val = addr_mode.deref(state, b1, b2);
@@ -355,6 +369,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 
 		0x00 => (Instruction::BRK, Implicit, 7, 2),
 		0x06 => (Instruction::ASL, ZeroPage, 5, 2),
+		0x08 => (Instruction::PHP, Implicit, 3, 1),
 		0x0a => (Instruction::ASL, Accumulator, 2, 1),
 		0x01 => (Instruction::ORA, IndirectX, 6, 2),
 		0x05 => (Instruction::ORA, ZeroPage, 3, 2),
@@ -374,6 +389,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x24 => (Instruction::BIT, ZeroPage, 3, 2),
 		0x25 => (Instruction::AND, ZeroPage, 3, 2),
 		0x26 => (Instruction::ROL, ZeroPage, 5, 2),
+		0x28 => (Instruction::PLP, Implicit, 4, 1),
 		0x29 => (Instruction::AND, Immediate, 2, 2),
 		0x2a => (Instruction::ROL, Accumulator, 2, 1),
 		0x2c => (Instruction::BIT, Absolute, 4, 3),
