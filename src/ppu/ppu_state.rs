@@ -182,13 +182,10 @@ impl PPUState {
             }
             let sprite_palette = sprite.get_palette(&self);
             /* sprites */
-            for i in 0..min(8,0xff-sprite.x+1) {
+            for i in 0..min(8,(0xff-sprite.x).saturating_add(1)) {
                 let brightness = sprite.get_brightness_localized(self, i, scanline - sprite.get_y());
                 let pixel_index = sprite.x.wrapping_add(i) as usize * 4;
-                let mut pixels = sprite_palette.brightness_to_pixels(brightness);
-                if sprite.sprite_index == 0 {
-                    pixels[3] -= 1; /* TODO explain */
-                }
+                let pixels = sprite_palette.brightness_to_pixels(brightness);
                 if brightness > 0 && line_buffer[pixel_index+3] == 0 {
                     line_buffer[pixel_index..pixel_index+4].copy_from_slice(&pixels);
                 }
