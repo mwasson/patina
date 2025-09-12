@@ -1,6 +1,6 @@
+use std::cmp::{max, min};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::Instant;
 use crate::rom::Rom;
 
 use crate::ppu::palette::Palette;
@@ -64,6 +64,8 @@ impl PPUState {
         self.ppu_status = set_bit_off(self.ppu_status, 7);
         /* clear sprite 0 hit flag */
         self.ppu_status = set_bit_off(self.ppu_status, 6);
+        /* clear overflow flag */
+        self.ppu_status = set_bit_off(self.ppu_status, 5);
         self.send_status_update();
     }
 
@@ -83,39 +85,47 @@ impl PPUState {
     }
 
     pub fn render_scanline(&mut self, scanline: u8) {
+        self.handle_update();
         if scanline == 0 {
             self.tmp_scroll = self.scroll.clone();
+        } else {
+            self.tmp_scroll.coarse_x = self.scroll.coarse_x;
+            self.tmp_scroll.nametable = (self.tmp_scroll.nametable & !1) | (self.scroll.nametable & 1);
         }
 
-        self.handle_update();
         let scanline_sprites = self.sprite_evaluation(scanline);
 
         let mut line_buffer = [0; 256*4];
 
         self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, true);
         /* background tiles */
-        for x in (0..0xff).step_by(8) {
+        for x in (0..0x101).step_by(8) {
             let tile = self.get_bg_tile(self.vram[Self::vram_address_mirror((0x2000
                 | (self.tmp_scroll.nametable as u16) << 10
                 | (self.tmp_scroll.coarse_y as u16) << 5
                 | (self.tmp_scroll.coarse_x as u16)) as usize)]);
-            let palette = self.palette_for_pixel(x, scanline);
+            let palette = self.palette_for_pixel(self.tmp_scroll.coarse_x*8, scanline);
             for pixel_offset in 0..8 {
-                let brightness = tile.pixel_intensity(((pixel_offset) % 8) as usize,
-                                                      (self.tmp_scroll.fine_y % 8) as usize);
+                let pixel_loc= x as i16 + pixel_offset as i16 - self.scroll.fine_x as i16;
+                if(pixel_loc < 0 || pixel_loc > 0xff) {
+                    continue;
+                }
+                let brightness = tile.pixel_intensity(pixel_offset as usize,
+                                                      self.tmp_scroll.fine_y as usize);
 
-                let index = (x+pixel_offset-self.scroll.fine_x) as usize * 4;
+                let index = pixel_loc as usize * 4;
                 if brightness > 0 && line_buffer[index+3] == 0 {
-                    /* TODO doesn't handle 16 pixel tall sprites */
-                    line_buffer[index..(index+4)].copy_from_slice(&palette.brightness_to_pixels(brightness));
+                        /* TODO doesn't handle 16 pixel tall sprites */
+                        line_buffer[index..(index + 4)].copy_from_slice(&palette.brightness_to_pixels(brightness));
                 }
             }
+
             self.tmp_scroll.coarse_x_increment();
         }
         self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, false);
 
         /* background color */
-        let bg_pixels = self.get_palette_no_locking(0).brightness_to_pixels(0);
+        let bg_pixels = self.get_palette(0).brightness_to_pixels(0);
         for x in 0..0x100 {
             if line_buffer[x*4 + 3] == 0 {
                 line_buffer[(x*4)..(x*4+4)].copy_from_slice(&bg_pixels);
@@ -126,23 +136,28 @@ impl PPUState {
         if scanline == 30 {
             self.ppu_status = set_bit_on(self.ppu_status, 6);
             self.send_status_update();
-            // self.check_for_sprite_zero_hit(scanline);
         }
+        // self.check_for_sprite_zero_hit(scanline);
 
         /* update scrolling TODO explain */
         self.tmp_scroll.y_increment();
-        self.tmp_scroll.coarse_x = self.scroll.coarse_x;
-        self.tmp_scroll.nametable = (self.tmp_scroll.nametable & !1) | (self.scroll.nametable & 1);
 
         self.write_buffer.lock().unwrap()[Self::pixel_range_for_line(scanline)].copy_from_slice(&line_buffer);
     }
 
     fn check_for_sprite_zero_hit(&mut self, scanline: u8) {
-        /* TODO: don't do anything if it's already been set, should be a ppu temp local variable */
+        /* if already set, return */
+        if self.ppu_status & (1<<6) != 0 {
+            return;
+        }
         let sprite0 = self.slice_as_sprite(0);
         if sprite0.in_scanline(scanline, self) {
             for x in 0..8 {
                 if sprite0.get_brightness_localized(self, x, scanline - sprite0.y) > 0 {
+                    let tile = self.get_bg_tile(self.vram[Self::vram_address_mirror((0x2000
+                        | (self.tmp_scroll.nametable as u16) << 10
+                        | (self.tmp_scroll.coarse_y as u16) << 5
+                        | (self.tmp_scroll.coarse_x as u16)) as usize)]);
                     /* TODO: this doesn't take into account scrolling */
                     let bg_tile = self.tile_for_pixel(sprite0.x + x, scanline);
                     if  bg_tile.pixel_intensity(((sprite0.x + x) % 8) as usize, (scanline % 8) as usize) > 0 {
@@ -160,13 +175,17 @@ impl PPUState {
             if sprite.is_foreground() != is_foreground {
                 continue;
             }
-            let sprite_palette = sprite.get_palette_no_locking(&self);
+            let sprite_palette = sprite.get_palette(&self);
             /* sprites */
-            for i in 0..8 {
+            for i in 0..min(8,0xff-sprite.x+1) {
                 let brightness = sprite.get_brightness_localized(self, i, scanline - sprite.y);
                 let pixel_index = sprite.x.wrapping_add(i) as usize * 4;
+                let mut pixels = sprite_palette.brightness_to_pixels(brightness);
+                if sprite.sprite_index == 0 {
+                    pixels[3] -= 1; /* TODO explain */
+                }
                 if brightness > 0 && line_buffer[pixel_index+3] == 0 {
-                    line_buffer[pixel_index..pixel_index+4].copy_from_slice(&sprite_palette.brightness_to_pixels(brightness));
+                    line_buffer[pixel_index..pixel_index+4].copy_from_slice(&pixels);
                 }
             }
         }
@@ -181,29 +200,26 @@ impl PPUState {
     }
 
     fn palette_for_pixel(&self, x:u8, y:u8) -> Palette {
+        /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
         let addr = 0x23c0
-            | (((self.tmp_scroll.nametable as u16)) << 10)
-            | ((((self.tmp_scroll.coarse_y as u16) >> 2) & 0x7) << 3)
-            | (((self.tmp_scroll.coarse_x as u16) >> 2) & 0x7);
-        let nametable_base = (0x2000 + 0x400 * (self.ppu_ctrl as u16 & 0x3)) as usize;
+            | ((self.tmp_scroll.nametable as u16) << 10)
+            | (((self.tmp_scroll.coarse_y as u16) & 0x1c) << 1)
+            | (((self.tmp_scroll.coarse_x) as u16) >> 2);
         /* each address controls a 32x32 pixel block; 8 blocks per row */
-        let attr_addr = y/32*8 + x/32;
-        // let attr_table_value = self.vram[Self::vram_address_mirror(nametable_base + 0x3c0 + attr_addr as usize)];
         let attr_table_value = self.vram[Self::vram_address_mirror(addr as usize)];
         /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
          * in order from the lowest bits they are: upper left, upper right, bottom left, bottom right
          */
-        let attr_table_offset = if x % 32 < 16 && y % 32 < 16 {
-            0
-        } else if x % 32 >= 16 && y % 32 < 16 {
-            2
-        } else if x % 32 < 16 && y % 32 >= 16 {
-            4
-        } else {
-            6
-        };
-        self.get_palette_no_locking((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
+        let x_low = x % 32 < 16;
+        let y_low = y % 32 < 16;
+        let attr_table_offset =
+            if x_low {
+                if y_low { 0 } else { 4 }
+            } else {
+                if y_low { 2 } else { 6 }
+            };
+        self.get_palette((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
     }
 
     /* Finds the first eight sprites on the given scanline, determined
@@ -259,10 +275,6 @@ impl PPUState {
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
-        self.get_palette_no_locking(palette_index)
-    }
-
-    fn get_palette_no_locking(&self, palette_index: u8) -> Palette {
         let palette_mem_loc : usize = 0x3f00 + (palette_index as usize)*4;
         let mut palette_data = [0u8; 4];
         palette_data.copy_from_slice(&self.vram[palette_mem_loc..palette_mem_loc+4]);
@@ -388,15 +400,11 @@ impl SpriteInfo {
     }
 
     fn color_from_brightness(&self, ppu: &PPUState, brightness: u8) -> [u8; 4] {
-        ppu.get_palette_no_locking(self.attrs & 0x3).brightness_to_pixels(brightness)
+        ppu.get_palette(self.attrs & 0x3).brightness_to_pixels(brightness)
     }
 
     fn get_palette(&self, ppu: &PPUState) -> Palette {
-        ppu.get_palette(self.attrs & 0x3)
-    }
-
-    fn get_palette_no_locking(&self, ppu: &PPUState) -> Palette {
-        ppu.get_palette_no_locking((self.attrs & 0x3) + 4)
+        ppu.get_palette((self.attrs & 0x3) + 4)
     }
 
     /* write this sprite as a byte array into memory */
