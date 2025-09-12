@@ -312,8 +312,12 @@ impl PPUState {
     }
 
     fn handle_update(&mut self) {
-        for update in self.update_receiver.try_recv() {
-            match update {
+        loop {
+            let update = self.update_receiver.try_recv();
+            if update.is_err() {
+                break;
+            }
+            match update.unwrap() {
                 CpuToPpuMessage::Memory(addr, data) => {
                     self.vram[PPUState::vram_address_mirror(addr)] = data
                 },

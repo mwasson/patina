@@ -137,8 +137,12 @@ impl ProgramState
 	fn handle_messages_and_check_for_nmi(&mut self) -> bool {
 		let mut has_nmi = false;
 
-		for message in self.ppu_state_receiver.try_recv() {
-			match message {
+		loop {
+			let message = self.ppu_state_receiver.try_recv();
+			if message.is_err() {
+				break;
+			}
+			match message.unwrap() {
 				PpuToCpuMessage::NMI => {
 					has_nmi = true;
 				}
