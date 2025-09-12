@@ -1,5 +1,6 @@
 /* the state of the cpu at a given time */
 mod addressing_mode;
+mod controller;
 mod instruction;
 mod status_flag;
 mod program_state;
@@ -8,6 +9,7 @@ pub mod cpu_to_ppu_message;
 
 use std::time::Instant;
 pub use addressing_mode::AddressingMode;
+pub use controller::Controller;
 pub use instruction::RealizedInstruction;
 pub use program_state::ProgramState;
 pub use status_flag::StatusFlag;

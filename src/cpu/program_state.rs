@@ -1,10 +1,12 @@
+use std::collections::HashSet;
 use std::ops::Add;
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread::Thread;
 use std::time::{Duration, Instant};
 
 use priority_queue::PriorityQueue;
-
+use winit::event::VirtualKeyCode;
 use crate::cpu;
 use crate::cpu::{operation_from_memory, AddressingMode, CoreMemory, Operation, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
@@ -197,5 +199,9 @@ impl ProgramState
 		};
 
 		mapped_addr as usize
+	}
+
+	pub fn set_key_source(&mut self, keys: Arc<Mutex<HashSet<VirtualKeyCode>>>) {
+		self.listener.set_key_source(keys);
 	}
 }

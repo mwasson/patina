@@ -1,7 +1,9 @@
 use std::{fs, thread};
+use std::collections::HashSet;
 use std::io::{self, ErrorKind};
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::channel;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 mod cpu;
 
@@ -27,12 +29,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	
 	let write_buffer = ppu.get_write_buffer();
 
+	let keys = Arc::new(Mutex::new(HashSet::new()));
+	cpu.set_key_source(keys.clone());
+
 	thread::spawn(move || {
 		scheduler::simulate(&mut cpu, &mut ppu);
 	});
 
 	// TODO: link PPU to window
-	window::initialize_ui(write_buffer)
+	window::initialize_ui(write_buffer, keys)
 }
 
 fn parse_file(file_ref: &str) -> io::Result<Rom> {

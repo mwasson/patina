@@ -1,15 +1,16 @@
+use std::collections::HashSet;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
+use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{WindowBuilder};
 use crate::ppu::{WriteBuffer};
 
-pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>, keys : Arc<Mutex<HashSet<VirtualKeyCode>>>) -> Result<(), Box<dyn std::error::Error>> {
 	let event_loop = EventLoop::new();
 	let window = WindowBuilder::new()
 		.with_title("Patina")
@@ -51,6 +52,22 @@ pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>) -> Result<(), Box<d
 			Event::WindowEvent { event, .. } => match event {
 				WindowEvent::CloseRequested => {
 					*control_flow = ControlFlow::Exit;
+				}
+				WindowEvent::KeyboardInput {
+					input, ..
+				} => {
+					match input.state {
+					    ElementState::Pressed => {
+							if let Some(key) = input.virtual_keycode {
+								keys.lock().unwrap().insert(key);
+							}
+						},
+						ElementState::Released => {
+							if let Some(key) =  input.virtual_keycode {
+								keys.lock().unwrap().remove(&key);
+							}
+						}
+					}
 				}
 				_ => ()
 			}

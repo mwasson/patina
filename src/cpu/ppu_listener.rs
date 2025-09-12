@@ -1,5 +1,9 @@
+use std::collections::HashSet;
+use std::fmt::{Debug, Pointer};
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
-use crate::cpu::{CoreMemory};
+use winit::event::VirtualKeyCode;
+use crate::cpu::{Controller, CoreMemory};
 use crate::ppu::{PPURegister, PPUState, OAM_SIZE, PPU_MEMORY_SIZE, VRAM};
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage::{Memory, Oam, ScrollX, ScrollY};
@@ -16,7 +20,8 @@ pub struct PPUListener
     ppu_ctrl: u8,   /* ppu write register, controlled by cpu */
     ppu_mask: u8,   /* ppu write register, controlled by cpu */
     pub ppu_status: u8, /* ppu read register, controlled by ppu, handled in updates */
-    local_vram_copy: VRAM /* for easy reads from PPUDATA, since only the CPU writes to it */
+    local_vram_copy: VRAM, /* for easy reads from PPUDATA, since only the CPU writes to it */
+    controller: Controller,
 }
 
 impl PPUListener
@@ -33,10 +38,11 @@ impl PPUListener
             ppu_mask: 0,
             ppu_status: 0,
             local_vram_copy,
+            controller: Controller::new(),
         }
     }
 
-    pub fn listen_write(&mut self, memory: &CoreMemory, updated_register: &PPURegister, value: u8) {
+    pub fn listen_write(&mut self, memory: &mut CoreMemory, updated_register: &PPURegister, value: u8) {
         match updated_register {
             PPUCTRL => {
                 if value & 0x20 != 0 {
@@ -92,6 +98,14 @@ impl PPUListener
                 copied_block.copy_from_slice(&memory[base_addr..base_addr + OAM_SIZE]);
                 self.send_update(Oam(copied_block));
             }
+            CONTROLLER => {
+                let addr = PPURegister::address(&CONTROLLER) as usize;
+                let old_value = memory[addr];
+                memory[addr] = value;
+                if old_value & 1 == 1 && value & 1 == 0 {
+                    self.controller.record_data();
+                }
+            }
             _ => { panic!("unimplemented") }
         }
     }
@@ -121,11 +135,18 @@ impl PPUListener
 
                 result
             }
+            CONTROLLER => {
+                self.controller.get_next_byte()
+            }
             _ => { panic!("unimplemented") }
         }
     }
 
     fn send_update(&self, update: CpuToPpuMessage) {
         self.update_sender.send(update).expect("");
+    }
+
+    pub fn set_key_source(&mut self, keys: Arc<Mutex<HashSet<VirtualKeyCode>>>) {
+        self.controller.set_key_source(keys);
     }
 }

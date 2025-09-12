@@ -10,6 +10,7 @@ pub enum PPURegister
     PPUADDR,
     PPUDATA,
     OAMDMA,
+    CONTROLLER,
 }
 
 impl PPURegister
@@ -25,6 +26,7 @@ impl PPURegister
             PPURegister::PPUADDR => 0x2006,
             PPURegister::PPUDATA => 0x2007,
             PPURegister::OAMDMA => 0x4014,
+            PPURegister::CONTROLLER => 0x4016,
         }
     }
 
@@ -39,6 +41,7 @@ impl PPURegister
             0x2006 => Some(PPURegister::PPUADDR),
             0x2007 => Some(PPURegister::PPUDATA),
             0x4014 => Some(PPURegister::OAMDMA),
+            0x4016 => Some(PPURegister::CONTROLLER),
             _ => None
         }
     }
