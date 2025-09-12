@@ -27,8 +27,8 @@ impl Controller {
         /* putting in a stack, so will reverse it */
         self.push_key_press(&recorded_keys, VirtualKeyCode::Right); /* right */
         self.push_key_press(&recorded_keys, VirtualKeyCode::Left); /* left */
-        self.push_key_press(&recorded_keys, VirtualKeyCode::Up); /* down */
-        self.push_key_press(&recorded_keys, VirtualKeyCode::Down); /* up */
+        self.push_key_press(&recorded_keys, VirtualKeyCode::Down); /* down */
+        self.push_key_press(&recorded_keys, VirtualKeyCode::Up); /* up */
         self.push_key_press(&recorded_keys, VirtualKeyCode::Tab); /* select */
         self.push_key_press(&recorded_keys, VirtualKeyCode::Return); /* start */
         self.push_key_press(&recorded_keys, VirtualKeyCode::Z); /* B */
