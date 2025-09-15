@@ -10,8 +10,6 @@ use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage;
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::{PpuStatus, NMI};
 use crate::processor::Processor;
 
-/* TODO: ppumask rendering effects */
-
 pub struct PPUState {
     vram: VRAM,
     oam: OAM,
@@ -97,32 +95,41 @@ impl PPUState {
 
         let mut line_buffer = [0; 256*4];
 
-        self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, true);
-        /* background tiles */
-        for x in (0..0x101).step_by(8) {
-            let tile = self.get_bg_tile(self.vram[Self::vram_address_mirror((0x2000
-                | (self.tmp_scroll.nametable as u16) << 10
-                | (self.tmp_scroll.coarse_y as u16) << 5
-                | (self.tmp_scroll.coarse_x as u16)) as usize)]);
-            let palette = self.palette_for_pixel(self.tmp_scroll.coarse_x*8, scanline);
-            for pixel_offset in 0..8 {
-                let pixel_loc= x as i16 + pixel_offset as i16 - self.scroll.fine_x as i16;
-                if(pixel_loc < 0 || pixel_loc > 0xff) {
-                    continue;
-                }
-                let brightness = tile.pixel_intensity(pixel_offset as usize,
-                                                      self.tmp_scroll.fine_y as usize);
+        let render_background = self.ppu_mask & (1 << 3) != 0;
+        let render_sprites = self.ppu_mask & (1 << 4) != 0;
 
-                let index = pixel_loc as usize * 4;
-                if brightness > 0 && line_buffer[index+3] == 0 {
+        if render_sprites {
+            self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, true);
+        }
+        /* background tiles */
+        if render_background {
+            for x in (0..0x101).step_by(8) {
+                let tile = self.get_bg_tile(self.vram[Self::vram_address_mirror((0x2000
+                    | (self.tmp_scroll.nametable as u16) << 10
+                    | (self.tmp_scroll.coarse_y as u16) << 5
+                    | (self.tmp_scroll.coarse_x as u16)) as usize)]);
+                let palette = self.palette_for_pixel(self.tmp_scroll.coarse_x * 8, scanline);
+                for pixel_offset in 0..8 {
+                    let pixel_loc = x as i16 + pixel_offset as i16 - self.scroll.fine_x as i16;
+                    if (pixel_loc < 0 || pixel_loc > 0xff) {
+                        continue;
+                    }
+                    let brightness = tile.pixel_intensity(pixel_offset as usize,
+                                                          self.tmp_scroll.fine_y as usize);
+
+                    let index = pixel_loc as usize * 4;
+                    if brightness > 0 && line_buffer[index + 3] == 0 {
                         /* TODO doesn't handle 16 pixel tall sprites */
                         line_buffer[index..(index + 4)].copy_from_slice(&palette.brightness_to_pixels(brightness));
+                    }
                 }
-            }
 
-            self.tmp_scroll.coarse_x_increment();
+                self.tmp_scroll.coarse_x_increment();
+            }
         }
-        self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, false);
+        if render_sprites {
+            self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, false);
+        }
 
         /* background color */
         let bg_pixels = self.get_palette(0).brightness_to_pixels(0);
