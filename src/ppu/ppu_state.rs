@@ -14,6 +14,7 @@ pub struct PPUState {
     vram: VRAM,
     oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
+    internal_buffer: WriteBuffer,
     /* shared registers */
     ppu_ctrl: u8,
     ppu_mask: u8,
@@ -43,9 +44,10 @@ impl PPUState {
         let write_buffer = Arc::new(Mutex::new([0; WRITE_BUFFER_SIZE]));
 
        Box::new(PPUState {
-            vram,
-            oam,
-            write_buffer,
+           vram,
+           oam,
+           write_buffer,
+           internal_buffer: [0; WRITE_BUFFER_SIZE],
            ppu_status: 0,
            ppu_ctrl: 0,
            ppu_mask: 0,
@@ -76,6 +78,9 @@ impl PPUState {
         if self.ppu_ctrl & (1 << 7) != 0 {
             self.send_update(NMI);
         }
+
+        /* write new pixels so UI can see them */
+        self.write_buffer.lock().unwrap().copy_from_slice(&self.internal_buffer);
     }
 
     pub fn get_write_buffer(&self) -> Arc<Mutex<WriteBuffer>> {
@@ -144,7 +149,7 @@ impl PPUState {
         /* update scrolling TODO explain */
         self.tmp_scroll.y_increment();
 
-        self.write_buffer.lock().unwrap()[Self::pixel_range_for_line(scanline)].copy_from_slice(&line_buffer);
+        self.internal_buffer[Self::pixel_range_for_line(scanline)].copy_from_slice(&line_buffer);
     }
 
     fn check_for_sprite_zero_hit(&mut self, scanline: u8) {
