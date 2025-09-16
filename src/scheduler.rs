@@ -4,6 +4,7 @@ use std::ops::Add;
 use std::thread;
 use std::time::Instant;
 use priority_queue::PriorityQueue;
+use crate::apu::APU;
 use crate::cpu::{ProgramState};
 use crate::ppu::PPUState;
 use crate::processor::Processor;
@@ -16,14 +17,16 @@ enum TaskType
     PPUScreen,
     PPUScanline(u8),
     PPUVBlank,
+    APU,
 }
 
-pub(crate) fn simulate(cpu: &mut ProgramState, ppu: &mut PPUState) {
+pub(crate) fn simulate(cpu: &mut ProgramState, ppu: &mut PPUState, apu: &mut APU) {
     let mut tasks : PriorityQueue<TaskType,Reverse<Instant>>  = PriorityQueue::new();
 
     let rev_start_time = Reverse(Instant::now());
     tasks.push(CPU, rev_start_time);
     tasks.push(PPUScreen, rev_start_time);
+    tasks.push(APU, rev_start_time);
 
     loop {
         match tasks.pop() {
@@ -56,6 +59,9 @@ pub(crate) fn simulate(cpu: &mut ProgramState, ppu: &mut PPUState) {
                     PPUVBlank => {
                         ppu.end_of_screen_render();
                         tasks.push(PPUScreen, Reverse(time.add(ppu.cycles_to_duration(21*341))));
+                    }
+                    APU => {
+
                     }
                 }
             }

@@ -9,6 +9,7 @@ mod cpu;
 
 mod rom;
 use rom::Rom;
+use crate::apu::APU;
 use crate::cpu::{ProgramState};
 use crate::ppu::PPUState;
 
@@ -16,6 +17,7 @@ mod window;
 mod ppu;
 mod processor;
 mod scheduler;
+mod apu;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
@@ -31,19 +33,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let (nmi_sender, nmi_receiver) = channel();
 	let (update_sender, update_receiver) = channel();
 
-	let mut cpu = ProgramState::from_rom(&rom, nmi_receiver, update_sender);
 	let mut ppu = PPUState::from_rom(&rom, nmi_sender, update_receiver);
-	
 	let write_buffer = ppu.get_write_buffer();
 
 	let keys = Arc::new(Mutex::new(HashSet::new()));
-	cpu.set_key_source(keys.clone());
-
+	let keys_clone = keys.clone();
+	
 	thread::spawn(move || {
-		scheduler::simulate(&mut cpu, &mut ppu);
+		let mut cpu = ProgramState::from_rom(&rom, nmi_receiver, update_sender);
+		let mut apu = APU::new(cpu.share_memory());
+
+		cpu.set_key_source(keys_clone);
+		scheduler::simulate(&mut cpu, &mut ppu, &mut apu);
 	});
 
-	// TODO: link PPU to window
 	window::initialize_ui(write_buffer, keys)
 }
 

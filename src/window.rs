@@ -47,7 +47,7 @@ pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>, keys : Arc<Mutex<Ha
 					*control_flow = ControlFlow::Exit;
 				}
 				WindowEvent::Resized(size) => {
-					pixels.resize_surface(size.width, size.height).expect("TODO: panic message");
+					pixels.resize_surface(size.width, size.height);
 				}
 				WindowEvent::KeyboardInput {
 					input, ..

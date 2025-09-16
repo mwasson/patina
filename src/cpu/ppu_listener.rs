@@ -1,5 +1,7 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt::{Debug, Pointer};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 use winit::event::VirtualKeyCode;
@@ -42,7 +44,7 @@ impl PPUListener
         }
     }
 
-    pub fn listen_write(&mut self, memory: &mut CoreMemory, updated_register: &PPURegister, value: u8) {
+    pub fn listen_write(&mut self, memory: &mut Rc<RefCell<CoreMemory>>, updated_register: &PPURegister, value: u8) {
         match updated_register {
             PPUCTRL => {
                 if value & 0x20 != 0 {
@@ -95,13 +97,13 @@ impl PPUListener
             OAMDMA => {
                 let base_addr = ((value as u16) << 8) as usize;
                 let mut copied_block: [u8; OAM_SIZE] = [0; OAM_SIZE];
-                copied_block.copy_from_slice(&memory[base_addr..base_addr + OAM_SIZE]);
+                copied_block.copy_from_slice(&memory.borrow()[base_addr..base_addr + OAM_SIZE]);
                 self.send_update(Oam(copied_block));
             }
             CONTROLLER => {
                 let addr = PPURegister::address(&CONTROLLER) as usize;
-                let old_value = memory[addr];
-                memory[addr] = value;
+                let old_value = memory.borrow()[addr];
+                memory.borrow_mut()[addr] = value;
                 if old_value & 1 == 1 && value & 1 == 0 {
                     self.controller.record_data();
                 }

@@ -1,8 +1,9 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Add;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
-use std::thread::Thread;
 use std::time::{Duration, Instant};
 
 use priority_queue::PriorityQueue;
@@ -24,7 +25,7 @@ pub struct ProgramState
 	pub s_register: u8,
 	pub program_counter: u16,
 	pub status: u8,
-	memory: CoreMemory,
+	memory: Rc<RefCell<CoreMemory>>,
 	listener: PPUListener,
 	ppu_state_receiver: Receiver<PpuToCpuMessage>,
 }
@@ -55,7 +56,7 @@ impl ProgramState
 			s_register: 0xff,
 			program_counter: 0x00,
 			status: (0x11) << 4,
-			memory,
+			memory: Rc::new(RefCell::new(memory)),
 			listener: PPUListener::new(rom, update_sender),
 			ppu_state_receiver,
 		};
@@ -173,7 +174,7 @@ impl ProgramState
 			let register = possible_ppu_register.unwrap();
 			self.listener.listen_write(&mut self.memory, &register, data);
 		} else {
-			self.memory[self.map_address(addr)] = data;
+			self.memory.borrow_mut()[self.map_address(addr)] = data;
 		}
 	}
 
@@ -185,7 +186,7 @@ impl ProgramState
 			let register = possible_ppu_register.unwrap();
 			self.listener.listen_read(&register)
 		} else {
-			self.memory[self.map_address(addr)]
+			self.memory.borrow()[self.map_address(addr)]
 		}
 	}
 
@@ -201,7 +202,11 @@ impl ProgramState
 		mapped_addr as usize
 	}
 
-	pub fn set_key_source(&mut self, keys: Arc<Mutex<HashSet<VirtualKeyCode>>>) {
+	pub fn set_key_source(&mut self, keys:Arc<Mutex<HashSet<VirtualKeyCode>>>) {
 		self.listener.set_key_source(keys);
+	}
+
+	pub fn share_memory(&self) -> Rc<RefCell<CoreMemory>> {
+		self.memory.clone()
 	}
 }

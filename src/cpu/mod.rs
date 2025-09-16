@@ -16,7 +16,7 @@ pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
 pub const MEMORY_SIZE: usize = 1<<16;
 
-type CoreMemory = [u8; MEMORY_SIZE];
+pub type CoreMemory = [u8; MEMORY_SIZE];
 
 const INITIAL_PC_LOCATION: u16 = 0xfffc;
 
