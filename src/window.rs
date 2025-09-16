@@ -38,20 +38,16 @@ pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>, keys : Arc<Mutex<Ha
 			Event::RedrawRequested(_) => {
 				let frame = pixels.frame_mut();
 
-				/* clear screen */
-				for pixel in frame.chunks_exact_mut(4) {
-					pixel.copy_from_slice(&[0, 0, 0, 255]);
-				}
-
 				frame.copy_from_slice(write_buffer.lock().unwrap().deref());
-
-				// draw_circle(frame, 640 / 2, 480 / 2, 100);
 
 				let _ = pixels.render();
 			}
 			Event::WindowEvent { event, .. } => match event {
 				WindowEvent::CloseRequested => {
 					*control_flow = ControlFlow::Exit;
+				}
+				WindowEvent::Resized(size) => {
+					pixels.resize_surface(size.width, size.height).expect("TODO: panic message");
 				}
 				WindowEvent::KeyboardInput {
 					input, ..
@@ -74,23 +70,4 @@ pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>, keys : Arc<Mutex<Ha
 			_ => ()
 		}
 	});
-}
-
-fn draw_circle(frame: &mut [u8], center_x: i32, center_y: i32, radius: i32) {
-	for y in -radius..radius {
-		for x in -radius..radius {
-			if x*x + y*y <= radius*radius {
-				let mx = center_x + x;
-				let my = center_y + y;
-
-				if mx >= 0 && mx < 640 && my >= 0 && my < 480 {
-					let loc = (my*640 + mx) as usize * 4;
-					frame[loc] = 0;
-					frame[loc+1] = 0;
-					frame[loc+2] = 255;
-					frame[loc+3] = 255;
-				}
-			}
-		}
-	}
 }
