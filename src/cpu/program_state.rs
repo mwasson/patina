@@ -4,14 +4,13 @@ use std::ops::Add;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use priority_queue::PriorityQueue;
 use winit::event::VirtualKeyCode;
 use crate::cpu;
-use crate::cpu::{operation_from_memory, AddressingMode, CoreMemory, Operation, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
+use crate::cpu::{operation_from_memory, AddressingMode, Controller, CoreMemory, Operation, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
-use crate::ppu::{PPUListener, PPURegister, PPUState};
+use crate::ppu::PPUListener;
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage;
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::PpuStatus;
 use crate::processor::Processor;
@@ -26,7 +25,8 @@ pub struct ProgramState
 	pub program_counter: u16,
 	pub status: u8,
 	memory: Rc<RefCell<CoreMemory>>,
-	listener: PPUListener,
+	listener: Rc<RefCell<PPUListener>>,
+	controller: Rc<RefCell<Controller>>,
 	ppu_state_receiver: Receiver<PpuToCpuMessage>,
 }
 
@@ -41,14 +41,15 @@ impl ProgramState
 {
 	/* TODO comment */
 	pub fn from_rom(rom: &Rom, ppu_state_receiver: Receiver<PpuToCpuMessage>, update_sender: Sender<CpuToPpuMessage>) -> Box<Self> {
-		let mut memory = [0; MEMORY_SIZE];
 
-		/* copy ROM data into memory */
-		/* TODO: handling RAM, mappers, etc. */
-		memory[(0x10000 - rom.prg_data.len())..0x10000].copy_from_slice(&*rom.prg_data);
+		let memory = Rc::new(RefCell::new(CoreMemory::new(rom)));
+		let listener = Rc::new(RefCell::new(PPUListener::new(rom, update_sender)));
+		let controller = Rc::new(RefCell::new(Controller::new()));
+		
+		memory.borrow_mut().register_listener(listener.clone());
+		memory.borrow_mut().register_listener(controller.clone());
 
 		/* set program counter to value in memory at this location */
-
 		let mut result = Self  {
 			accumulator: 0x00,
 			index_x: 0x00,
@@ -56,8 +57,9 @@ impl ProgramState
 			s_register: 0xff,
 			program_counter: 0x00,
 			status: (0x11) << 4,
-			memory: Rc::new(RefCell::new(memory)),
-			listener: PPUListener::new(rom, update_sender),
+			memory,
+			listener,
+			controller,
 			ppu_state_receiver,
 		};
 
@@ -150,7 +152,7 @@ impl ProgramState
 					has_nmi = true;
 				}
 				PpuStatus(status) => {
-					self.listener.ppu_status = status;
+					self.listener.borrow_mut().ppu_status = status;
 				}
 			}
 		}
@@ -168,42 +170,15 @@ impl ProgramState
 	}
 
 	pub fn write_mem(&mut self, addr: u16, data: u8) {
-		let mapped_addr = self.map_address(addr) as u16;
-		let possible_ppu_register = PPURegister::from_addr(mapped_addr);
-		if possible_ppu_register.is_some() {
-			let register = possible_ppu_register.unwrap();
-			self.listener.listen_write(&mut self.memory, &register, data);
-		} else {
-			self.memory.borrow_mut()[self.map_address(addr)] = data;
-		}
+		self.memory.borrow_mut().write(addr, data);
 	}
 
 	pub fn read_mem(&mut self, addr: u16) -> u8 {
-		let mapped_addr = self.map_address(addr) as u16;
-		/* in some cases, the listener can modify the results */
-		let possible_ppu_register = PPURegister::from_addr(mapped_addr);
-		if possible_ppu_register.is_some() {
-			let register = possible_ppu_register.unwrap();
-			self.listener.listen_read(&register)
-		} else {
-			self.memory.borrow()[self.map_address(addr)]
-		}
-	}
-
-	fn map_address(&self, addr: u16) -> usize {
-		let mapped_addr = if addr > 0x7ff && addr <= 0x1fff {
-			addr & 0x7ff
-		} else if addr >= 0x2000 && addr <= 0x3FFF { /* ppu registers */
-			0x2000 | (addr & 0x7)
-		} else {
-			addr
-		};
-
-		mapped_addr as usize
+		self.memory.borrow().read(addr)
 	}
 
 	pub fn set_key_source(&mut self, keys:Arc<Mutex<HashSet<VirtualKeyCode>>>) {
-		self.listener.set_key_source(keys);
+		self.controller.borrow_mut().set_key_source(keys);
 	}
 
 	pub fn share_memory(&self) -> Rc<RefCell<CoreMemory>> {

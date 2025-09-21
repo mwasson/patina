@@ -1,7 +1,10 @@
 use std::collections::HashSet;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use winit::event::VirtualKeyCode;
+use crate::cpu::core_memory::MemoryListener;
+use crate::cpu::CoreMemory;
+
+const CONTROLLER_ADDRESS: u16 = 0x4016;
 
 #[derive(Clone)]
 pub struct Controller {
@@ -42,5 +45,26 @@ impl Controller {
 
     fn push_key_press(&mut self, recorded_keys: &HashSet<VirtualKeyCode>, key: VirtualKeyCode) {
         self.inputs_in_order.push(if recorded_keys.contains(&key) { 1 } else { 0})
+    }
+}
+
+impl MemoryListener for Controller {
+    fn get_addresses(&self) -> Vec<u16> {
+        let mut addrs = Vec::new();
+        
+        addrs.push(CONTROLLER_ADDRESS);
+        
+        addrs
+    }
+
+    fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
+        self.get_next_byte()
+    }
+
+    fn write(&mut self, memory: &CoreMemory, address: u16, value: u8) {
+        let old_value = memory.read_no_listen(address);
+        if old_value & 1 == 1 && value & 1 == 0 {
+            self.record_data();
+        }
     }
 }

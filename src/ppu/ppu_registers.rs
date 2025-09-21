@@ -10,7 +10,6 @@ pub enum PPURegister
     PPUADDR,
     PPUDATA,
     OAMDMA,
-    CONTROLLER,
 }
 
 impl PPURegister
@@ -26,7 +25,6 @@ impl PPURegister
             PPURegister::PPUADDR => 0x2006,
             PPURegister::PPUDATA => 0x2007,
             PPURegister::OAMDMA => 0x4014,
-            PPURegister::CONTROLLER => 0x4016,
         }
     }
 
@@ -41,30 +39,7 @@ impl PPURegister
             0x2006 => Some(PPURegister::PPUADDR),
             0x2007 => Some(PPURegister::PPUDATA),
             0x4014 => Some(PPURegister::OAMDMA),
-            0x4016 => Some(PPURegister::CONTROLLER),
             _ => None
         }
     }
-
-    // pub fn read(&self, memory: &CoreMemory) -> u8 {
-    //     memory.read(PPURegister::address(self))
-    // }
-    //
-    // pub fn write(&self, memory: &mut CoreMemory, data: u8) {
-    //     memory.write(PPURegister::address(self), data);
-    // }
-    //
-    // pub fn read_flag(&self, memory: &CoreMemory, bit: u8) -> bool {
-    //     self.read(memory) & (1 << bit) != 0
-    // }
-    //
-    // pub fn set_flag_on(&self, memory: &mut CoreMemory, bit: u8) {
-    //     let new_val = self.read(memory);
-    //     self.write(memory, new_val | (1 << bit));
-    // }
-    //
-    // pub fn set_flag_off(&self, memory: &mut CoreMemory, bit: u8) {
-    //     let new_val = self.read(memory);
-    //     self.write(memory, new_val & !(1 << bit));
-    // }
 }
