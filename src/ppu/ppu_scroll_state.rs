@@ -17,10 +17,10 @@ impl PPUScrollState
         } else {
             /* wrap fine y, go to next vertical name table, being careful of attr table */
             self.fine_y = 0;
-            if (self.coarse_y == 29) {
+            if self.coarse_y == 29 {
                 self.coarse_y = 0;
                 self.nametable ^= 0x2;/* switch vertical nametable */
-            } else if (self.coarse_y == 31) {
+            } else if self.coarse_y == 31 {
                 self.coarse_y = 0;
             } else {
                 self.coarse_y += 1;

@@ -57,7 +57,7 @@ impl MemoryListener for Controller {
         addrs
     }
 
-    fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
+    fn read(&mut self, _memory: &CoreMemory, _address: u16) -> u8 {
         self.get_next_byte()
     }
 

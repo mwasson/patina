@@ -20,8 +20,6 @@ pub const MEMORY_SIZE: usize = 1<<16;
 
 const INITIAL_PC_LOCATION: u16 = 0xfffc;
 
-const RAM_MEMORY_START: usize = 0x8000;
-
 #[derive(Debug)]
 pub struct Operation
 {

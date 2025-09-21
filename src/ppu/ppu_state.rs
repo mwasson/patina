@@ -1,13 +1,13 @@
-use std::cmp::{max, min};
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{Receiver, Sender};
 use crate::rom::Rom;
+use std::cmp::min;
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
-use crate::ppu::palette::Palette;
-use crate::ppu::{PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
+use crate::ppu::palette::Palette;
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage;
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::{PpuStatus, NMI};
+use crate::ppu::{PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::processor::Processor;
 
 pub struct PPUState {
@@ -116,7 +116,7 @@ impl PPUState {
                 let palette = self.palette_for_pixel(self.tmp_scroll.coarse_x * 8, scanline);
                 for pixel_offset in 0..8 {
                     let pixel_loc = x as i16 + pixel_offset as i16 - self.scroll.fine_x as i16;
-                    if (pixel_loc < 0 || pixel_loc > 0xff) {
+                    if pixel_loc < 0 || pixel_loc > 0xff {
                         continue;
                     }
                     let brightness = tile.pixel_intensity(pixel_offset as usize,
@@ -162,7 +162,7 @@ impl PPUState {
         scroll_data.coarse_x = self.scroll.coarse_x;
         scroll_data.nametable = self.scroll.nametable;
         let sprite0 = self.slice_as_sprite(0);
-        if sprite0.in_scanline(scanline, self) {
+        if sprite0.in_scanline(scanline) {
             let mut x_val = sprite0.x;
             while x_val >= 8 {
                 scroll_data.coarse_x_increment();
@@ -205,21 +205,13 @@ impl PPUState {
         }
     }
 
-    fn tile_for_pixel(&self, x:u8, y:u8) -> Tile {
-        let nametable_base_addr : usize = 0x2000 + 0x400 * ((self.ppu_ctrl & 0x3) as usize);
-        let offset : usize = (y as usize)/8*32 + (x as usize)/8;
-        /* TODO implement vram mirroring */
-        let tile_index = self.vram[nametable_base_addr + offset];
-        self.get_bg_tile(tile_index)
-    }
-
     fn palette_for_pixel(&self, x:u8, y:u8) -> Palette {
         /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
         let addr = 0x23c0
             | ((self.tmp_scroll.nametable as u16) << 10)
             | (((self.tmp_scroll.coarse_y as u16) & 0x1c) << 1)
-            | (((self.tmp_scroll.coarse_x) as u16) >> 2);
+            | ((self.tmp_scroll.coarse_x as u16) >> 2);
         /* each address controls a 32x32 pixel block; 8 blocks per row */
         let attr_table_value = self.vram[Self::vram_address_mirror(addr as usize)];
         /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
@@ -242,11 +234,10 @@ impl PPUState {
      * sprite overflow bit if necessary.
      */
     fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo>{
-        let sprite_size = 8; /* TODO */
         let mut scanline_sprites = Vec::new();
         for i in 0..OAM_SIZE/4 {
             let sprite_data = self.slice_as_sprite(i);
-            if sprite_data.in_scanline(scanline_num, self) {
+            if sprite_data.in_scanline(scanline_num) {
                 /* already found eight sprites, set overflow */
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
                 if scanline_sprites.len() >= 8 {
@@ -263,12 +254,7 @@ impl PPUState {
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
         let mut sprite_data = [0u8; 4];
         sprite_data.copy_from_slice(&self.oam[sprite_index*4..sprite_index*4+4]);
-        SpriteInfo::from_memory(&sprite_data, sprite_index as u8)
-    }
-
-    /* sprites are 8 pixels tall unless the 5th bit of PPUCTRL is true, then they're 16 */
-    fn sprite_size(&self) -> u8 {
-        if self.ppu_ctrl & 0x10 != 0 { 16 } else { 8 }
+        SpriteInfo::from_memory(&sprite_data)
     }
 
     /* TODO: handle 8x16 sprites */
@@ -300,23 +286,6 @@ impl PPUState {
         let x_usize = x as usize;
         let range_width = 4*256; /* 4 bytes per pixel, 256 pixels per line */
         (x_usize*range_width)..(x_usize+1)*range_width
-    }
-
-    fn print_nametable(&self) {
-        let nametable_size = 0x400;
-        let nametable_base = 0x2400 + ((self.ppu_ctrl as usize) & 0x3) * 0x400;
-        self.print_vram_memory(nametable_base, nametable_size);
-    }
-
-    pub fn print_vram_memory(&self, base_addr: usize, len: usize) {
-        let mut mem = Vec::new();
-        mem.extend_from_slice(&self.vram[base_addr..(base_addr+len)]);
-        let mut output = String::new();
-        output.push_str(format!("VRAM Memory [0x{:x}..0x{:x}] : \n", base_addr, base_addr+len).as_str());
-        for i in 0..len {
-            output.push_str(format!("[0x{:x}]: 0x{:x}\n", base_addr+i, mem[i]).as_str());
-        }
-        println!("{}", output);
     }
 
     pub fn vram_address_mirror(addr: usize) -> usize {
@@ -386,23 +355,15 @@ struct SpriteInfo
     tile_index: u8,
     attrs: u8,
     x: u8,
-    sprite_index: u8,
 }
 
 impl SpriteInfo {
-    fn in_scanline(&self, scanline: u8, ppu: &PPUState) -> bool {
+    fn in_scanline(&self, scanline: u8) -> bool {
             self.get_y() <= scanline && scanline - self.get_y() < 8 /* TODO ppu.sprite_size() */
     }
 
     fn get_y(&self) -> u8 {
         self.y+1
-    }
-
-    fn at_x_position(&self, x: u8) -> bool {
-        self.x <= x && x - self.x < 8
-    }
-    fn get_brightness(&self, ppu: &PPUState, x: u8, y: u8) -> u8 {
-        self.get_brightness_localized(ppu, x-self.x, y-self.get_y())
     }
 
     fn get_brightness_localized(&self, ppu: &PPUState, x: u8, y: u8) -> u8 {
@@ -418,20 +379,8 @@ impl SpriteInfo {
         tile.pixel_intensity(x_to_use, y_to_use)
     }
 
-    fn color_from_brightness(&self, ppu: &PPUState, brightness: u8) -> [u8; 4] {
-        ppu.get_palette(self.attrs & 0x3).brightness_to_pixels(brightness)
-    }
-
     fn get_palette(&self, ppu: &PPUState) -> Palette {
         ppu.get_palette((self.attrs & 0x3) + 4)
-    }
-
-    /* write this sprite as a byte array into memory */
-    fn copy_to_mem(&self, dst_slice: &mut [u8]) {
-        dst_slice[0] = self.y;
-        dst_slice[1] = self.tile_index;
-        dst_slice[2] = self.attrs;
-        dst_slice[3] = self.x;
     }
 
     pub fn is_foreground(&self) -> bool {
@@ -439,13 +388,12 @@ impl SpriteInfo {
     }
 
     /* create a SpriteInfo from memory */
-    fn from_memory(src_slice: &[u8], index: u8) -> SpriteInfo {
+    fn from_memory(src_slice: &[u8]) -> SpriteInfo {
         SpriteInfo {
             y: src_slice[0],
             tile_index: src_slice[1],
             attrs: src_slice[2],
             x: src_slice[3],
-            sprite_index: index,
         }
     }
 }

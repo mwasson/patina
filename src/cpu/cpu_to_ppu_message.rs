@@ -1,4 +1,4 @@
-use crate::ppu::{PPUScrollState, OAM_SIZE};
+use crate::ppu::OAM_SIZE;
 
 pub(crate) enum CpuToPpuMessage
 {

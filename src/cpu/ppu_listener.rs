@@ -1,14 +1,11 @@
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::Sender;
-use winit::event::VirtualKeyCode;
-use crate::cpu::{Controller, CoreMemory};
 use crate::cpu::core_memory::MemoryListener;
-use crate::ppu::{PPURegister, PPUState, OAM_SIZE, PPU_MEMORY_SIZE, VRAM};
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage::{Memory, Oam, ScrollX, ScrollY};
+use crate::cpu::CoreMemory;
 use crate::ppu::PPURegister::*;
+use crate::ppu::{PPURegister, PPUState, OAM_SIZE, PPU_MEMORY_SIZE, VRAM};
 use crate::rom::Rom;
+use std::sync::mpsc::Sender;
 
 #[derive(Clone)]
 pub struct PPUListener
@@ -62,7 +59,7 @@ impl MemoryListener for PPUListener {
         addrs
     }
 
-    fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
+    fn read(&mut self, _memory: &CoreMemory, address: u16) -> u8 {
         if let Some(updated_register) = PPURegister::from_addr(address) {
             match updated_register {
                 PPUCTRL => {
@@ -134,7 +131,7 @@ impl MemoryListener for PPUListener {
                     self.vram_addr =
                         if self.first_write { (self.vram_addr & 0xff) | ((0x3f & value as usize) << 8) } else { value as usize | (self.vram_addr & 0xff00) };
                     /* TODO HACK REMOVE */
-                    if (self.first_write) {
+                    if self.first_write {
                         self.send_update(CpuToPpuMessage::PpuCtrl((self.ppu_ctrl & !3) | ((value & 0xa) >> 2)))
                     }
                     self.first_write = !self.first_write;
@@ -149,7 +146,7 @@ impl MemoryListener for PPUListener {
                     self.vram_addr += increase;
                 }
                 OAMDMA => {
-                    let base_addr = ((value as u16) << 8);
+                    let base_addr = (value as u16) << 8;
                     let mut copied_block: [u8; OAM_SIZE] = [0; OAM_SIZE];
                     copied_block.copy_from_slice(memory.read_slice(base_addr, OAM_SIZE));
                     self.send_update(Oam(copied_block));

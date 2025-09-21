@@ -2,19 +2,19 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Add;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use winit::event::VirtualKeyCode;
 use crate::cpu;
-use crate::cpu::{operation_from_memory, AddressingMode, Controller, CoreMemory, Operation, StatusFlag, INITIAL_PC_LOCATION, MEMORY_SIZE};
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
-use crate::ppu::PPUListener;
+use crate::cpu::{operation_from_memory, AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION};
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage;
 use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::PpuStatus;
+use crate::ppu::PPUListener;
 use crate::processor::Processor;
 use crate::rom::Rom;
+use winit::event::VirtualKeyCode;
 
 pub struct ProgramState
 {
@@ -115,10 +115,6 @@ impl ProgramState
 		self.s_register += 1;
 		let value = self.read_mem(0x0100 + self.s_register as u16);
 		value
-	}
-
-	pub fn irq(&mut self) {
-		self.irq_with_offset(0);
 	}
 
 	pub fn irq_with_offset(&mut self, offset: u8) {

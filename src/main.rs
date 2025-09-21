@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use std::io::{self, ErrorKind};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::channel;
-use std::time::{Duration, Instant};
 
 mod cpu;
 
@@ -27,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let path = &*rom_path.clone();
 		parse_file(path)?
 	} else {
-		return Result::Err(Box::new(std::io::Error::new(ErrorKind::Other, "First argument must be ROM file path")));
+		return Err(Box::new(io::Error::new(ErrorKind::Other, "First argument must be ROM file path")));
 	};
 
 	let (nmi_sender, nmi_receiver) = channel();
@@ -53,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn parse_file(file_ref: &str) -> io::Result<Rom> {
 	println!("Attempting to parse {}", file_ref);
 	let rom_data: Vec<u8> = fs::read(file_ref)?;
-	return validate_header(&rom_data);
+	validate_header(&rom_data)
 }
 
 
@@ -105,8 +104,8 @@ fn validate_header(rom_data: &Vec<u8>) -> io::Result<Rom> {
 	println!("CHR size: {}", rom.chr_data.len());
 
 	if error_msg != "" {
-		return Err(io::Error::new(ErrorKind::InvalidData, error_msg));
+		Err(io::Error::new(ErrorKind::InvalidData, error_msg))
 	} else {
-		return Ok(rom);
+		Ok(rom)
 	}
 }
