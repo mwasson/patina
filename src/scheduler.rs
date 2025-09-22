@@ -61,7 +61,8 @@ pub(crate) fn simulate(cpu: &mut ProgramState, ppu: &mut PPUState, apu: &mut APU
                         tasks.push(PPUScreen, Reverse(time.add(ppu.cycles_to_duration(21*341))));
                     }
                     APU => {
-
+                        apu.apu_tick();
+                        tasks.push(APU, Reverse(time.add(apu.cycles_to_duration(1))));
                     }
                 }
             }

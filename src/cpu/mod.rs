@@ -12,6 +12,7 @@ use std::time::Instant;
 pub use addressing_mode::AddressingMode;
 pub use controller::Controller;
 pub use core_memory::CoreMemory;
+pub use core_memory::MemoryListener;
 pub use instruction::RealizedInstruction;
 pub use program_state::ProgramState;
 pub use status_flag::StatusFlag;

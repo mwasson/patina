@@ -34,7 +34,7 @@ impl Processor for ProgramState
 {
 	fn clock_speed(&self) -> u64 {
 		1790000 /* 1.79 MHz */
-	}
+	} /* TODO constantize */
 }
 
 impl ProgramState
