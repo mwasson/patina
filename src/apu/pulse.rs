@@ -1,9 +1,11 @@
 
 /* waveform descriptions from https://www.nesdev.org/wiki/APU_Pulse */
+use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use rodio::{ChannelCount, SampleRate, Sink, Source};
+use rodio::{ChannelCount, OutputStream, SampleRate, Sink, Source};
 use crate::cpu::{CoreMemory, MemoryListener};
 
 const PULSE_DUTIES : [[bool;8];4] = [
@@ -39,7 +41,20 @@ pub struct Pulse
 
 impl Pulse
 {
-    pub(crate) fn from_addrs(first_address: u16, sink: Sink) -> Pulse {
+    /* initializes a pulse, and links it up as a listener on CoreMemory and a corresponding
+     * PulseSource source outputing to the OutputSream via a sink
+     */
+    pub fn initialize(first_addr: u16, memory: &Rc<RefCell<CoreMemory>>, output_stream: &OutputStream) -> Arc<RwLock<Pulse>> {
+        let sink = Sink::connect_new(&output_stream.mixer());
+        let pulse_ref = Arc::new(RwLock::new(Pulse::new(first_addr, sink)));
+        memory.borrow_mut().register_listener(pulse_ref.clone());
+        pulse_ref.write().unwrap().sink.append(PulseSource::new(pulse_ref.clone()));
+        
+        pulse_ref
+    }
+
+    /* private constructor */
+    fn new(first_address: u16, sink: Sink) -> Pulse {
         Pulse {
             first_address,
             duty: 0,

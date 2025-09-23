@@ -1,14 +1,13 @@
-use crate::apu::pulse::{Pulse, PulseSource};
-use crate::cpu::{CoreMemory, MemoryListener};
+use crate::apu::pulse::Pulse;
+use crate::cpu::CoreMemory;
 use crate::processor::Processor;
-use rodio::{OutputStream, Sink};
+use rodio::OutputStream;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 pub struct APU {
     apu_counter: u16,
-    memory: Rc<RefCell<CoreMemory>>,
     output_stream: OutputStream, /* TODO can't remove this */
     pulse1: Arc<RwLock<Pulse>>,
     pulse2: Arc<RwLock<Pulse>>,
@@ -24,17 +23,11 @@ impl APU {
         let stream_handle = rodio::OutputStreamBuilder::open_default_stream()
             .expect("open default audio stream");
 
-        let pulse1 = Arc::new(RwLock::new(Pulse::from_addrs(PULSE_1_FIRST_ADDR, Sink::connect_new(&stream_handle.mixer()))));
-        memory.borrow_mut().register_listener(pulse1.clone());
-        pulse1.write().unwrap().sink.append(PulseSource::new(pulse1.clone()));
-
-        let pulse2 = Arc::new(RwLock::new(Pulse::from_addrs(PULSE_2_FIRST_ADDR, Sink::connect_new(&stream_handle.mixer()))));
-        memory.borrow_mut().register_listener(pulse2.clone());
-        pulse2.write().unwrap().sink.append(PulseSource::new(pulse2.clone()));
+        let pulse1: Arc<RwLock<Pulse>> = Pulse::initialize(PULSE_1_FIRST_ADDR, &memory, &stream_handle);
+        let pulse2: Arc<RwLock<Pulse>> = Pulse::initialize(PULSE_2_FIRST_ADDR, &memory, &stream_handle);
 
         APU {
             apu_counter: 0,
-            memory: memory.clone(),
             output_stream: stream_handle,
             pulse1,
             pulse2,
