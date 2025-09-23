@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::ops::Add;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 use crate::cpu;
@@ -25,8 +25,8 @@ pub struct ProgramState
 	pub program_counter: u16,
 	pub status: u8,
 	memory: Rc<RefCell<CoreMemory>>,
-	listener: Rc<RefCell<PPUListener>>,
-	controller: Rc<RefCell<Controller>>,
+	listener: Arc<RwLock<PPUListener>>,
+	controller: Arc<RwLock<Controller>>,
 	ppu_state_receiver: Receiver<PpuToCpuMessage>,
 }
 
@@ -43,8 +43,8 @@ impl ProgramState
 	pub fn from_rom(rom: &Rom, ppu_state_receiver: Receiver<PpuToCpuMessage>, update_sender: Sender<CpuToPpuMessage>) -> Box<Self> {
 
 		let memory = Rc::new(RefCell::new(CoreMemory::new(rom)));
-		let listener = Rc::new(RefCell::new(PPUListener::new(rom, update_sender)));
-		let controller = Rc::new(RefCell::new(Controller::new()));
+		let listener = Arc::new(RwLock::new(PPUListener::new(rom, update_sender)));
+		let controller = Arc::new(RwLock::new(Controller::new()));
 		
 		memory.borrow_mut().register_listener(listener.clone());
 		memory.borrow_mut().register_listener(controller.clone());
@@ -148,7 +148,7 @@ impl ProgramState
 					has_nmi = true;
 				}
 				PpuStatus(status) => {
-					self.listener.borrow_mut().ppu_status = status;
+					self.listener.write().unwrap().ppu_status = status;
 				}
 			}
 		}
@@ -174,7 +174,7 @@ impl ProgramState
 	}
 
 	pub fn set_key_source(&mut self, keys:Arc<Mutex<HashSet<VirtualKeyCode>>>) {
-		self.controller.borrow_mut().set_key_source(keys);
+		self.controller.write().unwrap().set_key_source(keys);
 	}
 
 	pub fn share_memory(&self) -> Rc<RefCell<CoreMemory>> {

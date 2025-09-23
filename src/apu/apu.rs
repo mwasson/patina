@@ -1,15 +1,18 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::time::Duration;
-use rodio::{Sink, Source};
-use rodio::source::{SignalGenerator, Stoppable, TakeDuration};
 use crate::cpu::{CoreMemory, MemoryListener};
 use crate::processor::Processor;
+use rodio::{ChannelCount, OutputStream, SampleRate, Sink, Source};
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 pub struct APU {
-    apu_counter: u8,
-    pulse1: Rc<RefCell<Pulse>>,
-    pulse2: Rc<RefCell<Pulse>>,
+    apu_counter: u16,
+    memory: Rc<RefCell<CoreMemory>>,
+    output_stream: OutputStream, /* TODO can't remove this */
+    pulse1: Arc<RwLock<Pulse>>,
+    pulse2: Arc<RwLock<Pulse>>,
 }
 
 const FREQ_CPU : f32 = 1_789_773f32; /* NB: NTSC only, different for PAL */
@@ -22,14 +25,18 @@ impl APU {
         let stream_handle = rodio::OutputStreamBuilder::open_default_stream()
             .expect("open default audio stream");
 
-        let pulse1 = Rc::new(RefCell::new(Pulse::from_addrs(PULSE_1_FIRST_ADDR, Sink::connect_new(&stream_handle.mixer()))));
+        let pulse1 = Arc::new(RwLock::new(Pulse::from_addrs(PULSE_1_FIRST_ADDR, Sink::connect_new(&stream_handle.mixer()))));
         memory.borrow_mut().register_listener(pulse1.clone());
+        pulse1.write().unwrap().sink.append(PulseSource::new(pulse1.clone()));
 
-        let pulse2 = Rc::new(RefCell::new(Pulse::from_addrs(PULSE_2_FIRST_ADDR, Sink::connect_new(&stream_handle.mixer()))));
+        let pulse2 = Arc::new(RwLock::new(Pulse::from_addrs(PULSE_2_FIRST_ADDR, Sink::connect_new(&stream_handle.mixer()))));
         memory.borrow_mut().register_listener(pulse2.clone());
+        pulse2.write().unwrap().sink.append(PulseSource::new(pulse2.clone()));
 
         APU {
             apu_counter: 0,
+            memory: memory.clone(),
+            output_stream: stream_handle,
             pulse1,
             pulse2,
         }
@@ -37,125 +44,176 @@ impl APU {
     pub fn apu_tick(&mut self) {
         self.apu_counter += 1;
 
-        if self.apu_counter % 2 == 0 {
-            self.pulse1.borrow_mut().check();
-            self.pulse2.borrow_mut().check();
+        if(self.apu_counter == 14915) {
+            self.apu_counter = 0;
         }
+
+        self.pulse1.write().unwrap().tick(self.apu_counter);
+        self.pulse2.write().unwrap().tick(self.apu_counter);
     }
 }
 
 impl Processor for APU {
     fn clock_speed(&self) -> u64 {
-        1790000/2 /* TODO constantize */
+        1_789_773/2 /* TODO constantize */
     }
 }
 
-/* waveform descriptions from https://www.nesdev.org/wiki/APU_Pulse
- * in that table low is 0 and high is 1, but Rodio expects values from -1 to 1 */
-const PULSE_DUTY_0 : [f32;8] = [-1.0,1.0,-1.0,-1.0,-1.0,-1.0,-1.0,-1.0];
-const PULSE_DUTY_1 : [f32;8] = [-1.0,1.0,1.0,-1.0,-1.0,-1.0,-1.0,-1.0];
-const PULSE_DUTY_2 : [f32;8] = [-1.0,1.0,1.0,1.0,1.0,-1.0,-1.0,-1.0];
-const PULSE_DUTY_3 : [f32;8] = [1.0,-1.0,-1.0,1.0,1.0,1.0,1.0,1.0];
+/* waveform descriptions from https://www.nesdev.org/wiki/APU_Pulse */
+const PULSE_DUTIES : [[bool;8];4] = [
+    [false,true,false,false,false,false,false,false],
+    [false,true,true,false,false,false,false,false],
+    [false,true,true,true,true,false,false,false],
+    [true,false,false,true,true,true,true,true],
+];
 
 struct Pulse
 {
     first_address : u16,
-    duty: fn(f32) -> f32,
+    duty: usize,
+    duty_index: usize,
+    timer_period: u16,
     timer: u16,
+    envelope: u8,
+    divider: u8,
+    decay_level: u8,
+    start_flag: bool,
+    constant_volume: bool,
     lc: u8,
     lc_halt: bool,
+    sweep_enabled: bool,
+    sweep_period: u8,
+    sweep_negate: bool,
+    sweep_shift: u8,
+    sweep_reload: bool,
+    sweep_divider: u8,
     sink: Sink,
-    source: Option<Stoppable<TakeDuration<SignalGenerator>>>,
+    queue: VecDeque<f32>,
 }
 
 impl Pulse
 {
     fn from_addrs(first_address: u16, sink: Sink) -> Pulse {
-        /* TODO remove */
         Pulse {
             first_address,
-            duty: pulse_duty_func_0,
+            duty: 0,
+            duty_index: 0,
+            timer_period: 0,
             timer: 0,
+            envelope: 0,
+            divider: 0,
+            decay_level: 0,
+            start_flag: false,
+            constant_volume: true,
             lc: 0,
             lc_halt: false,
+            sweep_enabled: false,
+            sweep_period: 0,
+            sweep_negate: false,
+            sweep_shift: 0,
+            sweep_reload: false,
+            sweep_divider: 0,
             sink,
-            source: None,
+            queue: VecDeque::new(),
         }
     }
 
-    fn check(&mut self) {
-        if !self.lc_halt && self.lc != 0 {
-            self.lc -= 1;
+    fn tick(&mut self, apu_counter: u16) {
+        /* TODO find a better way to sync this up */
+        if apu_counter % 20/*(1790000/2/44100)*/ as u16 == 0 && self.queue.len() < 100000 {
+            self.queue.push_back(self.amplitude());
+        }
 
-            if self.lc == 0 {
-                self.sink.stop();
+        /* on every tick: decrease timer; loop around at 0 */
+        if self.timer == 0 {
+            self.timer = self.timer_period;
+            self.duty_index = (self.duty_index + 1) % 8;
+        } else {
+            self.timer -= 1;
+        }
+
+        if
+            (apu_counter == 3728 || apu_counter == 7456 || apu_counter == 11185 || apu_counter == 14914) {
+            if self.start_flag {
+                self.start_flag = false;
+                self.decay_level = 15;
+                self.divider = self.envelope;
+            } else if self.divider == 0 {
+                self.divider = self.envelope;
+                if(self.decay_level == 0 && !self.lc_halt /* halt flag is also loop flag */) {
+                    self.decay_level = 15;
+                } else if self.decay_level > 0 {
+                    self.decay_level -= 1;
+                }
+            } else {
+                self.divider -= 1;
+            }
+
+            if apu_counter == 7456 || apu_counter == 14914 && !self.lc_halt && self.lc != 0 {
+                self.lc -= 1;
+                if self.sweep_enabled && self.sweep_shift != 0 && self.sweep_divider == 0 {
+                    let change_amount = self.timer_period >> self.sweep_shift;
+                    /* TODO: handle pulse 1 vs pulse 2 differences */
+                    let target_period = if self.sweep_negate {
+                        self.timer_period.saturating_sub(change_amount)
+                    } else {
+                        self.timer_period.saturating_add(change_amount)
+                    };
+                    self.timer_period = target_period;
+                }
+                if self.sweep_divider == 0 || self.sweep_reload {
+                    self.sweep_divider = self.sweep_period;
+                    self.sweep_reload = false;
+                } else {
+                    self.sweep_divider -= 1;
+                }
             }
         }
     }
 
-    fn freq(&self) -> f32 {
-        FREQ_CPU / (16 * (self.timer + 1)) as f32
-    }
-
-    fn get_source(&self) -> Stoppable<TakeDuration<SignalGenerator>> {
-        SignalGenerator::with_function(44100 /* TODO */, self.freq(), self.duty)
-            .take_duration(Duration::from_secs(100))
-            .stoppable()
-    }
-
-    fn set_duty(&mut self, byte0:u8) {
+    fn set_duty_envelope(&mut self, byte0:u8) {
         /* duty info is stored in the first two bits; this waveform map is from the wiki */
-        let duty_val = (byte0 & 0xc0) >> 6;
-        assert!(duty_val <= 3);
-        self.duty = match duty_val {
-            0 => pulse_duty_func_0,
-            1 => pulse_duty_func_1,
-            2 => pulse_duty_func_2,
-            3 => pulse_duty_func_3,
-            _ => panic!("impossible duty value"),
-        };
+        self.envelope = byte0 & 0xf;
+        self.constant_volume = byte0 & 0x10 != 0;
+        self.duty = ((byte0 & 0xc0) >> 6) as usize; /* NB: does not change duty_index */
         self.lc_halt = byte0 & 0x20 != 0;
-        /* TODO other bits */
+        self.start_flag = true;
     }
 
     fn set_sweep(&mut self, byte1:u8) {
+        self.sweep_enabled = byte1 & 0x80 == 0;
+        self.sweep_period = (byte1 >> 4) & 0x7;
+        self.sweep_negate = byte1 & 0x08 != 0;
+        self.sweep_shift = byte1 & 0x07;
+        self.sweep_reload = true;
+        self.sweep_divider = self.sweep_period;
         /* TODO */
     }
 
     fn set_timer_lo(&mut self, byte2:u8) {
-        self.timer = (self.timer & 0xff00) | (byte2 as u16);
+        self.timer_period = (self.timer_period & 0xff00) | (byte2 as u16);
     }
 
     fn set_lc_timer_hi(&mut self, byte3:u8) {
-        self.timer = (self.timer & 0xff) | (((byte3 as u16) & 0x7) << 8);
+        self.timer_period = (self.timer_period & 0xff) | (((byte3 as u16) & 0x7) << 8);
         self.lc = lc_lookup(byte3 >> 3);
-        if self.lc != 0 {
-            self.source = Some(self.get_source());
-            self.sink.append(self.get_source());
+
+        /* side-efects on write */
+        self.duty_index = 0;
+        self.start_flag = true;
+    }
+
+    fn should_play(&self) -> bool {
+        self.lc != 0 && self.timer_period >= 8 && !self.lc_halt
+    }
+
+    fn amplitude(&self) -> f32 {
+        if self.should_play() && PULSE_DUTIES[self.duty][self.duty_index] {
+            (if self.constant_volume { self.envelope } else { self.decay_level }) as f32 / 15.0
+        } else {
+            0.0
         }
     }
-}
-
-fn pulse_duty_general(time: f32, duty_array:&[f32;8]) -> f32 {
-    /* TODO does the wrong thing at 1.0 */
-    let index = (time.fract() * 8.0).floor() as usize;
-    duty_array[index]
-}
-
-fn pulse_duty_func_0(time: f32) -> f32 {
-    pulse_duty_general(time, &PULSE_DUTY_0)
-}
-
-fn pulse_duty_func_1(time: f32) -> f32 {
-    pulse_duty_general(time, &PULSE_DUTY_1)
-}
-
-fn pulse_duty_func_2(time: f32) -> f32 {
-    pulse_duty_general(time, &PULSE_DUTY_2)
-}
-
-fn pulse_duty_func_3(time: f32) -> f32 {
-    pulse_duty_general(time, &PULSE_DUTY_3)
 }
 
 impl MemoryListener for Pulse {
@@ -178,7 +236,7 @@ impl MemoryListener for Pulse {
     fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
         match address - self.first_address {
             0 => {
-                self.set_duty(value);
+                self.set_duty_envelope(value);
             }
             1 => {
                 self.set_sweep(value);
@@ -236,5 +294,51 @@ fn lc_lookup(val: u8) -> u8 {
         0b00010 => 20,
         0b00000 => 10,
         _ => panic!("unsupported LC lookup value"),
+    }
+}
+
+struct PulseSource {
+    pulse: Arc<RwLock<Pulse>>,
+}
+
+impl PulseSource {
+    fn new(pulse: Arc<RwLock<Pulse>>) -> PulseSource {
+        PulseSource {
+            pulse,
+        }
+    }
+}
+
+impl Iterator for PulseSource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        /* while in theory this allows for None, in practice the Sink will stop consuming new
+         * events if next() returns None, so return something else to give the source time to
+         * produce more samples
+         */
+        self.pulse.write().unwrap().queue.pop_front().or(Some(0.0))
+    }
+}
+
+impl Source for PulseSource {
+    fn current_span_len(&self) -> Option<usize> {
+        None
+    }
+
+    fn channels(&self) -> ChannelCount {
+        1
+    }
+
+    fn sample_rate(&self) -> SampleRate {
+        /* This is a little bit faster than the theoretical rate that we should be sampling at,
+         * but it seems to be the best rate for keeping the sample queue from backing up;
+         * not ideal, but seems to have th fewest issues overall
+         */
+        44800
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        None
     }
 }
