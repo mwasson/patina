@@ -6,5 +6,6 @@ mod timer;
 mod length_counter;
 mod triangle;
 mod noise;
+mod dmc;
 
 pub use apu::APU;

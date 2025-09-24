@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-
+use crate::apu::dmc::DMC;
 /* TODO This is a little bit faster than the theoretical rate that we should be sampling at,
  * but it seems to be the best rate for keeping the sample queue from backing up;
  * not ideal, but seems to have the fewest issues overall
@@ -24,6 +24,7 @@ pub struct APU {
     pulse2: Rc<RefCell<Pulse>>,
     triangle: Rc<RefCell<Triangle>>,
     noise: Rc<RefCell<Noise>>,
+    dmc: Rc<RefCell<DMC>>,
     queue: Arc<RwLock<VecDeque<f32>>>,
 }
 
@@ -44,6 +45,7 @@ impl APU {
         let pulse2: Rc<RefCell<Pulse>> = Pulse::initialize(PULSE_2_FIRST_ADDR, &memory);
         let triangle: Rc<RefCell<Triangle>> = Triangle::initialize(&memory);
         let noise: Rc<RefCell<Noise>> = Noise::initialize(&memory);
+        let dmc: Rc<RefCell<DMC>> = DMC::initialize(&memory);
 
         APU {
             apu_counter: 0,
@@ -52,6 +54,7 @@ impl APU {
             pulse2,
             triangle,
             noise,
+            dmc,
             queue,
             sink
         }
@@ -67,6 +70,7 @@ impl APU {
         self.pulse2.borrow_mut().tick(self.apu_counter);
         self.triangle.borrow_mut().tick(self.apu_counter);
         self.noise.borrow_mut().tick(self.apu_counter);
+        self.dmc.borrow_mut().tick(self.apu_counter);
 
         /* TODO sample and mix */
 
@@ -82,7 +86,7 @@ impl APU {
         let pulse2_vol = self.pulse2.borrow().amplitude();
         let triangle_vol = self.triangle.borrow().amplitude();
         let noise_vol = self.noise.borrow().amplitude();
-        let dmc_vol = 0.0; /* TODO */
+        let dmc_vol = self.dmc.borrow().amplitude();
 
         /* formulae from https://www.nesdev.org/wiki/APU_Mixer */
         let pulse_out = 95.88/(8128.0 / (pulse1_vol + pulse2_vol) + 100.0);
