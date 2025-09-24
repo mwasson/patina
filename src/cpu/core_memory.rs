@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
 use crate::cpu::MEMORY_SIZE;
 use crate::rom::Rom;
 
@@ -13,7 +12,7 @@ pub trait MemoryListener {
 
 pub struct CoreMemory {
     memory: [u8; MEMORY_SIZE],
-    listeners: HashMap<u16, Arc<RwLock<dyn MemoryListener>>>
+    listeners: HashMap<u16, Rc<RefCell<dyn MemoryListener>>>
 }
 
 impl CoreMemory {
@@ -31,7 +30,7 @@ impl CoreMemory {
     pub fn read(&self, address: u16) -> u8 {
         let mapped_addr = self.map_address(address);
         if let Some(listener) = self.listeners.get(&address) {
-            listener.write().unwrap().read(self, mapped_addr)
+            listener.borrow_mut().read(self, mapped_addr)
         } else {
             self.read_no_listen(mapped_addr)
         }
@@ -51,15 +50,15 @@ impl CoreMemory {
     pub fn write(&mut self, address: u16, value: u8) {
         let mapped_addr = self.map_address(address);
         if let Some(listener) = self.listeners.get(&mapped_addr) {
-            listener.write().unwrap().write(self, mapped_addr, value);
+            listener.borrow_mut().write(self, mapped_addr, value);
         }
 
         /* note that even if there's a listener, it still writes like normal */
         self.memory[mapped_addr as usize] = value;
     }
 
-    pub fn register_listener(&mut self, listener: Arc<RwLock<dyn MemoryListener>>) {
-        for addr in listener.read().unwrap().get_addresses() {
+    pub fn register_listener(&mut self, listener: Rc<RefCell<dyn MemoryListener>>) {
+        for addr in listener.borrow().get_addresses() {
             if self.listeners.get(&addr).is_some() {
                 panic!("Attempting to register a second memory listener at address 0x{addr:x}");
             }
