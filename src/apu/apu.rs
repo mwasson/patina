@@ -94,7 +94,7 @@ impl APU {
 
 impl Processor for APU {
     fn clock_speed(&self) -> u64 {
-        1_789_773/2 /* TODO constantize */
+        894880//1_789_773/2 /* TODO constantize */
     }
 }
 
@@ -132,7 +132,7 @@ impl Source for BufferedMixedSource {
     }
 
     fn sample_rate(&self) -> SampleRate {
-        44800
+        44744
     }
 
     fn total_duration(&self) -> Option<Duration> {
