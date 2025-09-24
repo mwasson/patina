@@ -27,6 +27,10 @@ impl LengthCounter {
         }
     }
 
+    pub fn is_active(&self) -> bool {
+        self.count > 0
+    }
+
     pub fn amplitude(&self) -> f32 {
         if self.count > 0 { 1.0 } else { 0.0 }
     }
