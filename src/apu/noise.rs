@@ -33,7 +33,7 @@ impl Noise {
             envelope: Envelope::new(),
             length_counter: LengthCounter::new(),
             timer: Timer::new(),
-            shift_register: 0,
+            shift_register: 1,
             mode_flag: false,
         }
     }
