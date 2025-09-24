@@ -8,12 +8,18 @@ use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+/* TODO This is a little bit faster than the theoretical rate that we should be sampling at,
+ * but it seems to be the best rate for keeping the sample queue from backing up;
+ * not ideal, but seems to have the fewest issues overall
+ */
+const SAMPLE_RATE : SampleRate = 44800;
+
 pub struct APU {
     apu_counter: u16,
-    output_stream: OutputStream, /* TODO can't remove this */
-    pulse1: Rc<RefCell<Pulse>>,
+    output_stream: OutputStream, /* can't remove this--if it's collected, sound won't play */
+    sink: Sink,                  /* ditto--confusingly, since OutputStream should have a ref */
+    pulse1: Rc<RefCell<Pulse>>,  /* to it through the Mixer? */
     pulse2: Rc<RefCell<Pulse>>,
-    sink: Sink,
     queue: Arc<RwLock<VecDeque<f32>>>,
 }
 
@@ -38,8 +44,8 @@ impl APU {
             output_stream: stream_handle,
             pulse1,
             pulse2,
-            sink,
             queue,
+            sink
         }
     }
     pub fn apu_tick(&mut self) {
@@ -56,7 +62,7 @@ impl APU {
 
         /* TODO find a better way to sync this up */
         let mut queue = self.queue.write().unwrap();
-        if self.apu_counter % 20/*(1790000/2/44100)*/ as u16 == 0 && queue.len() < 100000 {
+        if self.apu_counter % 20 == 0 /* TODO */ && queue.len() < 3000 {
             queue.push_back(self.mix());
         }
     }
@@ -64,6 +70,7 @@ impl APU {
     fn mix(&self) -> f32 {
         let pulse1_vol = self.pulse1.borrow().amplitude();
         let pulse2_vol = self.pulse2.borrow().amplitude();
+
         /* formula from https://www.nesdev.org/wiki/APU_Mixer */
         let pulse_out = 95.88/(8128.0 / (pulse1_vol + pulse2_vol) + 100.0);
 
@@ -111,10 +118,6 @@ impl Source for BufferedMixedSource {
     }
 
     fn sample_rate(&self) -> SampleRate {
-        /* TODO This is a little bit faster than the theoretical rate that we should be sampling at,
-         * but it seems to be the best rate for keeping the sample queue from backing up;
-         * not ideal, but seems to have the fewest issues overall
-         */
         44800
     }
 

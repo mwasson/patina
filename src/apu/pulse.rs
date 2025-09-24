@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use crate::apu::envelope::Envelope;
 use crate::cpu::{CoreMemory, MemoryListener};
 
 /* waveform descriptions from https://www.nesdev.org/wiki/APU_Pulse */
@@ -24,11 +25,7 @@ pub struct Pulse
     duty_index: usize,
     timer_period: u16,
     timer: u16,
-    envelope: u8,
-    divider: u8,
-    decay_level: u8,
-    start_flag: bool,
-    constant_volume: bool,
+    envelope: Envelope,
     lc: u8,
     lc_halt: bool,
     sweep_enabled: bool,
@@ -59,11 +56,7 @@ impl Pulse
             duty_index: 0,
             timer_period: 0,
             timer: 0,
-            envelope: 0,
-            divider: 0,
-            decay_level: 0,
-            start_flag: false,
-            constant_volume: true,
+            envelope: Envelope::new(),
             lc: 0,
             lc_halt: false,
             sweep_enabled: false,
@@ -83,25 +76,14 @@ impl Pulse
         } else {
             self.timer -= 1;
         }
+        
+        let is_half_frame = apu_counter == 7456 || apu_counter == 14914;
+        let is_quarter_frame = is_half_frame || apu_counter == 3728 || apu_counter == 11185;
 
-        if
-        (apu_counter == 3728 || apu_counter == 7456 || apu_counter == 11185 || apu_counter == 14914) {
-            if self.start_flag {
-                self.start_flag = false;
-                self.decay_level = 15;
-                self.divider = self.envelope;
-            } else if self.divider == 0 {
-                self.divider = self.envelope;
-                if(self.decay_level == 0 && !self.lc_halt /* halt flag is also loop flag */) {
-                    self.decay_level = 15;
-                } else if self.decay_level > 0 {
-                    self.decay_level -= 1;
-                }
-            } else {
-                self.divider -= 1;
-            }
+        if is_quarter_frame {
+            self.envelope.clock();
 
-            if apu_counter == 7456 || apu_counter == 14914 && !self.lc_halt && self.lc != 0 {
+            if is_half_frame && !self.lc_halt && self.lc != 0 {
                 self.lc -= 1;
                 if self.sweep_enabled && self.sweep_shift != 0 && self.sweep_divider == 0 {
                     let change_amount = self.timer_period >> self.sweep_shift;
@@ -124,12 +106,9 @@ impl Pulse
     }
 
     fn set_duty_envelope(&mut self, byte0:u8) {
-        /* duty info is stored in the first two bits; this waveform map is from the wiki */
-        self.envelope = byte0 & 0xf;
-        self.constant_volume = byte0 & 0x10 != 0;
         self.duty = ((byte0 & 0xc0) >> 6) as usize; /* NB: does not change duty_index */
+        self.envelope.set_envelope(byte0);
         self.lc_halt = byte0 & 0x20 != 0;
-        self.start_flag = true;
     }
 
     fn set_sweep(&mut self, byte1:u8) {
@@ -139,7 +118,6 @@ impl Pulse
         self.sweep_shift = byte1 & 0x07;
         self.sweep_reload = true;
         self.sweep_divider = self.sweep_period;
-        /* TODO */
     }
 
     fn set_timer_lo(&mut self, byte2:u8) {
@@ -152,7 +130,7 @@ impl Pulse
 
         /* side-efects on write */
         self.duty_index = 0;
-        self.start_flag = true;
+        self.envelope.start();
     }
 
     fn should_play(&self) -> bool {
@@ -161,7 +139,7 @@ impl Pulse
 
     pub fn amplitude(&self) -> f32 {
         if self.should_play() && PULSE_DUTIES[self.duty][self.duty_index] {
-            (if self.constant_volume { self.envelope } else { self.decay_level }) as f32 / 15.0
+            self.envelope.volume()
         } else {
             0.0
         }
