@@ -21,6 +21,11 @@ impl Timer {
             false
         }
     }
+    
+    /* for setting the period directly */
+    pub fn set_period(&mut self, period: u16) {
+        self.period = period;
+    }
 
     pub fn set_timer_lo(&mut self, data: u8) {
         self.period = (self.period & 0xff00) | (data as u16);

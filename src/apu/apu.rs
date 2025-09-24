@@ -1,5 +1,6 @@
 use crate::apu::pulse::Pulse;
 use crate::apu::triangle::Triangle;
+use crate::apu::noise::Noise;
 use crate::cpu::CoreMemory;
 use crate::processor::Processor;
 use rodio::{ChannelCount, OutputStream, SampleRate, Sink, Source};
@@ -8,6 +9,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+
 /* TODO This is a little bit faster than the theoretical rate that we should be sampling at,
  * but it seems to be the best rate for keeping the sample queue from backing up;
  * not ideal, but seems to have the fewest issues overall
@@ -21,6 +23,7 @@ pub struct APU {
     pulse1: Rc<RefCell<Pulse>>,  /* to it through the Mixer? */
     pulse2: Rc<RefCell<Pulse>>,
     triangle: Rc<RefCell<Triangle>>,
+    noise: Rc<RefCell<Noise>>,
     queue: Arc<RwLock<VecDeque<f32>>>,
 }
 
@@ -40,6 +43,7 @@ impl APU {
         let pulse1: Rc<RefCell<Pulse>> = Pulse::initialize(PULSE_1_FIRST_ADDR, &memory);
         let pulse2: Rc<RefCell<Pulse>> = Pulse::initialize(PULSE_2_FIRST_ADDR, &memory);
         let triangle: Rc<RefCell<Triangle>> = Triangle::initialize(&memory);
+        let noise: Rc<RefCell<Noise>> = Noise::initialize(&memory);
 
         APU {
             apu_counter: 0,
@@ -47,6 +51,7 @@ impl APU {
             pulse1,
             pulse2,
             triangle,
+            noise,
             queue,
             sink
         }
@@ -61,6 +66,7 @@ impl APU {
         self.pulse1.borrow_mut().tick(self.apu_counter);
         self.pulse2.borrow_mut().tick(self.apu_counter);
         self.triangle.borrow_mut().tick(self.apu_counter);
+        self.noise.borrow_mut().tick(self.apu_counter);
 
         /* TODO sample and mix */
 
@@ -75,7 +81,7 @@ impl APU {
         let pulse1_vol = self.pulse1.borrow().amplitude();
         let pulse2_vol = self.pulse2.borrow().amplitude();
         let triangle_vol = self.triangle.borrow().amplitude();
-        let noise_vol = 0.0; /* TODO */
+        let noise_vol = self.noise.borrow().amplitude();
         let dmc_vol = 0.0; /* TODO */
 
         /* formulae from https://www.nesdev.org/wiki/APU_Mixer */

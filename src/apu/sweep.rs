@@ -28,7 +28,7 @@ impl Sweep {
             let target_period = if self.negate {
                 timer.period.saturating_sub(change_amount)
             } else {
-                timer.period.saturating_add(change_amount)
+                timer.period.wrapping_add(change_amount)
             };
             timer.period = target_period;
         }
