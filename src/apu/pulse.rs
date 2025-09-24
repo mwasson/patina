@@ -79,7 +79,10 @@ impl Pulse
     }
 
     pub fn amplitude(&self) -> f32 {
-        self.length_counter.amplitude() * self.envelope.amplitude() * self.sequencer.amplitude()
+        self.length_counter.amplitude() 
+            * self.envelope.amplitude() 
+            * self.sequencer.amplitude() 
+            * self.sweep.amplitude()
     }
 }
 

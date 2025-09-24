@@ -7,6 +7,7 @@ pub struct Sweep {
     period: u8,
     reload: bool,
     shift: u8,
+    muting: bool,
 }
 
 impl Sweep {
@@ -18,10 +19,12 @@ impl Sweep {
             period: 0,
             reload: false,
             shift: 0,
+            muting: false,
         }
     }
 
     pub fn clock(&mut self, timer: &mut Timer) {
+        self.muting = false;
         if self.enabled && self.shift != 0 && self.divider == 0 {
             let change_amount = timer.period >> self.shift;
             /* TODO: handle pulse 1 vs pulse 2 differences */
@@ -30,7 +33,12 @@ impl Sweep {
             } else {
                 timer.period.wrapping_add(change_amount)
             };
-            timer.period = target_period;
+            if(target_period > 0x7ff || timer.period < 8) {
+                self.muting = true;
+            }
+            if !self.muting {
+                timer.period = target_period;
+            }
         }
         if self.divider == 0 || self.reload {
             self.divider = self.period;
@@ -40,12 +48,15 @@ impl Sweep {
         }
     }
 
+    pub fn amplitude(&self) -> f32 {
+        if self.muting { 0.0 } else { 1.0 }
+    }
+
     pub fn set_sweep(&mut self, data: u8) {
-        self.enabled = data & 0x80 == 0;
+        self.enabled = data & 0x80 != 1;
         self.period = (data >> 4) & 0x7;
         self.negate = data & 0x08 != 0;
         self.shift = data & 0x07;
         self.reload = true;
-        self.divider = self.period;
     }
 }
