@@ -1,7 +1,7 @@
 use crate::cpu::{AddressingMode, StatusFlag};
 
 use AddressingMode::*;
-use crate::cpu::program_state::ProgramState;
+use crate::cpu::cpu::CPU;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction
@@ -86,251 +86,251 @@ pub enum Instruction
 
 impl Instruction
 {
-	pub fn apply(&self, state: &mut ProgramState,
-			 addr_mode: &AddressingMode, b1: u8, b2: u8) {
+	pub fn apply(&self, cpu: &mut CPU,
+				 addr_mode: &AddressingMode, b1: u8, b2: u8) {
 		match self {
 			Instruction::ADC => {
-				let val = addr_mode.deref(state, b1, b2);
-				add_with_carry_and_update(state, val, StatusFlag::Carry.as_num(state));
+				let val = addr_mode.deref(cpu, b1, b2);
+				add_with_carry_and_update(cpu, val, StatusFlag::Carry.as_num(cpu));
 			}
 			Instruction::AND => {
-				let mem_val = addr_mode.deref(state, b1, b2);
-				state.accumulator = state.accumulator & mem_val;
-				state.update_zero_neg_flags(state.accumulator);
+				let mem_val = addr_mode.deref(cpu, b1, b2);
+				cpu.accumulator = cpu.accumulator & mem_val;
+				cpu.update_zero_neg_flags(cpu.accumulator);
 			}
 			Instruction::ASL => {
-				let old_val: u8 = addr_mode.deref(state, b1, b2);
+				let old_val: u8 = addr_mode.deref(cpu, b1, b2);
 				let result = old_val << 1;
-				state.update_flag(StatusFlag::Carry, old_val & 0x80 != 0);
-				state.update_zero_neg_flags(result);
-				addr_mode.write(state, b1, b2, result);
+				cpu.update_flag(StatusFlag::Carry, old_val & 0x80 != 0);
+				cpu.update_zero_neg_flags(result);
+				addr_mode.write(cpu, b1, b2, result);
 			}
 			Instruction::BCC => {
-				Self::branch_instr(state, StatusFlag::Carry, false, b1)
+				Self::branch_instr(cpu, StatusFlag::Carry, false, b1)
 			}
 			Instruction::BCS => {
-				Self::branch_instr(state, StatusFlag::Carry, true, b1)
+				Self::branch_instr(cpu, StatusFlag::Carry, true, b1)
 			}
 			Instruction::BEQ => {
-				Self::branch_instr(state, StatusFlag::Zero, true, b1)
+				Self::branch_instr(cpu, StatusFlag::Zero, true, b1)
 			}
 			Instruction::BIT => {
-				let mem = addr_mode.deref(state, b1, b2);
-				let val = state.accumulator & mem;
-				state.update_flag(StatusFlag::Zero, val == 0);
-				state.update_flag(StatusFlag::Overflow, mem & 0x40 != 0);
-				state.update_flag(StatusFlag::Negative, mem & 0x80 != 0);
+				let mem = addr_mode.deref(cpu, b1, b2);
+				let val = cpu.accumulator & mem;
+				cpu.update_flag(StatusFlag::Zero, val == 0);
+				cpu.update_flag(StatusFlag::Overflow, mem & 0x40 != 0);
+				cpu.update_flag(StatusFlag::Negative, mem & 0x80 != 0);
 			}
 			Instruction::BMI => {
-				Self::branch_instr(state, StatusFlag::Negative, true, b1)
+				Self::branch_instr(cpu, StatusFlag::Negative, true, b1)
 			}
 			Instruction::BNE => {
-				Self::branch_instr(state, StatusFlag::Zero, false, b1)
+				Self::branch_instr(cpu, StatusFlag::Zero, false, b1)
 			}
 			Instruction::BPL => {
-				Self::branch_instr(state, StatusFlag::Negative, false, b1)
+				Self::branch_instr(cpu, StatusFlag::Negative, false, b1)
 			}
 			Instruction::BRK => {
-				state.irq_with_offset(2);
+				cpu.irq_with_offset(2);
 			}
 			Instruction::BVC => {
-				Self::branch_instr(state, StatusFlag::Overflow, false, b1)
+				Self::branch_instr(cpu, StatusFlag::Overflow, false, b1)
 			}
 			Instruction::BVS => {
-				Self::branch_instr(state, StatusFlag::Overflow, true, b1)
+				Self::branch_instr(cpu, StatusFlag::Overflow, true, b1)
 			}
 			Instruction::CLC => {
-				state.update_flag(StatusFlag::Carry, false);
+				cpu.update_flag(StatusFlag::Carry, false);
 			}
 			Instruction::CLD => {
-				state.update_flag(StatusFlag::Decimal, false);
+				cpu.update_flag(StatusFlag::Decimal, false);
 			}
 			Instruction::CMP => {
-				Self::compare(state, addr_mode, b1, b2, state.accumulator);
+				Self::compare(cpu, addr_mode, b1, b2, cpu.accumulator);
 			}
 			Instruction::CPX => {
-				Self::compare(state, addr_mode, b1, b2, state.index_x);
+				Self::compare(cpu, addr_mode, b1, b2, cpu.index_x);
 			}
 			Instruction::CPY => {
-				Self::compare(state, addr_mode, b1, b2, state.index_y);
+				Self::compare(cpu, addr_mode, b1, b2, cpu.index_y);
 			}
 			Instruction::DEC => {
-				let new_val = addr_mode.deref(state, b1, b2).wrapping_sub(1);
-				addr_mode.write(state, b1, b2, new_val);
-				state.update_zero_neg_flags(new_val);
+				let new_val = addr_mode.deref(cpu, b1, b2).wrapping_sub(1);
+				addr_mode.write(cpu, b1, b2, new_val);
+				cpu.update_zero_neg_flags(new_val);
 			}
 			Instruction::DEX => {
-				state.index_x = state.index_x.wrapping_sub(1);
-				state.update_zero_neg_flags(state.index_x);
+				cpu.index_x = cpu.index_x.wrapping_sub(1);
+				cpu.update_zero_neg_flags(cpu.index_x);
 			}
 			Instruction::DEY => {
-				state.index_y = state.index_y.wrapping_sub(1);
-				state.update_zero_neg_flags(state.index_y);
+				cpu.index_y = cpu.index_y.wrapping_sub(1);
+				cpu.update_zero_neg_flags(cpu.index_y);
 			}
 			Instruction::EOR => {
-				let mem_val = addr_mode.deref(state, b1, b2);
-				state.accumulator = state.accumulator ^ mem_val;
-				state.update_zero_neg_flags(state.accumulator);
+				let mem_val = addr_mode.deref(cpu, b1, b2);
+				cpu.accumulator = cpu.accumulator ^ mem_val;
+				cpu.update_zero_neg_flags(cpu.accumulator);
 			}
 			Instruction::INC => {
-				let new_val = addr_mode.deref(state, b1, b2).wrapping_add(1);
-				addr_mode.write(state, b1, b2, new_val);
-				state.update_zero_neg_flags(new_val);
+				let new_val = addr_mode.deref(cpu, b1, b2).wrapping_add(1);
+				addr_mode.write(cpu, b1, b2, new_val);
+				cpu.update_zero_neg_flags(new_val);
 			}
 			Instruction::INX => {
-				state.index_x = state.index_x.wrapping_add(1);
-				state.update_zero_neg_flags(state.index_x);
+				cpu.index_x = cpu.index_x.wrapping_add(1);
+				cpu.update_zero_neg_flags(cpu.index_x);
 			}
 			Instruction::INY => {
-				state.index_y = state.index_y.wrapping_add(1);
-				state.update_zero_neg_flags(state.index_y);
+				cpu.index_y = cpu.index_y.wrapping_add(1);
+				cpu.update_zero_neg_flags(cpu.index_y);
 			}
 			Instruction::JMP => {
 				/* TODO: if this directly sets PC to the value in memory,
 				 * does this imply other things that set PC need an offset? */
-				state.program_counter = addr_mode.resolve_address(state,b1,b2);
+				cpu.program_counter = addr_mode.resolve_address(cpu, b1, b2);
 			}
 			Instruction::JSR => {
-				state.push_memory_loc(state.program_counter + 2);
-				state.program_counter = addr_mode.resolve_address(state,b1,b2);
+				cpu.push_memory_loc(cpu.program_counter + 2);
+				cpu.program_counter = addr_mode.resolve_address(cpu, b1, b2);
 			}
 			Instruction::LDA => {
-				state.accumulator = addr_mode.deref(state, b1, b2);
-				state.update_zero_neg_flags(state.accumulator);
+				cpu.accumulator = addr_mode.deref(cpu, b1, b2);
+				cpu.update_zero_neg_flags(cpu.accumulator);
 			}
 			Instruction::LDX => {
-				state.index_x = addr_mode.deref(state, b1, b2);
-				state.update_zero_neg_flags(state.index_x);
+				cpu.index_x = addr_mode.deref(cpu, b1, b2);
+				cpu.update_zero_neg_flags(cpu.index_x);
 			}
 			Instruction::LDY => {
-				state.index_y = addr_mode.deref(state, b1, b2);
-				state.update_zero_neg_flags(state.index_y);
+				cpu.index_y = addr_mode.deref(cpu, b1, b2);
+				cpu.update_zero_neg_flags(cpu.index_y);
 			}
 			Instruction::LSR => {
-				let val = addr_mode.deref(state, b1, b2);
+				let val = addr_mode.deref(cpu, b1, b2);
 				let new_val = val >> 1;
-				addr_mode.write(state, b1, b2, new_val);
-				state.update_flag(StatusFlag::Carry, (val & 0x1) != 0);
-				state.update_flag(StatusFlag::Zero, new_val == 0);
-				state.update_flag(StatusFlag::Negative, false);
+				addr_mode.write(cpu, b1, b2, new_val);
+				cpu.update_flag(StatusFlag::Carry, (val & 0x1) != 0);
+				cpu.update_flag(StatusFlag::Zero, new_val == 0);
+				cpu.update_flag(StatusFlag::Negative, false);
 			}
 			Instruction::NOP => {
 				/* nothing */
 			}
 			Instruction::ORA => {
-				state.accumulator |= addr_mode.deref(state, b1, b2);
-				state.update_zero_neg_flags(state.accumulator);
+				cpu.accumulator |= addr_mode.deref(cpu, b1, b2);
+				cpu.update_zero_neg_flags(cpu.accumulator);
 			}
 			Instruction::PHA => {
-				state.write_mem(0x100 + state.s_register as u16, state.accumulator);
-				state.s_register -= 1;
+				cpu.write_mem(0x100 + cpu.s_register as u16, cpu.accumulator);
+				cpu.s_register -= 1;
 			}
 			Instruction::PHP => {
 				/* pushes status onto the stack, with the 'B' flag (bit 4) on */
-				state.write_mem(0x100 + state.s_register as u16, state.status | (1<<4));
-				state.s_register -= 1;
+				cpu.write_mem(0x100 + cpu.s_register as u16, cpu.status | (1<<4));
+				cpu.s_register -= 1;
 
 			}
 			Instruction::PLA => {
-				state.s_register += 1;
-				state.accumulator = state.read_mem(0x100 + state.s_register as u16);
-				state.update_zero_neg_flags(state.accumulator);
+				cpu.s_register += 1;
+				cpu.accumulator = cpu.read_mem(0x100 + cpu.s_register as u16);
+				cpu.update_zero_neg_flags(cpu.accumulator);
 			}
 			Instruction::PLP => {
 				/* reads status from the stack, except for bits 4 and 5 */
-				state.s_register += 1;
-				let val = state.read_mem(0x100 + state.s_register as u16);
-				state.status = (state.status & 0x30) | (val & !0x30);
+				cpu.s_register += 1;
+				let val = cpu.read_mem(0x100 + cpu.s_register as u16);
+				cpu.status = (cpu.status & 0x30) | (val & !0x30);
 			}
 			Instruction::ROL => {
-				let val = addr_mode.deref(state, b1, b2);
-				let mut result = StatusFlag::Carry.as_num(state);
+				let val = addr_mode.deref(cpu, b1, b2);
+				let mut result = StatusFlag::Carry.as_num(cpu);
 				result = result | (val << 1);
-				addr_mode.write(state, b1, b2, result);
-				state.update_flag(StatusFlag::Carry, val & 0x80 != 0);
-				state.update_zero_neg_flags(result);
+				addr_mode.write(cpu, b1, b2, result);
+				cpu.update_flag(StatusFlag::Carry, val & 0x80 != 0);
+				cpu.update_zero_neg_flags(result);
 			}
 			Instruction::ROR => {
-				let val = addr_mode.deref(state, b1, b2);
-				let mut result = StatusFlag::Carry.as_num(state) << 7;
+				let val = addr_mode.deref(cpu, b1, b2);
+				let mut result = StatusFlag::Carry.as_num(cpu) << 7;
 				result = result | (val >> 1);
-				addr_mode.write(state, b1, b2, result);
-				state.update_flag(StatusFlag::Carry, val & 0x1 != 0);
-				state.update_zero_neg_flags(result);
+				addr_mode.write(cpu, b1, b2, result);
+				cpu.update_flag(StatusFlag::Carry, val & 0x1 != 0);
+				cpu.update_zero_neg_flags(result);
 			}
 			Instruction::RTI => {
-				state.status = state.pop();
-				state.program_counter = state.pop_memory_loc();
+				cpu.status = cpu.pop();
+				cpu.program_counter = cpu.pop_memory_loc();
 			}
 			Instruction::RTS => {
-				state.program_counter = state.pop_memory_loc() + 1;
+				cpu.program_counter = cpu.pop_memory_loc() + 1;
 			}
 			Instruction::SBC => {
-				let val = addr_mode.deref(state, b1, b2);
-				add_with_carry_and_update(state, !val, StatusFlag::Carry.as_num(state));
+				let val = addr_mode.deref(cpu, b1, b2);
+				add_with_carry_and_update(cpu, !val, StatusFlag::Carry.as_num(cpu));
 			}
 			Instruction::SEC => {
-				StatusFlag::Carry.update_bool(state, true);
+				StatusFlag::Carry.update_bool(cpu, true);
 			}
 			Instruction::SEI => {
 				/* TODO: The effect is delayed "one instruction".
 				 * Does that mean one cycle, or until the next instruction?
 				 * how to implement this?
 				 */
-				state.update_flag(StatusFlag::InterruptDisable, true);
+				cpu.update_flag(StatusFlag::InterruptDisable, true);
 			}
 			Instruction::STA => {
-				addr_mode.write(state, b1, b2, state.accumulator);
+				addr_mode.write(cpu, b1, b2, cpu.accumulator);
 			}
 			Instruction::STX => {
-				addr_mode.write(state, b1, b2, state.index_x);
+				addr_mode.write(cpu, b1, b2, cpu.index_x);
 			}
 			Instruction::STY => {
-				addr_mode.write(state, b1, b2, state.index_y);
+				addr_mode.write(cpu, b1, b2, cpu.index_y);
 			}
 			Instruction::TAX => {
-				state.index_x = state.accumulator;
-				state.update_zero_neg_flags(state.index_x);
+				cpu.index_x = cpu.accumulator;
+				cpu.update_zero_neg_flags(cpu.index_x);
 			}
 			Instruction::TAY => {
-				state.index_y = state.accumulator;
-				state.update_zero_neg_flags(state.index_y);
+				cpu.index_y = cpu.accumulator;
+				cpu.update_zero_neg_flags(cpu.index_y);
 			}
 			Instruction::TSX => {
-				state.index_x = state.s_register;
-				state.update_zero_neg_flags(state.index_x);
+				cpu.index_x = cpu.s_register;
+				cpu.update_zero_neg_flags(cpu.index_x);
 			}
 			Instruction::TXA => {
-				state.accumulator = state.index_x;
-				state.update_zero_neg_flags(state.accumulator);
+				cpu.accumulator = cpu.index_x;
+				cpu.update_zero_neg_flags(cpu.accumulator);
 			}
 			Instruction::TXS => {
-				state.s_register = state.index_x;
+				cpu.s_register = cpu.index_x;
 				/* doesn't update flags! multiple sources agree on this ? */
 			}
 			Instruction::TYA => {
-				state.accumulator = state.index_y;
-				state.update_zero_neg_flags(state.accumulator);
+				cpu.accumulator = cpu.index_y;
+				cpu.update_zero_neg_flags(cpu.accumulator);
 			}
 		}
 	}
 
-	fn branch_instr(state: &mut ProgramState, flag: StatusFlag,
-	                is_positive: bool, offset: u8) {
-		if is_positive == flag.is_set(state) {
-			state.program_counter = Relative.resolve_address(
-			                        state, offset, 0);
+	fn branch_instr(cpu: &mut CPU, flag: StatusFlag,
+					is_positive: bool, offset: u8) {
+		if is_positive == flag.is_set(cpu) {
+			cpu.program_counter = Relative.resolve_address(
+				cpu, offset, 0);
 		}
 	}
 
-	fn compare(state: &mut ProgramState, addr_mode: &AddressingMode,
-	           b1: u8, b2: u8,
-	           compare_val: u8) {
-		let mem_val = addr_mode.deref(state, b1, b2);
+	fn compare(cpu: &mut CPU, addr_mode: &AddressingMode,
+			   b1: u8, b2: u8,
+			   compare_val: u8) {
+		let mem_val = addr_mode.deref(cpu, b1, b2);
 
-		state.update_flag(StatusFlag::Carry, compare_val >= mem_val);
-		state.update_flag(StatusFlag::Zero, compare_val == mem_val);
-		state.update_flag(StatusFlag::Negative, compare_val.wrapping_sub(mem_val) & 0x80 != 0);
+		cpu.update_flag(StatusFlag::Carry, compare_val >= mem_val);
+		cpu.update_flag(StatusFlag::Zero, compare_val == mem_val);
+		cpu.update_flag(StatusFlag::Negative, compare_val.wrapping_sub(mem_val) & 0x80 != 0);
 	}
 }
 
@@ -345,8 +345,8 @@ pub struct RealizedInstruction
 
 impl RealizedInstruction
 {
-	pub fn apply(&self, state: &mut ProgramState, b1: u8, b2: u8) {
-		self.instruction.apply(state, &self.addr_mode, b1, b2);
+	pub fn apply(&self, cpu: &mut CPU, b1: u8, b2: u8) {
+		self.instruction.apply(cpu, &self.addr_mode, b1, b2);
 		/* note that this holds even for branching instructions (but not jump instructions): program counter needs to be
 		 * incremented by the number of bytes for instruction, arguments
 		 */
@@ -356,7 +356,7 @@ impl RealizedInstruction
 			Instruction::JSR => {}
 			Instruction::RTS => {}
 			Instruction::RTI => {}
-			_ => {state.program_counter = state.program_counter.wrapping_add(self.bytes as u16);}
+			_ => { cpu.program_counter = cpu.program_counter.wrapping_add(self.bytes as u16);}
 		}
 	}
 }
@@ -530,15 +530,15 @@ fn handle_unknown_opcode(opcode: u8) -> (Instruction, AddressingMode, u16, u8) /
 	panic!("Unknown opcode 0x{opcode:x}");
 }
 
-fn add_with_carry_and_update(state: &mut ProgramState, mem_val: u8, carry: u8) {
-	let old_a = state.accumulator;
+fn add_with_carry_and_update(cpu: &mut CPU, mem_val: u8, carry: u8) {
+	let old_a = cpu.accumulator;
 
 	let (result, carry) = add_with_carry_impl(old_a, mem_val, carry);
 
-	state.accumulator = result;
-	state.update_zero_neg_flags(result);
-	state.update_flag(StatusFlag::Carry, carry);
-	state.update_flag(StatusFlag::Overflow, (result ^ old_a) & (result ^ mem_val) & 0x80 != 0);
+	cpu.accumulator = result;
+	cpu.update_zero_neg_flags(result);
+	cpu.update_flag(StatusFlag::Carry, carry);
+	cpu.update_flag(StatusFlag::Overflow, (result ^ old_a) & (result ^ mem_val) & 0x80 != 0);
 }
 
 fn add_with_carry_impl(a:u8, b:u8, carry:u8) -> (u8, bool) {

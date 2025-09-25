@@ -3,7 +3,7 @@ use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
 use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage::{Memory, Oam, ScrollX, ScrollY};
 use crate::cpu::CoreMemory;
 use crate::ppu::PPURegister::*;
-use crate::ppu::{PPURegister, PPUState, OAM_SIZE, PPU_MEMORY_SIZE, VRAM};
+use crate::ppu::{PPURegister, PPU, OAM_SIZE, PPU_MEMORY_SIZE, VRAM};
 use crate::rom::Rom;
 use std::sync::mpsc::Sender;
 
@@ -78,7 +78,7 @@ impl MemoryListener for PPUListener {
                     self.vram_addr as u8
                 }
                 PPUDATA => {
-                    let new_buffered_val = self.local_vram_copy[PPUState::vram_address_mirror(self.vram_addr)];
+                    let new_buffered_val = self.local_vram_copy[PPU::vram_address_mirror(self.vram_addr)];
 
                     let result = self.read_buffer;
                     self.read_buffer = new_buffered_val;
@@ -137,7 +137,7 @@ impl MemoryListener for PPUListener {
                     self.first_write = !self.first_write;
                 }
                 PPUDATA => {
-                    let addr = PPUState::vram_address_mirror(self.vram_addr);
+                    let addr = PPU::vram_address_mirror(self.vram_addr);
                     /* send a message to the PPU to update */
                     self.send_update(Memory(addr, value));
                     /* and make a local copy, in case the program reads PPUDATA */

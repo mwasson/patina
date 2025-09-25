@@ -10,7 +10,7 @@ use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::{PpuStatus, NMI};
 use crate::ppu::{PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::processor::Processor;
 
-pub struct PPUState {
+pub struct PPU {
     vram: VRAM,
     oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
@@ -26,15 +26,15 @@ pub struct PPUState {
     update_receiver: Receiver<CpuToPpuMessage>
 }
 
-impl Processor for PPUState {
+impl Processor for PPU {
     fn clock_speed(&self) -> u64 {
         1790000*3 /* 3x as fast as the CPU */
     }
 }
 
-impl PPUState {
+impl PPU {
 
-    pub fn from_rom(rom: &Rom, ppu_update_sender: Sender<PpuToCpuMessage>, update_receiver: Receiver<CpuToPpuMessage>) -> Box<PPUState> {
+    pub fn from_rom(rom: &Rom, ppu_update_sender: Sender<PpuToCpuMessage>, update_receiver: Receiver<CpuToPpuMessage>) -> Box<PPU> {
         let mut vram: [u8; PPU_MEMORY_SIZE] = [0; PPU_MEMORY_SIZE];
         let oam : [u8; OAM_SIZE] = [0; OAM_SIZE]; /* TODO: link this to CPU memory? */
 
@@ -43,7 +43,7 @@ impl PPUState {
 
         let write_buffer = Arc::new(Mutex::new([0; WRITE_BUFFER_SIZE]));
 
-       Box::new(PPUState {
+       Box::new(PPU {
            vram,
            oam,
            write_buffer,
@@ -314,7 +314,7 @@ impl PPUState {
             }
             match update.unwrap() {
                 CpuToPpuMessage::Memory(addr, data) => {
-                    self.vram[PPUState::vram_address_mirror(addr)] = data
+                    self.vram[PPU::vram_address_mirror(addr)] = data
                 },
                 CpuToPpuMessage::Oam(new_oam_data) => {
                     self.oam.copy_from_slice(&new_oam_data)
@@ -366,7 +366,7 @@ impl SpriteInfo {
         self.y+1
     }
 
-    fn get_brightness_localized(&self, ppu: &PPUState, x: u8, y: u8) -> u8 {
+    fn get_brightness_localized(&self, ppu: &PPU, x: u8, y: u8) -> u8 {
         let tile = ppu.get_sprite_tile(self.tile_index); /* TODO is this right? */
         let mut x_to_use = x as usize;
         if self.attrs & 0x40 != 0 { /* flipped horizontally */
@@ -379,7 +379,7 @@ impl SpriteInfo {
         tile.pixel_intensity(x_to_use, y_to_use)
     }
 
-    fn get_palette(&self, ppu: &PPUState) -> Palette {
+    fn get_palette(&self, ppu: &PPU) -> Palette {
         ppu.get_palette((self.attrs & 0x3) + 4)
     }
 

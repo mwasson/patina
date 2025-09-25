@@ -1,10 +1,9 @@
-/* the state of the cpu at a given time */
 mod addressing_mode;
 mod controller;
 mod core_memory;
 mod instruction;
 mod status_flag;
-mod program_state;
+mod cpu;
 pub mod ppu_listener;
 pub mod cpu_to_ppu_message;
 
@@ -14,7 +13,7 @@ pub use controller::Controller;
 pub use core_memory::CoreMemory;
 pub use core_memory::MemoryListener;
 pub use instruction::RealizedInstruction;
-pub use program_state::ProgramState;
+pub use cpu::CPU;
 pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
 pub const MEMORY_SIZE: usize = 1<<16;
@@ -31,8 +30,8 @@ pub struct Operation
 
 impl Operation
 {
-	fn apply(&self, state: &mut ProgramState) {
-		self.realized_instruction.apply(state, self.byte1, self.byte2);
+	fn apply(&self, cpu: &mut CPU) {
+		self.realized_instruction.apply(cpu, self.byte1, self.byte2);
 	}
 }
 

@@ -9,8 +9,8 @@ mod cpu;
 mod rom;
 use rom::Rom;
 use crate::apu::APU;
-use crate::cpu::{ProgramState};
-use crate::ppu::PPUState;
+use crate::cpu::{CPU};
+use crate::ppu::PPU;
 
 mod window;
 mod ppu;
@@ -32,14 +32,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let (nmi_sender, nmi_receiver) = channel();
 	let (update_sender, update_receiver) = channel();
 
-	let mut ppu = PPUState::from_rom(&rom, nmi_sender, update_receiver);
+	let mut ppu = PPU::from_rom(&rom, nmi_sender, update_receiver);
 	let write_buffer = ppu.get_write_buffer();
 
 	let keys = Arc::new(Mutex::new(HashSet::new()));
 	let keys_clone = keys.clone();
 	
 	thread::spawn(move || {
-		let mut cpu = ProgramState::from_rom(&rom, nmi_receiver, update_sender);
+		let mut cpu = CPU::from_rom(&rom, nmi_receiver, update_sender);
 		let mut apu = APU::new(cpu.share_memory());
 
 		cpu.set_key_source(keys_clone);

@@ -5,8 +5,8 @@ use std::thread;
 use std::time::Instant;
 use priority_queue::PriorityQueue;
 use crate::apu::APU;
-use crate::cpu::{ProgramState};
-use crate::ppu::PPUState;
+use crate::cpu::{CPU};
+use crate::ppu::PPU;
 use crate::processor::Processor;
 use crate::scheduler::TaskType::*;
 
@@ -20,7 +20,7 @@ enum TaskType
     APU,
 }
 
-pub(crate) fn simulate(cpu: &mut ProgramState, ppu: &mut PPUState, apu: &mut APU) {
+pub(crate) fn simulate(cpu: &mut CPU, ppu: &mut PPU, apu: &mut APU) {
     let mut tasks : PriorityQueue<TaskType,Reverse<Instant>>  = PriorityQueue::new();
 
     let rev_start_time = Reverse(Instant::now());

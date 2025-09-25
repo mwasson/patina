@@ -16,7 +16,7 @@ use crate::processor::Processor;
 use crate::rom::Rom;
 use winit::event::VirtualKeyCode;
 
-pub struct ProgramState
+pub struct CPU
 {
 	pub accumulator: u8,
 	pub index_x: u8,
@@ -30,14 +30,14 @@ pub struct ProgramState
 	ppu_state_receiver: Receiver<PpuToCpuMessage>,
 }
 
-impl Processor for ProgramState
+impl Processor for CPU
 {
 	fn clock_speed(&self) -> u64 {
 		1790000 /* 1.79 MHz */
 	} /* TODO constantize */
 }
 
-impl ProgramState
+impl CPU
 {
 	/* TODO comment */
 	pub fn from_rom(rom: &Rom, ppu_state_receiver: Receiver<PpuToCpuMessage>, update_sender: Sender<CpuToPpuMessage>) -> Box<Self> {

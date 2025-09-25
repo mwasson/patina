@@ -1,4 +1,4 @@
-use crate::cpu::program_state::ProgramState;
+use crate::cpu::cpu::CPU;
 
 #[derive(Debug)]
 pub enum StatusFlag
@@ -26,19 +26,19 @@ impl StatusFlag
 		}
 	}
 
-	pub fn is_set(&self, state: &ProgramState) -> bool {
-		state.status & (1 << self.mask()) != 0
+	pub fn is_set(&self, cpu: &CPU) -> bool {
+		cpu.status & (1 << self.mask()) != 0
 	}
 
-	pub fn as_num(&self, state: &ProgramState) -> u8 {
-		(state.status & (1 << self.mask())) >> self.mask()
+	pub fn as_num(&self, cpu: &CPU) -> u8 {
+		(cpu.status & (1 << self.mask())) >> self.mask()
 	}
 
-	pub fn update_bool(&self, state: &mut ProgramState, new_val: bool) {
+	pub fn update_bool(&self, cpu: &mut CPU, new_val: bool) {
 		if new_val {
-			state.status = state.status | (1 << self.mask());
+			cpu.status = cpu.status | (1 << self.mask());
 		} else {
-			state.status = state.status & !(1 << self.mask());
+			cpu.status = cpu.status & !(1 << self.mask());
 		}
 	}
 }
