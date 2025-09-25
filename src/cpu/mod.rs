@@ -4,10 +4,7 @@ mod core_memory;
 mod instruction;
 mod status_flag;
 mod cpu;
-pub mod ppu_listener;
-pub mod cpu_to_ppu_message;
 
-use std::time::Instant;
 pub use addressing_mode::AddressingMode;
 pub use controller::Controller;
 pub use core_memory::CoreMemory;

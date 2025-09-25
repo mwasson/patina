@@ -4,9 +4,8 @@ mod palette;
 mod ppu_registers;
 mod ppu_scroll_state;
 
-pub mod ppu_to_cpu_message;
+pub mod ppu_listener;
 
-pub use crate::cpu::ppu_listener::PPUListener;
 pub use ppu::PPU;
 pub use ppu_registers::PPURegister;
 pub use ppu_scroll_state::PPUScrollState;

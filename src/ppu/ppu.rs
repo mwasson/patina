@@ -1,29 +1,26 @@
+use std::cell::RefCell;
 use crate::rom::Rom;
 use std::cmp::min;
-use std::sync::mpsc::{Receiver, Sender};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-
-use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
+use crate::cpu::CoreMemory;
 use crate::ppu::palette::Palette;
-use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage;
-use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::{PpuStatus, NMI};
 use crate::ppu::{PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
+use crate::ppu::ppu_listener::PPUListener;
 use crate::processor::Processor;
 
 pub struct PPU {
+    memory: Rc<RefCell<CoreMemory>>,
     vram: VRAM,
-    oam: OAM,
+    pub (super) oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
     internal_buffer: WriteBuffer,
     /* shared registers */
-    ppu_ctrl: u8,
-    ppu_mask: u8,
-    ppu_status: u8,
-    scroll: PPUScrollState,
+    pub (super) ppu_ctrl: u8,
+    pub (super) ppu_mask: u8,
+    pub (super) ppu_status: u8,
+    pub (super) scroll: PPUScrollState,
     tmp_scroll: PPUScrollState,
-    /* communication back to cpu */
-    ppu_update_sender: Sender<PpuToCpuMessage>,
-    update_receiver: Receiver<CpuToPpuMessage>
 }
 
 impl Processor for PPU {
@@ -34,28 +31,25 @@ impl Processor for PPU {
 
 impl PPU {
 
-    pub fn from_rom(rom: &Rom, ppu_update_sender: Sender<PpuToCpuMessage>, update_receiver: Receiver<CpuToPpuMessage>) -> Box<PPU> {
+    pub fn from_rom(rom: &Rom, write_buffer: Arc<Mutex<WriteBuffer>>, memory: Rc<RefCell<CoreMemory>>) -> Rc<RefCell<PPU>> {
         let mut vram: [u8; PPU_MEMORY_SIZE] = [0; PPU_MEMORY_SIZE];
         let oam : [u8; OAM_SIZE] = [0; OAM_SIZE]; /* TODO: link this to CPU memory? */
 
         /* copy over character data; TODO surely this is not correct even in the no-mapper case*/
         vram[0x0000..rom.chr_data.len()].copy_from_slice(&rom.chr_data);
 
-        let write_buffer = Arc::new(Mutex::new([0; WRITE_BUFFER_SIZE]));
-
-       Box::new(PPU {
-           vram,
-           oam,
-           write_buffer,
-           internal_buffer: [0; WRITE_BUFFER_SIZE],
-           ppu_status: 0,
-           ppu_ctrl: 0,
-           ppu_mask: 0,
-           ppu_update_sender,
-           update_receiver,
-           scroll: PPUScrollState::default(),
-           tmp_scroll: PPUScrollState::default(),
-       })
+        Rc::new(RefCell::new(PPU { 
+            memory,
+            vram,
+            oam,
+            write_buffer,
+            internal_buffer: [0; WRITE_BUFFER_SIZE],
+            ppu_status: 0,
+            ppu_ctrl: 0,
+            ppu_mask: 0,
+            scroll: PPUScrollState::default(),
+            tmp_scroll: PPUScrollState::default(),
+        }))
     }
 
     pub fn beginning_of_screen_render(&mut self) {
@@ -66,17 +60,14 @@ impl PPU {
         self.ppu_status = set_bit_off(self.ppu_status, 6);
         /* clear overflow flag */
         self.ppu_status = set_bit_off(self.ppu_status, 5);
-        self.send_status_update();
     }
 
     pub fn end_of_screen_render(&mut self) {
-        self.handle_update();
         /* set vblank flag */
         self.ppu_status = set_bit_on(self.ppu_status, 7);
-        self.send_status_update();
         /* vblank NMI */
         if self.ppu_ctrl & (1 << 7) != 0 {
-            self.send_update(NMI);
+            self.memory.borrow_mut().set_nmi(true);
         }
 
         /* write new pixels so UI can see them */
@@ -88,7 +79,6 @@ impl PPU {
     }
 
     pub fn render_scanline(&mut self, scanline: u8) {
-        self.handle_update();
         if scanline == 0 {
             self.tmp_scroll = self.scroll.clone();
         } else {
@@ -179,7 +169,6 @@ impl PPU {
                         | (scroll_data.coarse_x as u16)) as usize)]);
                     if  bg_tile.pixel_intensity(((sprite0.x + x) % 8) as usize, (scanline % 8) as usize) > 0 {
                         self.ppu_status = set_bit_on(self.ppu_status, 6);
-                        self.send_status_update();
                         return;
                     }
                 }
@@ -242,7 +231,6 @@ impl PPU {
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
                 if scanline_sprites.len() >= 8 {
                     self.ppu_status = set_bit_on(self.ppu_status, 1);
-                    self.send_status_update();
                     break;
                 }
                 scanline_sprites.push(sprite_data);
@@ -287,6 +275,14 @@ impl PPU {
         let range_width = 4*256; /* 4 bytes per pixel, 256 pixels per line */
         (x_usize*range_width)..(x_usize+1)*range_width
     }
+    
+    pub fn read_vram(&self, addr: usize) -> u8 {
+        self.vram[PPU::vram_address_mirror(addr)]
+    } 
+    
+    pub fn write_vram(&mut self, addr: usize, val: u8) {
+        self.vram[PPU::vram_address_mirror(addr)] = val;
+    }
 
     pub fn vram_address_mirror(addr: usize) -> usize {
         let mut result = addr;
@@ -304,46 +300,6 @@ impl PPU {
         }
 
         result
-    }
-
-    fn handle_update(&mut self) {
-        loop {
-            let update = self.update_receiver.try_recv();
-            if update.is_err() {
-                break;
-            }
-            match update.unwrap() {
-                CpuToPpuMessage::Memory(addr, data) => {
-                    self.vram[PPU::vram_address_mirror(addr)] = data
-                },
-                CpuToPpuMessage::Oam(new_oam_data) => {
-                    self.oam.copy_from_slice(&new_oam_data)
-                }
-                CpuToPpuMessage::PpuCtrl(value) => {
-                    self.ppu_ctrl = value;
-                    self.scroll.nametable = value & 0x3;
-                }
-                CpuToPpuMessage::PpuMask(value) => {
-                    self.ppu_mask = value;
-                },
-                CpuToPpuMessage::ScrollX(coarse_x, fine_x) => {
-                    self.scroll.coarse_x = coarse_x;
-                    self.scroll.fine_x = fine_x;
-                },
-                CpuToPpuMessage::ScrollY(coarse_y, fine_y) => {
-                    self.scroll.coarse_y = coarse_y;
-                    self.scroll.fine_y = fine_y;
-                }
-            }
-        }
-    }
-
-    fn send_update(&self, update: PpuToCpuMessage) {
-        self.ppu_update_sender.send(update).expect("");
-    }
-
-    fn send_status_update(&self) {
-        self.send_update(PpuStatus(self.ppu_status))
     }
 }
 

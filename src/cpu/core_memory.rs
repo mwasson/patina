@@ -12,6 +12,7 @@ pub trait MemoryListener {
 
 pub struct CoreMemory {
     memory: [u8; MEMORY_SIZE],
+    nmi_flag: bool, /* a convenience, to avoid a PPU dependency on the CPU */
     listeners: HashMap<u16, Rc<RefCell<dyn MemoryListener>>>
 }
 
@@ -23,6 +24,7 @@ impl CoreMemory {
 
         CoreMemory {
             memory,
+            nmi_flag: false,
             listeners: HashMap::new()
         }
     }
@@ -55,6 +57,14 @@ impl CoreMemory {
 
         /* note that even if there's a listener, it still writes like normal */
         self.memory[mapped_addr as usize] = value;
+    }
+    
+    pub fn set_nmi(&mut self, nmi_set: bool) {
+        self.nmi_flag = nmi_set;
+    }
+    
+    pub fn nmi_set(&self) -> bool {
+        self.nmi_flag
     }
 
     pub fn register_listener(&mut self, listener: Rc<RefCell<dyn MemoryListener>>) {

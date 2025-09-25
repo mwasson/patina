@@ -2,16 +2,11 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Add;
 use std::rc::Rc;
-use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::cpu;
-use crate::cpu::cpu_to_ppu_message::CpuToPpuMessage;
 use crate::cpu::{operation_from_memory, AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION};
-use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage;
-use crate::ppu::ppu_to_cpu_message::PpuToCpuMessage::PpuStatus;
-use crate::ppu::PPUListener;
 use crate::processor::Processor;
 use crate::rom::Rom;
 use winit::event::VirtualKeyCode;
@@ -25,9 +20,7 @@ pub struct CPU
 	pub program_counter: u16,
 	pub status: u8,
 	memory: Rc<RefCell<CoreMemory>>,
-	listener: Rc<RefCell<PPUListener>>,
 	controller: Rc<RefCell<Controller>>,
-	ppu_state_receiver: Receiver<PpuToCpuMessage>,
 }
 
 impl Processor for CPU
@@ -40,13 +33,9 @@ impl Processor for CPU
 impl CPU
 {
 	/* TODO comment */
-	pub fn from_rom(rom: &Rom, ppu_state_receiver: Receiver<PpuToCpuMessage>, update_sender: Sender<CpuToPpuMessage>) -> Box<Self> {
-
-		let memory = Rc::new(RefCell::new(CoreMemory::new(rom)));
-		let listener = Rc::new(RefCell::new(PPUListener::new(rom, update_sender)));
+	pub fn from_rom(rom: &Rom, memory: Rc<RefCell<CoreMemory>>) -> Box<Self> {
 		let controller = Rc::new(RefCell::new(Controller::new()));
-		
-		memory.borrow_mut().register_listener(listener.clone());
+
 		memory.borrow_mut().register_listener(controller.clone());
 
 		/* set program counter to value in memory at this location */
@@ -58,9 +47,7 @@ impl CPU
 			program_counter: 0x00,
 			status: (0x11) << 4,
 			memory,
-			listener,
 			controller,
-			ppu_state_receiver,
 		};
 
 		result.program_counter = AddressingMode::Indirect.resolve_address_u16(&mut result, INITIAL_PC_LOCATION);
@@ -70,7 +57,7 @@ impl CPU
 
 	/* performs one operation, and then returns when the next operation should run */
 	pub fn transition(&mut self, start_time: Instant) -> Instant {
-		if self.handle_messages_and_check_for_nmi() {
+		if self.memory.borrow().nmi_set() {
 			self.trigger_nmi();
 		}
 
@@ -135,28 +122,8 @@ impl CPU
 		cpu::addr(self.read_mem(lo_byte_addr), self.read_mem(hi_byte_addr))
 	}
 
-	fn handle_messages_and_check_for_nmi(&mut self) -> bool {
-		let mut has_nmi = false;
-
-		loop {
-			let message = self.ppu_state_receiver.try_recv();
-			if message.is_err() {
-				break;
-			}
-			match message.unwrap() {
-				PpuToCpuMessage::NMI => {
-					has_nmi = true;
-				}
-				PpuStatus(status) => {
-					self.listener.borrow_mut().ppu_status = status;
-				}
-			}
-		}
-
-		has_nmi
-	}
-
 	fn trigger_nmi(&mut self) {
+		self.memory.borrow_mut().set_nmi(false);
 		/* push PC onto stack */
 		self.push_memory_loc(self.program_counter);
 		/* push processor status register on stack */
@@ -175,9 +142,5 @@ impl CPU
 
 	pub fn set_key_source(&mut self, keys:Arc<Mutex<HashSet<VirtualKeyCode>>>) {
 		self.controller.borrow_mut().set_key_source(keys);
-	}
-
-	pub fn share_memory(&self) -> Rc<RefCell<CoreMemory>> {
-		self.memory.clone()
 	}
 }

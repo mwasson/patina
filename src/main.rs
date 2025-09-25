@@ -1,16 +1,18 @@
 use std::{env, fs, thread};
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io::{self, ErrorKind};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::channel;
 
 mod cpu;
 
 mod rom;
 use rom::Rom;
 use crate::apu::APU;
-use crate::cpu::{CPU};
-use crate::ppu::PPU;
+use crate::cpu::{CoreMemory, CPU};
+use crate::ppu::{PPU, WRITE_BUFFER_SIZE};
+use crate::ppu::ppu_listener::PPUListener;
 
 mod window;
 mod ppu;
@@ -29,21 +31,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		return Err(Box::new(io::Error::new(ErrorKind::Other, "First argument must be ROM file path")));
 	};
 
-	let (nmi_sender, nmi_receiver) = channel();
-	let (update_sender, update_receiver) = channel();
-
-	let mut ppu = PPU::from_rom(&rom, nmi_sender, update_receiver);
-	let write_buffer = ppu.get_write_buffer();
+	let write_buffer = Arc::new(Mutex::new([0; WRITE_BUFFER_SIZE]));
+	let write_buffer_clone = write_buffer.clone();
 
 	let keys = Arc::new(Mutex::new(HashSet::new()));
 	let keys_clone = keys.clone();
 	
 	thread::spawn(move || {
-		let mut cpu = CPU::from_rom(&rom, nmi_receiver, update_sender);
-		let mut apu = APU::new(cpu.share_memory());
+		let memory = Rc::new(RefCell::new(CoreMemory::new(&rom)));
+		let ppu = PPU::from_rom(&rom, write_buffer_clone, memory.clone());
+		let mut cpu = CPU::from_rom(&rom, memory.clone());
+		let mut apu = Box::new(APU::new(memory.clone()));
+
+		let ppu_listener = PPUListener::new(ppu.clone());
+		memory.clone().borrow_mut().register_listener(Rc::new(RefCell::new(ppu_listener)));
 
 		cpu.set_key_source(keys_clone);
-		scheduler::simulate(&mut cpu, &mut ppu, &mut apu);
+		scheduler::simulate(&mut cpu, ppu, &mut apu);
 	});
 
 	window::initialize_ui(write_buffer, keys)
