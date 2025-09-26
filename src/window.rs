@@ -6,23 +6,26 @@ use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use winit::event::{ElementState, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::Key;
 use winit::window::{Window, WindowId};
-use crate::ppu::{WriteBuffer};
+use crate::ppu::WriteBuffer;
+use crate::scheduler::RenderRequester;
 
 struct WindowApp<'a> {
 	write_buffer : Arc<Mutex<WriteBuffer>>,
 	keys: Arc<Mutex<HashSet<Key>>>,
 	pixels: Option<Pixels<'a>>,
 	window: Option<Arc<Window>>,
+	requester: Arc<Mutex<RenderRequester>>
 }
 
 impl WindowApp<'_> {
-	fn new(write_buffer : Arc<Mutex<WriteBuffer>>, keys: Arc<Mutex<HashSet<Key>>>) -> Self {
+	fn new(write_buffer : Arc<Mutex<WriteBuffer>>, keys: Arc<Mutex<HashSet<Key>>>, requester: Arc<Mutex<RenderRequester>>) -> Self {
 		Self {
 			write_buffer,
 			keys,
+			requester,
 			pixels: None,
 			window: None,
 		}
@@ -35,6 +38,7 @@ impl ApplicationHandler for WindowApp<'_> {
 		let window = Arc::new(event_loop.create_window(Window::default_attributes()
 			.with_title("Patina")
 			.with_inner_size(LogicalSize::new(276, 256))).unwrap());
+		self.requester.lock().unwrap().set_window(window.clone());
 
 		/* TODO handle error? */
 		self.pixels = {
@@ -42,7 +46,9 @@ impl ApplicationHandler for WindowApp<'_> {
 			let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, window.clone());
 			Some(Pixels::new(256, 240, surface_texture).unwrap())
 		};
+
 		self.window = Some(window);
+		event_loop.set_control_flow(ControlFlow::Wait);
 		self.window.as_mut().unwrap().request_redraw();
 	}
 
@@ -55,7 +61,6 @@ impl ApplicationHandler for WindowApp<'_> {
 				frame.copy_from_slice(self.write_buffer.lock().unwrap().deref());
 
 				let _ = pixels.render();
-				self.window.as_mut().unwrap().request_redraw();
 			}
 			WindowEvent::CloseRequested => {
 				event_loop.exit();
@@ -78,9 +83,8 @@ impl ApplicationHandler for WindowApp<'_> {
 	}
 }
 
-pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>, keys : Arc<Mutex<HashSet<Key>>>) -> Result<(), EventLoopError> {
+pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>, keys : Arc<Mutex<HashSet<Key>>>,
+					 requester: Arc<Mutex<RenderRequester>>) -> Result<(), EventLoopError> {
 	let event_loop = EventLoop::new();
-	event_loop?.run_app(&mut WindowApp::new(write_buffer, keys))
-
-	// let quantum = Duration::from_millis(10);
+	event_loop?.run_app(&mut WindowApp::new(write_buffer, keys, requester))
 }

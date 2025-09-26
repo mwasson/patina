@@ -14,6 +14,7 @@ use crate::apu::APU;
 use crate::cpu::{CoreMemory, CPU};
 use crate::ppu::{PPU, WRITE_BUFFER_SIZE};
 use crate::ppu::ppu_listener::PPUListener;
+use scheduler::RenderRequester;
 
 mod window;
 mod ppu;
@@ -37,6 +38,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 	let keys = Arc::new(Mutex::new(HashSet::new()));
 	let keys_clone = keys.clone();
+	let render_listener = Arc::new(Mutex::new(RenderRequester::new()));
+	let render_listener_clone = render_listener.clone();
 	
 	thread::spawn(move || {
 		let memory = Rc::new(RefCell::new(CoreMemory::new(&rom)));
@@ -48,10 +51,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 		memory.clone().borrow_mut().register_listener(Rc::new(RefCell::new(ppu_listener)));
 
 		cpu.set_key_source(keys_clone);
-		scheduler::simulate(&mut cpu, ppu, &mut apu);
+		scheduler::simulate(&mut cpu, ppu, &mut apu, render_listener_clone);
 	});
 
-	match window::initialize_ui(write_buffer, keys) {
+	match window::initialize_ui(write_buffer, keys, render_listener) {
 	    Ok(()) => Ok(()),
 		Err(eventLoopError) => Err(eventLoopError.into())
 	}

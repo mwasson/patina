@@ -1,11 +1,13 @@
 use std::cell::RefCell;
-use std::hash::{Hash};
+use std::hash::Hash;
 use std::ops::Add;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use winit::window::Window;
 use crate::apu::APU;
-use crate::cpu::{CPU};
+use crate::cpu::CPU;
 use crate::ppu::PPU;
 use crate::processor::Processor;
 use crate::scheduler::TaskType::*;
@@ -20,7 +22,7 @@ enum TaskType
     APU,
 }
 
-pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: &mut APU) {
+pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: &mut APU, requester: Arc<Mutex<RenderRequester>>) {
     let start_time = Instant::now();
     let mut next_cpu_task = (CPU, start_time);
     let mut next_ppu_task = (PPUScreen, start_time);
@@ -62,7 +64,12 @@ pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: &mut APU) {
             (PPUVBlank, time) => {
                 let mut borrowed_ppu = ppu.borrow_mut();
                 borrowed_ppu.end_of_screen_render();
+
+                /* send window message to redraw */
+                requester.lock().unwrap().request_redraw();
+                
                 next_ppu_task = (PPUScreen, time.add(borrowed_ppu.cycles_to_duration(21 * 341)));
+
             },
             (APU, time) => {
                 apu.apu_tick();
@@ -72,7 +79,6 @@ pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: &mut APU) {
     }
 }
 
-#[inline(never)]
 fn next_task(t1: &(TaskType,Instant), t2: &(TaskType,Instant), t3: &(TaskType,Instant)) -> (TaskType,Instant) {
     let mut best = t1;
 
@@ -85,4 +91,25 @@ fn next_task(t1: &(TaskType,Instant), t2: &(TaskType,Instant), t3: &(TaskType,In
     }
 
     best.clone()
+}
+
+pub struct RenderRequester {
+	window: Option<Arc<Window>>
+}
+
+impl RenderRequester {
+	pub fn new() -> RenderRequester {
+		RenderRequester {
+			window: None
+		}
+	}
+	pub fn set_window(&mut self, window: Arc<Window>) {
+		self.window = Some(window);
+	}
+
+	pub fn request_redraw(&self) {
+		if let Some(window) = self.window.as_ref() {
+			window.request_redraw();
+		}
+	}
 }
