@@ -1,6 +1,7 @@
 use std::{env, fs, thread};
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::error::Error;
 use std::io::{self, ErrorKind};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -20,7 +21,7 @@ mod processor;
 mod scheduler;
 mod apu;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");
 	let args = env::args().collect::<Vec<_>>();
 
@@ -50,7 +51,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		scheduler::simulate(&mut cpu, ppu, &mut apu);
 	});
 
-	window::initialize_ui(write_buffer, keys)
+	match window::initialize_ui(write_buffer, keys) {
+	    Ok(()) => Ok(()),
+		Err(eventLoopError) => Err(eventLoopError.into())
+	}
 }
 
 fn parse_file(file_ref: &str) -> io::Result<Rom> {

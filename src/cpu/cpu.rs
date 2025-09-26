@@ -4,12 +4,11 @@ use std::ops::Add;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-
+use winit::keyboard::Key;
 use crate::cpu;
 use crate::cpu::{operation_from_memory, AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION};
 use crate::processor::Processor;
 use crate::rom::Rom;
-use winit::event::VirtualKeyCode;
 
 pub struct CPU
 {
@@ -140,7 +139,7 @@ impl CPU
 		self.memory.borrow().read(addr)
 	}
 
-	pub fn set_key_source(&mut self, keys:Arc<Mutex<HashSet<VirtualKeyCode>>>) {
+	pub fn set_key_source(&mut self, keys:Arc<Mutex<HashSet<Key>>>) {
 		self.controller.borrow_mut().set_key_source(keys);
 	}
 }
