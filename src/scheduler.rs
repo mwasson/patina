@@ -1,18 +1,16 @@
 use std::cell::RefCell;
-use std::cmp::Reverse;
 use std::hash::{Hash};
 use std::ops::Add;
 use std::rc::Rc;
 use std::thread;
-use std::time::Instant;
-use priority_queue::PriorityQueue;
+use std::time::{Duration, Instant};
 use crate::apu::APU;
 use crate::cpu::{CPU};
 use crate::ppu::PPU;
 use crate::processor::Processor;
 use crate::scheduler::TaskType::*;
 
-#[derive(Hash,Eq,PartialEq)]
+#[derive(Hash,Eq,PartialEq,Clone)]
 enum TaskType
 {
     CPU,
@@ -23,56 +21,68 @@ enum TaskType
 }
 
 pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: &mut APU) {
-    let mut tasks : PriorityQueue<TaskType,Reverse<Instant>>  = PriorityQueue::new();
+    let start_time = Instant::now();
+    let mut next_cpu_task = (CPU, start_time);
+    let mut next_ppu_task = (PPUScreen, start_time);
+    let mut next_apu_task = (APU, start_time);
 
-    let rev_start_time = Reverse(Instant::now());
-    tasks.push(CPU, rev_start_time);
-    tasks.push(PPUScreen, rev_start_time);
-    tasks.push(APU, rev_start_time);
+    let quantum = Duration::from_millis(10);
+
+    let mut most_recent_now = start_time;
+    let mut check_time = start_time.add(quantum);
 
     loop {
-        match tasks.pop() {
-            Some((task, rev_time)) => {
-                let time = rev_time.0;
-                let sleep_time = time.saturating_duration_since(Instant::now());
-                if !sleep_time.is_zero() {
-                    thread::sleep(sleep_time);
-                }
+        let next_task = next_task(&next_cpu_task, &next_ppu_task, &next_apu_task);
+        if next_task.1 > check_time {
+            thread::sleep(next_task.1.saturating_duration_since(most_recent_now));
+            most_recent_now = Instant::now();
+            check_time = most_recent_now.add(quantum);
+        }
 
-                match task {
-                    CPU => {
-                        let next_time = cpu.transition(time);
-                        tasks.push(CPU, Reverse(next_time));
-                    },
-                    PPUScreen => {
-                        let mut borrowed_ppu = ppu.borrow_mut();
-                        borrowed_ppu.beginning_of_screen_render();
-                        let scanline_duration = borrowed_ppu.cycles_to_duration(341);
-                        let mut scanline_time = time;
-                        for i in 0..240 {
-                            /* first scanline is in 341 cycles */
-                            scanline_time = scanline_time.add(scanline_duration);
-                            tasks.push(PPUScanline(i as u8), Reverse(scanline_time));
-                        }
-                        tasks.push(PPUVBlank, Reverse(scanline_time.add(scanline_duration)));
-                    },
-                    PPUScanline(scanline) => {
-                        ppu.borrow_mut().render_scanline(scanline)
-                    },
-                    PPUVBlank => {
-                        let mut borrowed_ppu = ppu.borrow_mut();
-                        borrowed_ppu.end_of_screen_render();
-                        tasks.push(PPUScreen, Reverse(time.add(borrowed_ppu.cycles_to_duration(21*341))));
-                    }
-                    APU => {
-                        apu.apu_tick();
-                        tasks.push(APU, Reverse(time.add(apu.cycles_to_duration(1))));
-                    }
-                }
-            }
-            _ => {
-                panic!("Nothing in the task queue?!");
+        match next_task {
+            (CPU, time) => {
+                next_cpu_task = (CPU, cpu.transition(time));
+            },
+            (PPUScreen, time) => {
+                let mut borrowed_ppu = ppu.borrow_mut();
+                borrowed_ppu.beginning_of_screen_render();
+
+                let scanline_duration = borrowed_ppu.cycles_to_duration(341);
+                next_ppu_task = (PPUScanline(0), time.add(scanline_duration))
+            },
+            (PPUScanline(scanline), time) => {
+                let mut borrowed_ppu = ppu.borrow_mut();
+                borrowed_ppu.render_scanline(scanline);
+
+                let scanline_duration = borrowed_ppu.cycles_to_duration(341);
+                let next_task_type = if scanline == 239 {PPUVBlank} else { PPUScanline(scanline+1) };
+                let next_time = time.add(scanline_duration);
+                next_ppu_task = (next_task_type, next_time)
+            },
+            (PPUVBlank, time) => {
+                let mut borrowed_ppu = ppu.borrow_mut();
+                borrowed_ppu.end_of_screen_render();
+                next_ppu_task = (PPUScreen, time.add(borrowed_ppu.cycles_to_duration(21 * 341)));
+            },
+            (APU, time) => {
+                apu.apu_tick();
+                next_apu_task = (APU, time.add(apu.cycles_to_duration(1)));
             }
         }
     }
+}
+
+#[inline(never)]
+fn next_task(t1: &(TaskType,Instant), t2: &(TaskType,Instant), t3: &(TaskType,Instant)) -> (TaskType,Instant) {
+    let mut best = t1;
+
+    if best.1.gt(&t2.1) {
+        best = t2;
+    }
+
+    if best.1.gt(&t3.1) {
+        best = t3;
+    }
+
+    best.clone()
 }
