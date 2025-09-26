@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
@@ -24,15 +25,17 @@ pub fn initialize_ui(write_buffer : Arc<Mutex<WriteBuffer>>, keys : Arc<Mutex<Ha
 		Pixels::new(256, 240, surface_texture)?
 	};
 
+	let quantum = Duration::from_millis(10);
+
 	event_loop.run(move |event, _, control_flow| {
+		control_flow.set_wait_timeout(quantum);
 		match event {
-			Event::RedrawRequested(_) => {
+			Event::MainEventsCleared => {
 				let frame = pixels.frame_mut();
 
-				frame.copy_from_slice(write_buffer.lock().unwrap().deref());
+				frame.copy_from_slice(write_buffer.lock().unwrap().deref());;
 
 				let _ = pixels.render();
-				window.request_redraw();
 			}
 			Event::WindowEvent { event, .. } => match event {
 				WindowEvent::CloseRequested => {
