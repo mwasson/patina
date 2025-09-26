@@ -6,6 +6,7 @@ use crate::rom::Rom;
 
 pub trait MemoryListener {
     fn get_addresses(&self) -> Vec<u16>;
+
     fn read(&mut self, memory: &CoreMemory, address: u16) -> u8;
     fn write(&mut self, memory: &CoreMemory, address: u16, value: u8);
 }
@@ -31,11 +32,16 @@ impl CoreMemory {
 
     pub fn read(&self, address: u16) -> u8 {
         let mapped_addr = self.map_address(address);
-        if let Some(listener) = self.listeners.get(&address) {
-            listener.borrow_mut().read(self, mapped_addr)
-        } else {
-            self.read_no_listen(mapped_addr)
+        /* TODO HACK: speed up memory access by only looking for listeners on a small number
+         * of whitelisted addresses; will have to revisit this
+         */
+        if mapped_addr & 0xff00 == 0x2000 || mapped_addr & 0xff00 == 0x4000 {
+            if let Some(listener) = self.listeners.get(&address) {
+                return listener.borrow_mut().read(self, mapped_addr);
+            }
         }
+
+        self.memory[mapped_addr as usize]
     }
 
     pub fn read_no_listen(&self, address: u16) -> u8 {
@@ -51,18 +57,23 @@ impl CoreMemory {
 
     pub fn write(&mut self, address: u16, value: u8) {
         let mapped_addr = self.map_address(address);
-        if let Some(listener) = self.listeners.get(&mapped_addr) {
-            listener.borrow_mut().write(self, mapped_addr, value);
+        /* TODO HACK: speed up memory access by only looking for listeners on a small number
+         * of whitelisted addresses; will have to revisit this
+         */
+        if mapped_addr >= 0x2000 && mapped_addr <= 0x2020 || mapped_addr >= 0x4000 && mapped_addr <= 0x4200 {
+            if let Some(listener) = self.listeners.get(&mapped_addr) {
+                listener.borrow_mut().write(self, mapped_addr, value);
+            }
         }
 
         /* note that even if there's a listener, it still writes like normal */
         self.memory[mapped_addr as usize] = value;
     }
-    
+
     pub fn set_nmi(&mut self, nmi_set: bool) {
         self.nmi_flag = nmi_set;
     }
-    
+
     pub fn nmi_set(&self) -> bool {
         self.nmi_flag
     }
@@ -76,16 +87,13 @@ impl CoreMemory {
         }
     }
 
-
     fn map_address(&self, addr: u16) -> u16 {
-        let mapped_addr = if addr > 0x7ff && addr <= 0x1fff {
+        if addr > 0x7ff && addr <= 0x1fff {
             addr & 0x7ff
         } else if addr >= 0x2000 && addr <= 0x3FFF { /* ppu registers */
             0x2000 | (addr & 0x7)
         } else {
             addr
-        };
-
-        mapped_addr
+        }
     }
 }
