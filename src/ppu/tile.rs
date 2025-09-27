@@ -40,8 +40,13 @@ impl Tile
         }
     }
 
+    #[inline(never)]
     pub fn pixel_intensity(&self, x:usize, y:usize) -> u8 {
-        self.bit_set(self.data[y], x) + 2*self.bit_set(self.data[8+y], x)
+        let rev_x = 7-x;
+        let big = self.data[8+y] >> rev_x;
+        let small = self.data[y] >> rev_x;
+        ((big & 1) << 1) | (small & 1)
+        // self.bit_set(self.data[y], x) + 2*self.bit_set(self.data[8+y], x)
     }
 
     /* checks if a given bit in a bit array is set, and returns 1 if true, 0 otherwise;

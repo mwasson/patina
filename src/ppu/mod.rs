@@ -13,7 +13,11 @@ pub use tile::{index_to_pixel, pixel_to_index, Tile};
 
 pub const OAM_SIZE : usize = 256;
 pub const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */
-pub const WRITE_BUFFER_SIZE : usize = 256*240*4;
+/* number of lines at the top of the screen to not actually show */
+pub const OVERSCAN : u8 = 10;
+pub const DISPLAY_WIDTH : u32 = 256;
+pub const DISPLAY_HEIGHT : u32 = 240-OVERSCAN as u32;
+pub const WRITE_BUFFER_SIZE : usize = (DISPLAY_WIDTH as usize)*(DISPLAY_HEIGHT as usize)*4;
 
 type OAM = [u8; OAM_SIZE];
 pub type VRAM = [u8; PPU_MEMORY_SIZE];

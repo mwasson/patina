@@ -9,8 +9,12 @@ use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::Key;
 use winit::window::{Window, WindowId};
-use crate::ppu::WriteBuffer;
+use crate::ppu;
+use crate::ppu::{WriteBuffer};
 use crate::scheduler::RenderRequester;
+
+const WINDOW_START_WIDTH : u16 = 500;
+const WINDOW_START_HEIGHT: u16 = 500;
 
 struct WindowApp<'a> {
 	write_buffer : Arc<Mutex<WriteBuffer>>,
@@ -37,14 +41,14 @@ impl ApplicationHandler for WindowApp<'_> {
 		/* TODO handle error? */
 		let window = Arc::new(event_loop.create_window(Window::default_attributes()
 			.with_title("Patina")
-			.with_inner_size(LogicalSize::new(276, 256))).unwrap());
+			.with_inner_size(LogicalSize::new(WINDOW_START_WIDTH, WINDOW_START_HEIGHT))).unwrap());
 		self.requester.lock().unwrap().set_window(window.clone());
 
 		/* TODO handle error? */
 		self.pixels = {
 			let window_size = window.inner_size();
 			let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, window.clone());
-			Some(Pixels::new(256, 240, surface_texture).unwrap())
+			Some(Pixels::new(ppu::DISPLAY_WIDTH, ppu::DISPLAY_HEIGHT, surface_texture).unwrap())
 		};
 
 		self.window = Some(window);

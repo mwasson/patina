@@ -5,8 +5,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use crate::cpu::CoreMemory;
 use crate::ppu::palette::Palette;
-use crate::ppu::{PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
-use crate::ppu::ppu_listener::PPUListener;
+use crate::ppu::{PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::processor::Processor;
 
 pub struct PPU {
@@ -78,6 +77,7 @@ impl PPU {
         self.write_buffer.clone()
     }
 
+    #[inline(never)]
     pub fn render_scanline(&mut self, scanline: u8) {
         if scanline == 0 {
             self.tmp_scroll = self.scroll.clone();
@@ -96,36 +96,55 @@ impl PPU {
         if render_sprites {
             self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, true);
         }
-        /* background tiles */
         if render_background {
-            for x in (0..0x101).step_by(8) {
-                let tile = self.get_bg_tile(self.vram[Self::vram_address_mirror((0x2000
-                    | (self.tmp_scroll.nametable as u16) << 10
-                    | (self.tmp_scroll.coarse_y as u16) << 5
-                    | (self.tmp_scroll.coarse_x as u16)) as usize)]);
-                let palette = self.palette_for_pixel(self.tmp_scroll.coarse_x * 8, scanline);
-                for pixel_offset in 0..8 {
-                    let pixel_loc = x as i16 + pixel_offset as i16 - self.scroll.fine_x as i16;
-                    if pixel_loc < 0 || pixel_loc > 0xff {
-                        continue;
-                    }
-                    let brightness = tile.pixel_intensity(pixel_offset as usize,
-                                                          self.tmp_scroll.fine_y as usize);
-
-                    let index = pixel_loc as usize * 4;
-                    if brightness > 0 && line_buffer[index + 3] == 0 {
-                        /* TODO doesn't handle 16 pixel tall sprites */
-                        line_buffer[index..(index + 4)].copy_from_slice(&palette.brightness_to_pixels(brightness));
-                    }
-                }
-
-                self.tmp_scroll.coarse_x_increment();
-            }
+            self.render_background_tiles(scanline, &mut line_buffer);
         }
         if render_sprites {
             self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, false);
         }
 
+        /* solid background color everywhere we didn't render a sprite or background tile */
+        self.render_solid_background_color(&mut line_buffer);
+
+        self.check_for_sprite_zero_hit(scanline);
+
+        /* update scrolling TODO explain */
+        self.tmp_scroll.y_increment();
+
+        if scanline >= OVERSCAN {
+            self.internal_buffer[Self::pixel_range_for_line(scanline)].copy_from_slice(&line_buffer);
+        }
+    }
+
+    #[inline(never)]
+    fn render_background_tiles(&mut self, scanline: u8, line_buffer: &mut [u8; 1024]) {
+        for x in (0..0x101).step_by(8) {
+            let tile = self.get_bg_tile(self.read_vram((0x2000
+                | (self.tmp_scroll.nametable as u16) << 10
+                | (self.tmp_scroll.coarse_y as u16) << 5
+                | (self.tmp_scroll.coarse_x as u16)) as usize));
+            let palette = self.palette_for_pixel(self.tmp_scroll.coarse_x * 8, scanline);
+            for pixel_offset in 0..8 {
+                let pixel_loc = x as i16 + pixel_offset as i16 - self.scroll.fine_x as i16;
+                if pixel_loc < 0 || pixel_loc > 0xff {
+                    continue;
+                }
+                let brightness = tile.pixel_intensity(pixel_offset as usize,
+                                                      self.tmp_scroll.fine_y as usize);
+
+                let index = pixel_loc as usize * 4;
+                if brightness > 0 && line_buffer[index + 3] == 0 {
+                    /* TODO doesn't handle 16 pixel tall sprites */
+                    line_buffer[index..(index + 4)].copy_from_slice(&palette.brightness_to_pixels(brightness));
+                }
+            }
+
+            self.tmp_scroll.coarse_x_increment();
+        }
+    }
+
+    #[inline(never)]
+    fn render_solid_background_color(&mut self, line_buffer: &mut [u8; 1024]) {
         /* background color */
         let bg_pixels = self.get_palette(0).brightness_to_pixels(0);
         for x in 0..0x100 {
@@ -133,15 +152,9 @@ impl PPU {
                 line_buffer[(x*4)..(x*4+4)].copy_from_slice(&bg_pixels);
             }
         }
-
-        self.check_for_sprite_zero_hit(scanline);
-
-        /* update scrolling TODO explain */
-        self.tmp_scroll.y_increment();
-
-        self.internal_buffer[Self::pixel_range_for_line(scanline)].copy_from_slice(&line_buffer);
     }
 
+    #[inline(never)]
     fn check_for_sprite_zero_hit(&mut self, scanline: u8) {
         /* if already set, return */
         if self.ppu_status & (1<<6) != 0 {
@@ -176,6 +189,7 @@ impl PPU {
         }
     }
 
+    #[inline(never)]
     fn render_sprites(&self, scanline_sprites: &Vec<SpriteInfo>, scanline: u8, line_buffer: &mut [u8], is_foreground: bool) {
         for sprite in scanline_sprites {
             if sprite.is_foreground() != is_foreground {
@@ -194,6 +208,7 @@ impl PPU {
         }
     }
 
+    #[inline(never)]
     fn palette_for_pixel(&self, x:u8, y:u8) -> Palette {
         /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
@@ -222,6 +237,7 @@ impl PPU {
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
+    #[inline(never)]
     fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo>{
         let mut scanline_sprites = Vec::new();
         for i in 0..OAM_SIZE/4 {
@@ -250,6 +266,7 @@ impl PPU {
         self.get_tile(tile_index, ((self.ppu_ctrl & 0x8) >> 3) as usize)
     }
 
+    #[inline(never)]
     fn get_bg_tile(&self, tile_index: u8) -> Tile {
         self.get_tile(tile_index, ((self.ppu_ctrl & 0x10) >> 4) as usize)
     }
@@ -270,10 +287,10 @@ impl PPU {
         Palette::new(palette_data)
     }
 
-    fn pixel_range_for_line(x: u8) -> core::ops::Range<usize> {
-        let x_usize = x as usize;
+    fn pixel_range_for_line(y: u8) -> core::ops::Range<usize> {
+        let start = (y - OVERSCAN) as usize; /* don't show the first few lines */
         let range_width = 4*256; /* 4 bytes per pixel, 256 pixels per line */
-        (x_usize*range_width)..(x_usize+1)*range_width
+        start*range_width..(start+1)*range_width
     }
     
     pub fn read_vram(&self, addr: usize) -> u8 {

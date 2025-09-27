@@ -10,6 +10,7 @@ pub struct PPUScrollState
 
 impl PPUScrollState
 {
+    #[inline(never)]
     pub fn y_increment(&mut self) {
         if self.fine_y < 7 {
             /* keep on incrementing fine_y until we can't */
@@ -28,6 +29,7 @@ impl PPUScrollState
         }
     }
 
+    #[inline(never)]
     pub fn coarse_x_increment(&mut self) {
         if self.coarse_x == 31 {
             self.coarse_x = 0;
