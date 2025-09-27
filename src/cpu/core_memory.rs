@@ -1,6 +1,6 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
+use fnv::FnvHashMap;
 use crate::cpu::MEMORY_SIZE;
 use crate::rom::Rom;
 
@@ -14,7 +14,7 @@ pub trait MemoryListener {
 pub struct CoreMemory {
     memory: [u8; MEMORY_SIZE],
     nmi_flag: bool, /* a convenience, to avoid a PPU dependency on the CPU */
-    listeners: HashMap<u16, Rc<RefCell<dyn MemoryListener>>>
+    listeners: FnvHashMap<u16, Rc<RefCell<dyn MemoryListener>>>
 }
 
 impl CoreMemory {
@@ -26,7 +26,7 @@ impl CoreMemory {
         CoreMemory {
             memory,
             nmi_flag: false,
-            listeners: HashMap::new()
+            listeners:  FnvHashMap::with_capacity_and_hasher(10, Default::default())
         }
     }
 
@@ -35,7 +35,7 @@ impl CoreMemory {
         /* TODO HACK: speed up memory access by only looking for listeners on a small number
          * of whitelisted addresses; will have to revisit this
          */
-        if mapped_addr & 0xff00 == 0x2000 || mapped_addr & 0xff00 == 0x4000 {
+        if CoreMemory::is_special_addr(mapped_addr) {
             if let Some(listener) = self.listeners.get(&address) {
                 return listener.borrow_mut().read(self, mapped_addr);
             }
@@ -60,7 +60,7 @@ impl CoreMemory {
         /* TODO HACK: speed up memory access by only looking for listeners on a small number
          * of whitelisted addresses; will have to revisit this
          */
-        if mapped_addr >= 0x2000 && mapped_addr <= 0x2020 || mapped_addr >= 0x4000 && mapped_addr <= 0x4200 {
+        if CoreMemory::is_special_addr(mapped_addr) {
             if let Some(listener) = self.listeners.get(&mapped_addr) {
                 listener.borrow_mut().write(self, mapped_addr, value);
             }
@@ -68,6 +68,13 @@ impl CoreMemory {
 
         /* note that even if there's a listener, it still writes like normal */
         self.memory[mapped_addr as usize] = value;
+    }
+
+    pub fn is_special_addr(address: u16) -> bool {
+        let ppu_reg = 0x2000 <= address && address < 0x2008;
+        let apu_io = 0x4000 <= address && address < 0x4018;
+
+        ppu_reg || apu_io
     }
 
     pub fn set_nmi(&mut self, nmi_set: bool) {
