@@ -13,8 +13,8 @@ use crate::ppu;
 use crate::ppu::{WriteBuffer};
 use crate::scheduler::RenderRequester;
 
-const WINDOW_START_WIDTH : u16 = 500;
-const WINDOW_START_HEIGHT: u16 = 500;
+const WINDOW_START_WIDTH : u16 = 420;
+const WINDOW_START_HEIGHT: u16 = 380;
 
 struct WindowApp<'a> {
 	write_buffer : Arc<Mutex<WriteBuffer>>,
