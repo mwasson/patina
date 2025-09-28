@@ -52,7 +52,6 @@ impl Envelope {
         self.period_or_volume = data & 0xf;
         self.constant_volume = data & 0x10 != 0;
         self.loop_flag = data & 0x20 != 0;
-        self.start();
     }
 
     pub fn start(&mut self) {
