@@ -22,6 +22,7 @@ pub struct DMC {
     irq_enabled: bool,
     loop_flag: bool,
     rate_index: u16,
+    enabled: bool,
 }
 
 impl DMC {
@@ -48,10 +49,18 @@ impl DMC {
             irq_enabled: false,
             loop_flag: false,
             rate_index: 0,
+            enabled: false,
         }
     }
 
-    pub fn tick(&mut self, apu_counter: u16) {
+    pub fn tick(&mut self, apu_counter: u16, enabled: bool) {
+        if self.enabled && !enabled {
+            /* TODO: DMC behavior for being disabled is more complex than others */
+        }
+        self.enabled = enabled;
+        if !self.enabled {
+            return;
+        }
         if !self.silence_flag {
             if self.shift_register & 1 == 1 {
                 if self.volume <= 125 {

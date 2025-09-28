@@ -18,6 +18,7 @@ pub struct Noise {
 
     shift_register: u16, /* NB: only use the lower 15 bits */
     mode_flag: bool,
+    enabled: bool,
 }
 
 impl Noise {
@@ -35,10 +36,18 @@ impl Noise {
             timer: Timer::new(),
             shift_register: 1,
             mode_flag: false,
+            enabled: false,
         }
     }
 
-    pub fn tick(&mut self, apu_counter: u16) {
+    pub fn tick(&mut self, apu_counter: u16, enabled: bool) {
+        if self.enabled && !enabled {
+            self.length_counter.set_halt(true);
+        }
+        self.enabled = enabled;
+        if !self.enabled {
+            return;
+        }
         if self.timer.clock() {
             let compare_shift = if self.mode_flag { 6 } else { 1 };
             let feedback = (self.shift_register ^ (self.shift_register >> compare_shift)) & 1;

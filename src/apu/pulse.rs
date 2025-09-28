@@ -21,6 +21,7 @@ pub struct Pulse
     length_counter: LengthCounter,
     sweep: Sweep,
     sequencer: PulseSequencer,
+    enabled: bool,
 }
 
 impl Pulse
@@ -43,10 +44,18 @@ impl Pulse
             length_counter: LengthCounter::new(),
             sweep: Sweep::new(),
             sequencer: PulseSequencer::new(),
+            enabled: false,
         }
     }
 
-    pub(crate) fn tick(&mut self, apu_counter: u16) {
+    pub(crate) fn tick(&mut self, apu_counter: u16, enabled: bool) {
+        if self.enabled && !enabled {
+            self.length_counter.set_halt(true);
+        }
+        self.enabled = enabled;
+        if !self.enabled {
+            return;
+        }
         /* on every tick, clock sequencer timer  */
         self.sequencer.clock();
 

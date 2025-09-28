@@ -8,6 +8,7 @@ pub struct Triangle {
     sequencer: TriangleSequencer,
     length_counter: LengthCounter,
     linear_counter: LinearCounter,
+    enabled: bool,
 }
 
 impl Triangle {
@@ -23,11 +24,18 @@ impl Triangle {
             sequencer: TriangleSequencer::new(),
             length_counter: LengthCounter::new(),
             linear_counter: LinearCounter::new(),
+            enabled: false,
         }
     }
 
-    pub fn tick(&mut self, apu_counter: u16) {
-
+    pub fn tick(&mut self, apu_counter: u16, enabled: bool) {
+        if self.enabled && !enabled {
+            self.length_counter.set_halt(true);
+        }
+        self.enabled = enabled;
+        if !self.enabled {
+            return;
+        }
         let is_half_frame = apu_counter == 7456 || apu_counter == 14914;
         let is_quarter_frame = is_half_frame || apu_counter == 3728 || apu_counter == 11185;
 

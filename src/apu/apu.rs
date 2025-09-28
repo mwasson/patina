@@ -18,6 +18,7 @@ const SAMPLE_RATE : SampleRate = 44800;
 
 pub struct APU {
     apu_counter: u16,
+    memory: Rc<RefCell<CoreMemory>>,
     output_stream: OutputStream, /* can't remove this--if it's collected, sound won't play */
     sink: Sink,                  /* ditto--confusingly, since OutputStream should have a ref */
     pulse1: Rc<RefCell<Pulse>>,  /* to it through the Mixer? */
@@ -49,6 +50,7 @@ impl APU {
 
         APU {
             apu_counter: 0,
+            memory,
             output_stream: stream_handle,
             pulse1,
             pulse2,
@@ -66,11 +68,13 @@ impl APU {
             self.apu_counter = 0;
         }
 
-        self.pulse1.borrow_mut().tick(self.apu_counter);
-        self.pulse2.borrow_mut().tick(self.apu_counter);
-        self.triangle.borrow_mut().tick(self.apu_counter);
-        self.noise.borrow_mut().tick(self.apu_counter);
-        self.dmc.borrow_mut().tick(self.apu_counter);
+        let flags = self.memory.borrow().read(0x4015);
+
+        self.pulse1.borrow_mut().tick(self.apu_counter, flags & 0x1 != 0);
+        self.pulse2.borrow_mut().tick(self.apu_counter, flags & 0x2 != 0);
+        self.triangle.borrow_mut().tick(self.apu_counter, flags & 0x4 != 0);
+        self.noise.borrow_mut().tick(self.apu_counter, flags & 0x8 != 0);
+        self.dmc.borrow_mut().tick(self.apu_counter, flags & 0x10 != 0);
 
         /* TODO sample and mix */
 
