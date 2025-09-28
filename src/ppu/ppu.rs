@@ -123,7 +123,7 @@ impl PPU {
                 | (self.tmp_scroll.nametable as u16) << 10
                 | (self.tmp_scroll.coarse_y as u16) << 5
                 | (self.tmp_scroll.coarse_x as u16)) as usize));
-            let palette = self.palette_for_pixel(self.tmp_scroll.coarse_x * 8, scanline);
+            let palette = self.palette_for_current_bg_tile();
             for pixel_offset in 0..8 {
                 let pixel_loc = x as i16 + pixel_offset as i16 - self.scroll.fine_x as i16;
                 if pixel_loc < 0 || pixel_loc > 0xff {
@@ -176,10 +176,10 @@ impl PPU {
                     scroll_data.coarse_x_increment();
                 }
                 if sprite0.get_brightness_localized(self, x, scanline - sprite0.get_y()) > 0 {
-                    let bg_tile = self.get_bg_tile(self.vram[Self::vram_address_mirror((0x2000
+                    let bg_tile = self.get_bg_tile(self.read_vram((0x2000
                         | (scroll_data.nametable as u16) << 10
                         | (scroll_data.coarse_y as u16) << 5
-                        | (scroll_data.coarse_x as u16)) as usize)]);
+                        | (scroll_data.coarse_x as u16)) as usize));
                     if  bg_tile.pixel_intensity(((sprite0.x + x) % 8) as usize, (scanline % 8) as usize) > 0 {
                         self.ppu_status = set_bit_on(self.ppu_status, 6);
                         return;
@@ -209,7 +209,7 @@ impl PPU {
     }
 
     #[inline(never)]
-    fn palette_for_pixel(&self, x:u8, y:u8) -> Palette {
+    fn palette_for_current_bg_tile(&self) -> Palette {
         /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
         let addr = 0x23c0
@@ -217,12 +217,12 @@ impl PPU {
             | (((self.tmp_scroll.coarse_y as u16) & 0x1c) << 1)
             | ((self.tmp_scroll.coarse_x as u16) >> 2);
         /* each address controls a 32x32 pixel block; 8 blocks per row */
-        let attr_table_value = self.vram[Self::vram_address_mirror(addr as usize)];
+        let attr_table_value = self.read_vram(addr as usize);
         /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
          * in order from the lowest bits they are: upper left, upper right, bottom left, bottom right
          */
-        let x_low = x % 32 < 16;
-        let y_low = y % 32 < 16;
+        let x_low = 8*self.tmp_scroll.coarse_x % 32 < 16;
+        let y_low = 8*self.tmp_scroll.coarse_y % 32 < 16;
         let attr_table_offset =
             if x_low {
                 if y_low { 0 } else { 4 }
