@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use crate::cpu::CoreMemory;
 use crate::ppu::palette::Palette;
-use crate::ppu::{PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
+use crate::ppu::{index_to_pixel, PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::processor::Processor;
 
 pub struct PPU {
@@ -317,6 +317,22 @@ impl PPU {
         }
 
         result
+    }
+    
+    pub fn render(&self, chr_data: &[u8], write_buffer: &mut [u8], width: usize) {
+        PPU::render_pattern_table(&chr_data[0..(256 * 16)], write_buffer, width, 0);
+        PPU::render_pattern_table(&chr_data[(256 * 16)..(256 * 32)], write_buffer, width, 128);
+    }
+
+    pub fn render_pattern_table(pattern_table: &[u8], write_buffer: &mut [u8], width: usize, start_x: usize) {
+        for i in (0..256) {
+            let xy = index_to_pixel(16, i);
+            let data_start = i * 16;
+            let mut tile_data = [0 as u8; 16];
+            tile_data.copy_from_slice(&pattern_table[data_start..data_start + 16]);
+            let tile = Tile::from_memory(tile_data);
+            tile.stamp(write_buffer, width, xy.0 * 8 + start_x, xy.1 * 8);
+        }
     }
 }
 

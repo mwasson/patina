@@ -13,22 +13,6 @@ pub struct Rom {
 }
 
 impl Rom {
-    /* TODO this stuff should *all* be somewhere else */
-    pub fn render(&self, write_buffer: &mut [u8], width: usize) {
-        Rom::render_pattern_table(&self.chr_data[0..(256 * 16)], write_buffer, width, 0);
-        Rom::render_pattern_table(&self.chr_data[(256 * 16)..(256 * 32)], write_buffer, width, 128);
-    }
-
-    pub fn render_pattern_table(pattern_table: &[u8], write_buffer: &mut [u8], width: usize, start_x: usize) {
-        for i in (0..256) {
-            let xy = index_to_pixel(16, i);
-            let data_start = i * 16;
-            let mut tile_data = [0 as u8; 16];
-            tile_data.copy_from_slice(&pattern_table[data_start..data_start + 16]);
-            let tile = Tile::from_memory(tile_data);
-            tile.stamp(write_buffer, width, xy.0 * 8 + start_x, xy.1 * 8);
-        }
-    }
     pub fn parse_file(file_ref: &str) -> io::Result<Rom> {
         println!("Attempting to parse {}", file_ref);
         let rom_data: Vec<u8> = fs::read(file_ref)?;
@@ -78,8 +62,8 @@ impl Rom {
         };
 
         println!("Rom flags:");
-        println!("{}", rom.byte_6_flags);
-        println!("{}", rom.byte_7_flags);
+        println!("Byte 6: {:b}", rom.byte_6_flags);
+        println!("Byte 7: {:b}", rom.byte_7_flags);
         println!("PRG size: {}", rom.prg_data.len());
         println!("CHR size: {}", rom.chr_data.len());
 
