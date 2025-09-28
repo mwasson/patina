@@ -117,24 +117,14 @@ impl PulseSequencer {
     }
 
     pub fn amplitude(&self) -> f32 {
-        if self.timer.period >= 8 && PULSE_DUTIES[self.duty][self.duty_index] {
-            1.0
-        } else {
-            0.0
-        }
+        (self.timer.period >= 8 && PULSE_DUTIES[self.duty][self.duty_index]) as u8 as f32
     }
 }
 
 impl MemoryListener for Pulse {
     fn get_addresses(&self) -> Vec<u16> {
-        let mut addresses = Vec::new();
-
-        addresses.push(self.first_address);
-        addresses.push(self.first_address+1);
-        addresses.push(self.first_address+2);
-        addresses.push(self.first_address+3);
-
-        addresses
+        let a = self.first_address;
+        [a, a+1, a+2, a+3].to_vec()
     }
 
     fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
