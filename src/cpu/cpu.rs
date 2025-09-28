@@ -65,7 +65,7 @@ impl CPU
 		let operation = operation_from_memory(self.read_mem(operation_loc),
 											  self.read_mem(operation_loc.wrapping_add(1)),
 											  self.read_mem(operation_loc.wrapping_add(2)));
-
+		
 		operation.apply(self);
 
 		start_time.add(self.cycles_to_duration(operation.realized_instruction.cycles))
@@ -105,7 +105,7 @@ impl CPU
 
 	pub fn irq_with_offset(&mut self, offset: u8) {
 		self.push_memory_loc(self.program_counter.wrapping_add(offset as u16));
-		self.push(self.status);
+		self.push((self.status & !(1<<4))| (1 << 5));
 		self.update_flag(StatusFlag::InterruptDisable, false);
 		/* TODO: jump to IRQ handler */
 	}
@@ -126,7 +126,7 @@ impl CPU
 		/* push PC onto stack */
 		self.push_memory_loc(self.program_counter);
 		/* push processor status register on stack */
-		self.push(self.status);
+		self.push((self.status & !(1<<4))| (1 << 5));
 		/* read NMI handler address from 0xFFFA/0xFFFB and jump to that address*/
 		self.program_counter = AddressingMode::Indirect.resolve_address_u16(self, 0xfffa);
 	}
