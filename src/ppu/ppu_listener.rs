@@ -100,10 +100,14 @@ impl MemoryListener for PPUListener {
                 OAMADDR => {
                     /* TODO: anything here?  */
                     /* TODO: OAMADDR should also be set to 0 during pre-render and visible scanlines */
+                    if value != 0 {
+                       panic!("oamaddr not implemented for non-zero values");
+                    }
                 }
                 OAMDATA => {
                     /* TODO: write to the OAM */
                     /* TODO: increment OAMADDR */
+                    panic!("oamdata unimplemented");
                 }
                 PPUSCROLL => {
                     let coarse = (value >> 3) & 0x1f;
