@@ -29,20 +29,20 @@ impl Pulse
     /* initializes a pulse, links it up as a listener on CoreMemory, and
      * wraps it appropriately
      */
-    pub fn initialize(first_addr: u16, memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<Pulse>> {
-        let pulse_ref = Rc::new(RefCell::new(Pulse::new(first_addr)));
+    pub fn initialize(first_addr: u16, is_first_channel:bool, memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<Pulse>> {
+        let pulse_ref = Rc::new(RefCell::new(Pulse::new(first_addr, is_first_channel)));
         memory.borrow_mut().register_listener(pulse_ref.clone());
 
         pulse_ref
     }
 
     /* private constructor */
-    fn new(first_address: u16) -> Pulse {
+    fn new(first_address: u16, is_second_channel: bool) -> Pulse {
         Pulse {
             first_address,
             envelope: Envelope::new(),
             length_counter: LengthCounter::new(),
-            sweep: Sweep::new(),
+            sweep: Sweep::new(is_second_channel),
             sequencer: PulseSequencer::new(),
             enabled: false,
         }
@@ -82,14 +82,14 @@ impl Pulse
         self.sequencer.timer.set_timer_hi(byte3);
         self.length_counter.set_lc(byte3);
 
-        /* side-efects on write */
+        /* side-effects on write */
         self.sequencer.duty_index = 0;
         self.envelope.start();
     }
 
     pub fn amplitude(&self) -> f32 {
         self.length_counter.amplitude() 
-            * self.envelope.amplitude() 
+            * self.envelope.amplitude()
             * self.sequencer.amplitude() 
             * self.sweep.amplitude()
     }

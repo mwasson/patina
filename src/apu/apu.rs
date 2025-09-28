@@ -42,8 +42,8 @@ impl APU {
         let queue = Arc::new(RwLock::new(VecDeque::new()));
         sink.append(BufferedMixedSource::new(queue.clone()));
 
-        let pulse1: Rc<RefCell<Pulse>> = Pulse::initialize(PULSE_1_FIRST_ADDR, &memory);
-        let pulse2: Rc<RefCell<Pulse>> = Pulse::initialize(PULSE_2_FIRST_ADDR, &memory);
+        let pulse1: Rc<RefCell<Pulse>> = Pulse::initialize(PULSE_1_FIRST_ADDR, true, &memory);
+        let pulse2: Rc<RefCell<Pulse>> = Pulse::initialize(PULSE_2_FIRST_ADDR, false, &memory);
         let triangle: Rc<RefCell<Triangle>> = Triangle::initialize(&memory);
         let noise: Rc<RefCell<Noise>> = Noise::initialize(&memory);
         let dmc: Rc<RefCell<DMC>> = DMC::initialize(&memory);
