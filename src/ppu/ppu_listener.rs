@@ -9,9 +9,14 @@ use crate::ppu::{PPURegister, PPU, OAM_SIZE};
 pub struct PPUListener
 {
     ppu: Rc<RefCell<PPU>>,
-    vram_addr: usize, /* vram address to read/write */
-    first_write: bool, /* for dual-write mapped registers */
     read_buffer: u8,
+
+    /* while we're prefer for this to not exist and just live in the PPU's t and v registers,
+     * this won't work if the scanline all occurs at once; otherwise, the CPU might try to read an
+     * address while the PPU is using it for rendering. This separates things out so that can work
+     * until PPU::render_scanline() is split up.
+     */
+    vram_address: u16,
 }
 
 impl PPUListener
@@ -19,9 +24,8 @@ impl PPUListener
     pub fn new(ppu: Rc<RefCell<PPU>>) -> PPUListener {
         PPUListener {
             ppu,
-            vram_addr: 0, /* vram address to read/write */
-            first_write: true, /* for dual-write mapped registers */
             read_buffer: 0,
+            vram_address: 0,
         }
     }
 }
@@ -45,33 +49,30 @@ impl MemoryListener for PPUListener {
 
     fn read(&mut self, _memory: &CoreMemory, address: u16) -> u8 {
         if let Some(updated_register) = PPURegister::from_addr(address) {
+            let mut ppu = self.ppu.borrow_mut();
             match updated_register {
                 PPUCTRL => {
-                    self.ppu.borrow_mut().ppu_ctrl
+                    ppu.ppu_ctrl
                 }
                 PPUMASK => {
-                    self.ppu.borrow_mut().ppu_mask
+                    ppu.ppu_mask
                 }
                 PPUSTATUS => {
-                    let mut unwrapped_ppu = self.ppu.borrow_mut();
-                    self.first_write = true;
-                    let result = unwrapped_ppu.ppu_status;
+                    ppu.internal_regs.w = false;
+                    let result = ppu.ppu_status;
                     /* clear vblank flag on read */
-                    unwrapped_ppu.ppu_status &= !0x80;
+                    ppu.ppu_status &= !0x80;
                     result
                 }
                 PPUADDR => {
-                    self.vram_addr as u8
+                    /* seems like it wouldn't be right? */
+                    self.vram_address as u8
                 }
                 PPUDATA => {
-                    let ppu_unwrapped = self.ppu.borrow();
-                    let new_buffered_val = ppu_unwrapped.read_vram(self.vram_addr);
-
                     let result = self.read_buffer;
-                    self.read_buffer = new_buffered_val;
-
-                    let increase = if self.ppu.borrow().ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
-                    self.vram_addr += increase;
+                    self.read_buffer = ppu.read_vram(self.vram_address as usize);
+                    
+                    self.vram_address += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };;
 
                     result
                 }
@@ -84,18 +85,18 @@ impl MemoryListener for PPUListener {
 
     fn write(&mut self, memory: &CoreMemory, address: u16, value: u8) {
         if let Some(updated_register) = PPURegister::from_addr(address) {
-            let mut ppu_unwrapped = self.ppu.borrow_mut();
+            let mut ppu = self.ppu.borrow_mut();
             match updated_register {
                 PPUCTRL => {
                     if value & 0x20 != 0 {
                         panic!("Uh oh, we're in 16 pixel sprite mode..."); /* TODO unimplemented */
                     }
-                    ppu_unwrapped.ppu_ctrl = value;
-                    ppu_unwrapped.scroll.nametable = value & 0x3;
+                    ppu.ppu_ctrl = value;
+                    ppu.internal_regs.set_nametable_t(value & 0x3);
                     /* TODO writing triggers an immediate NMI when in vblank PPUSTATUS */
                 }
                 PPUMASK => {
-                    ppu_unwrapped.ppu_mask = value;
+                    ppu.ppu_mask = value;
                 }
                 OAMADDR => {
                     /* TODO: anything here?  */
@@ -112,36 +113,38 @@ impl MemoryListener for PPUListener {
                 PPUSCROLL => {
                     let coarse = (value >> 3) & 0x1f;
                     let fine = value & 0x7;
-                    if self.first_write {
-                        ppu_unwrapped.scroll.coarse_x = coarse;
-                        ppu_unwrapped.scroll.fine_x = fine;
+                    if ppu.internal_regs.is_first_write() {
+                        ppu.internal_regs.set_coarse_x_t(coarse);
+                        ppu.internal_regs.set_fine_x(fine);
                     } else {
-                        ppu_unwrapped.scroll.coarse_y = coarse;
-                        ppu_unwrapped.scroll.fine_y = fine;
+                        ppu.internal_regs.set_coarse_y_t(coarse);
+                        ppu.internal_regs.set_fine_y_t(fine);
                     }
-                    self.first_write = !self.first_write;
+                    ppu.internal_regs.w = !ppu.internal_regs.w;
                 }
                 PPUADDR => {
-                    /* writes high byte first */
-                    self.vram_addr =
-                        if self.first_write { (self.vram_addr & 0xff) | ((0x3f & value as usize) << 8) } else { value as usize | (self.vram_addr & 0xff00) };
-                    /* TODO HACK REMOVE */
-                    if self.first_write {
-                        let new_ctrl = (ppu_unwrapped.ppu_ctrl & !3) | ((value & 0xa) >> 2);
-                        ppu_unwrapped.ppu_ctrl = new_ctrl;
-                        ppu_unwrapped.scroll.nametable = new_ctrl & 0x3;
+                    if ppu.internal_regs.is_first_write() {
+                        self.vram_address = (self.vram_address & 0xff) | (((value & 0x3f) as u16) << 8);
+                    } else {
+                        self.vram_address = (self.vram_address & 0xff00) | (value as u16);
+                        /* separately, this could affect the PPU's registers--even just clearing
+                         * out invalid data, or it could be used to actively update the PPU,
+                         * so we also need to send it over there, too
+                         */
+                        ppu.internal_regs.t = self.vram_address;
+                        ppu.internal_regs.v = self.vram_address;
+
                     }
-                    self.first_write = !self.first_write;
+                    ppu.internal_regs.w = !ppu.internal_regs.w
                 }
                 PPUDATA => {
-                    /* send a message to the PPU to update */
-                    ppu_unwrapped.write_vram(self.vram_addr, value);
-                    let increase = if ppu_unwrapped.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
-                    self.vram_addr += increase;
+                    let vram_addr = ppu.internal_regs.v as usize;
+                    ppu.write_vram(self.vram_address as usize, value);
+                    self.vram_address += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };;
                 }
                 OAMDMA => {
                     let base_addr = (value as u16) << 8;
-                    ppu_unwrapped.oam.copy_from_slice(memory.read_slice(base_addr, OAM_SIZE));
+                    ppu.oam.copy_from_slice(memory.read_slice(base_addr, OAM_SIZE));
                 }
                 _ => { panic!("unimplemented") }
             }

@@ -2,13 +2,13 @@ mod ppu;
 mod tile;
 mod palette;
 mod ppu_registers;
-mod ppu_scroll_state;
+mod ppu_internal_registers;
 
 pub mod ppu_listener;
 
 pub use ppu::PPU;
 pub use ppu_registers::PPURegister;
-pub use ppu_scroll_state::PPUScrollState;
+pub use ppu_internal_registers::PPUInternalRegisters;
 pub use tile::{index_to_pixel, pixel_to_index, Tile};
 
 pub const OAM_SIZE : usize = 256;
