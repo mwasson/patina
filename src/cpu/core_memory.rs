@@ -32,9 +32,6 @@ impl CoreMemory {
 
     pub fn read(&self, address: u16) -> u8 {
         let mapped_addr = self.map_address(address);
-        /* TODO HACK: speed up memory access by only looking for listeners on a small number
-         * of whitelisted addresses; will have to revisit this
-         */
         if CoreMemory::is_special_addr(mapped_addr) {
             if let Some(listener) = self.listeners.get(&address) {
                 return listener.borrow_mut().read(self, mapped_addr);
@@ -42,6 +39,23 @@ impl CoreMemory {
         }
 
         self.memory[mapped_addr as usize]
+    }
+
+    pub fn read16(&self, address: u16) -> u16 {
+        let mapped_addr = self.map_address(address);
+        /* TODO HACK: speed up memory access by only looking for listeners on a small number
+         * of whitelisted addresses; will have to revisit this
+         */
+        if CoreMemory::is_special_addr(mapped_addr) {
+            if let Some(listener) = self.listeners.get(&address) {
+                panic!("read16 not supported for listened-to addresses");
+            }
+        }
+
+        let lo_byte = self.memory[mapped_addr as usize] as u16;
+        let hi_byte = self.memory[(mapped_addr+1) as usize] as u16;
+
+        lo_byte | (hi_byte << 8)
     }
 
     pub fn read_no_listen(&self, address: u16) -> u8 {

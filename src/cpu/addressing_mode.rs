@@ -48,15 +48,13 @@ impl AddressingMode
 				/* this implements a bug where this mode does not
 				 * correctly handle crossing page boundaries
 				 */
-                cpu.addr_from_mem_separate_bytes(addr(byte1, byte2),
-												 addr(byte1.wrapping_add(1), byte2)),
+				cpu.addr_from_mem16(addr(byte1, byte2)),
             AddressingMode::IndirectX => {
 				let loc = byte1.wrapping_add(cpu.index_x);
-				cpu.addr_from_mem_separate_bytes(loc as u16,  loc.wrapping_add(1) as u16)
+				cpu.addr_from_mem16(loc as u16)
 			},
 			AddressingMode::IndirectY =>
-				cpu.addr_from_mem_separate_bytes(byte1 as u16, byte1.wrapping_add(1) as u16)
-					+ cpu.index_y as u16
+				cpu.addr_from_mem16(byte1 as u16) + cpu.index_y as u16
 		};
 
 		result

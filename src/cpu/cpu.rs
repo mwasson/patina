@@ -109,16 +109,8 @@ impl CPU
 		self.update_flag(StatusFlag::InterruptDisable, false);
 		/* TODO: jump to IRQ handler */
 	}
-
-	pub fn addr_from_mem(&mut self, addr_to_lookup: u16) -> u16 {
-		self.addr_from_mem_separate_bytes(addr_to_lookup, addr_to_lookup+1)
-	}
-
-	pub fn addr_from_mem_separate_bytes(&mut self,
-	                                    lo_byte_addr: u16,
-	                                    hi_byte_addr: u16)
-			-> u16 {
-		cpu::addr(self.read_mem(lo_byte_addr), self.read_mem(hi_byte_addr))
+	pub fn addr_from_mem16(&mut self, lo_byte_addr: u16) -> u16 {
+		self.read_mem16(lo_byte_addr)
 	}
 
 	fn trigger_nmi(&mut self) {
@@ -137,6 +129,10 @@ impl CPU
 
 	pub fn read_mem(&mut self, addr: u16) -> u8 {
 		self.memory.borrow().read(addr)
+	}
+	
+	pub fn read_mem16(&mut self, addr: u16) -> u16 {
+		self.memory.borrow().read16(addr)
 	}
 
 	pub fn set_key_source(&mut self, keys:Arc<Mutex<HashSet<Key>>>) {
