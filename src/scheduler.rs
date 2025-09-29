@@ -22,7 +22,8 @@ enum TaskType
     APU,
 }
 
-pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: &mut APU, requester: Arc<Mutex<RenderRequester>>) {
+#[inline(never)]
+pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: Rc<RefCell<APU>>, requester: Arc<Mutex<RenderRequester>>) {
     let start_time = Instant::now();
     let mut next_cpu_task = (CPU, start_time);
     let mut next_ppu_task = (PPUScreen, start_time);
@@ -72,6 +73,7 @@ pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: &mut APU, requ
 
             },
             (APU, time) => {
+                let mut apu = apu.borrow_mut();
                 apu.apu_tick();
                 next_apu_task = (APU, time.add(apu.cycles_to_duration(1)));
             }

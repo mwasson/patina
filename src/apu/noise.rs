@@ -39,12 +39,8 @@ impl Noise {
             enabled: false,
         }
     }
-
-    pub fn tick(&mut self, apu_counter: u16, enabled: bool) {
-        if self.enabled && !enabled {
-            self.length_counter.set_halt(true);
-        }
-        self.enabled = enabled;
+    
+    pub fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
         }
@@ -62,6 +58,13 @@ impl Noise {
 
     pub fn amplitude(&self) -> f32 {
         self.envelope.amplitude() * self.length_counter.amplitude() * (self.shift_register & 1) as f32
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        if self.enabled && !enabled {
+            self.length_counter.set_halt(true);
+        }
+        self.enabled = enabled;
     }
 }
 

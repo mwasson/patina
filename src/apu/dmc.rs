@@ -52,12 +52,8 @@ impl DMC {
             enabled: false,
         }
     }
-
-    pub fn tick(&mut self, apu_counter: u16, enabled: bool) {
-        if self.enabled && !enabled {
-            /* TODO: DMC behavior for being disabled is more complex than others */
-        }
-        self.enabled = enabled;
+    
+    pub fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
         }
@@ -91,6 +87,11 @@ impl DMC {
 
     pub fn amplitude(&self) -> f32 {
         self.volume as f32 / 15.0
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        /* TODO: DMC behavior for being disabled is more complex than others */
+        self.enabled = enabled;
     }
 }
 

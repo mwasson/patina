@@ -27,12 +27,8 @@ impl Triangle {
             enabled: false,
         }
     }
-
-    pub fn tick(&mut self, apu_counter: u16, enabled: bool) {
-        if self.enabled && !enabled {
-            self.length_counter.set_halt(true);
-        }
-        self.enabled = enabled;
+    
+    pub fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
         }
@@ -56,6 +52,13 @@ impl Triangle {
 
     pub fn amplitude(&self) -> f32 {
         self.sequencer.amplitude() * self.length_counter.amplitude()
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        if self.enabled && !enabled {
+            self.length_counter.set_halt(true);
+        }
+        self.enabled = enabled;
     }
 }
 

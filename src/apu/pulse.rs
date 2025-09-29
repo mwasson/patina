@@ -47,12 +47,8 @@ impl Pulse
             enabled: false,
         }
     }
-
-    pub(crate) fn tick(&mut self, apu_counter: u16, enabled: bool) {
-        if self.enabled && !enabled {
-            self.length_counter.set_halt(true);
-        }
-        self.enabled = enabled;
+    
+    pub(crate) fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
         }
@@ -70,6 +66,13 @@ impl Pulse
                 self.sweep.clock(&mut self.sequencer.timer);
             }
         }
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        if self.enabled && !enabled {
+            self.length_counter.set_halt(true);
+        }
+        self.enabled = enabled;
     }
 
     fn set_duty_envelope(&mut self, byte0:u8) {
@@ -109,7 +112,7 @@ impl PulseSequencer {
             duty_index: 0
         }
     }
-
+    
     fn clock(&mut self) {
         if self.timer.clock() {
             self.duty_index = (self.duty_index + 1) % 8

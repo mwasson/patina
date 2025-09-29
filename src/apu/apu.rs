@@ -1,7 +1,7 @@
 use crate::apu::pulse::Pulse;
 use crate::apu::triangle::Triangle;
 use crate::apu::noise::Noise;
-use crate::cpu::CoreMemory;
+use crate::cpu::{CoreMemory, MemoryListener};
 use crate::processor::Processor;
 use rodio::{ChannelCount, OutputStream, SampleRate, Sink, Source};
 use std::cell::RefCell;
@@ -35,7 +35,7 @@ const PULSE_1_FIRST_ADDR : u16 = 0x4000;
 const PULSE_2_FIRST_ADDR : u16 = 0x4004;
 
 impl APU {
-    pub fn new(memory: Rc<RefCell<CoreMemory>>) -> APU {
+    pub fn new(memory: Rc<RefCell<CoreMemory>>) -> Rc::<RefCell::<APU>> {
         let stream_handle = rodio::OutputStreamBuilder::open_default_stream()
             .expect("open default audio stream");
         let sink = Sink::connect_new(&stream_handle.mixer());
@@ -48,7 +48,7 @@ impl APU {
         let noise: Rc<RefCell<Noise>> = Noise::initialize(&memory);
         let dmc: Rc<RefCell<DMC>> = DMC::initialize(&memory);
 
-        APU {
+        Rc::new(RefCell::new(APU {
             apu_counter: 0,
             memory,
             output_stream: stream_handle,
@@ -59,24 +59,20 @@ impl APU {
             dmc,
             queue,
             sink
-        }
+        }))
     }
+
+    #[inline(never)]
     pub fn apu_tick(&mut self) {
-        self.apu_counter += 1;
+        self.apu_counter = (self.apu_counter + 1) % 14915;
 
-        if(self.apu_counter == 14915) {
-            self.apu_counter = 0;
-        }
+        let flags = self.memory.borrow().read_no_listen(0x4015);
 
-        let flags = self.memory.borrow().read(0x4015);
-
-        self.pulse1.borrow_mut().tick(self.apu_counter, flags & 0x1 != 0);
-        self.pulse2.borrow_mut().tick(self.apu_counter, flags & 0x2 != 0);
-        self.triangle.borrow_mut().tick(self.apu_counter, flags & 0x4 != 0);
-        self.noise.borrow_mut().tick(self.apu_counter, flags & 0x8 != 0);
-        self.dmc.borrow_mut().tick(self.apu_counter, flags & 0x10 != 0);
-
-        /* TODO sample and mix */
+        self.pulse1.borrow_mut().tick(self.apu_counter);
+        self.pulse2.borrow_mut().tick(self.apu_counter);
+        self.triangle.borrow_mut().tick(self.apu_counter);
+        self.noise.borrow_mut().tick(self.apu_counter);
+        self.dmc.borrow_mut().tick(self.apu_counter);
 
         /* TODO find a better way to sync this up */
         let mut queue = self.queue.write().unwrap();
@@ -84,7 +80,7 @@ impl APU {
             queue.push_back(self.mix());
         }
     }
-
+    
     fn mix(&self) -> f32 {
         let pulse1_vol = self.pulse1.borrow().amplitude();
         let pulse2_vol = self.pulse2.borrow().amplitude();
@@ -103,6 +99,24 @@ impl APU {
 impl Processor for APU {
     fn clock_speed(&self) -> u64 {
         894880//1_789_773/2 /* TODO constantize */
+    }
+}
+
+impl MemoryListener for APU {
+    fn get_addresses(&self) -> Vec<u16> {
+        [0x4015].to_vec()
+    }
+
+    fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
+        memory.read_no_listen(address)
+    }
+
+    fn write(&mut self, memory: &CoreMemory, address: u16, value: u8) {
+        self.pulse1.borrow_mut().set_enabled(value & 0x1 != 0);
+        self.pulse2.borrow_mut().set_enabled(value & 0x2 != 0);
+        self.triangle.borrow_mut().set_enabled(value & 0x4 != 0);
+        self.noise.borrow_mut().set_enabled(value & 0x8 != 0);
+        self.dmc.borrow_mut().set_enabled(value & 0x10 != 0);
     }
 }
 

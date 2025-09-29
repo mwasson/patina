@@ -45,13 +45,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 		let memory = Rc::new(RefCell::new(CoreMemory::new(&rom)));
 		let ppu = PPU::from_rom(&rom, write_buffer_clone, memory.clone());
 		let mut cpu = CPU::from_rom(&rom, memory.clone());
-		let mut apu = Box::new(APU::new(memory.clone()));
+		
+		let apu = APU::new(memory.clone());
+		memory.borrow_mut().register_listener(apu.clone());
 
 		let ppu_listener = PPUListener::new(ppu.clone());
-		memory.clone().borrow_mut().register_listener(Rc::new(RefCell::new(ppu_listener)));
+		memory.borrow_mut().register_listener(Rc::new(RefCell::new(ppu_listener)));
 
 		cpu.set_key_source(keys_clone);
-		scheduler::simulate(&mut cpu, ppu, &mut apu, render_listener_clone);
+		scheduler::simulate(&mut cpu, ppu, apu, render_listener_clone);
 	});
 
 	match window::initialize_ui(write_buffer, keys, render_listener) {
