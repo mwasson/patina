@@ -48,8 +48,12 @@ pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: Rc<RefCell<APU
             },
             (PPUScreen, time) => {
                 let mut borrowed_ppu = ppu.borrow_mut();
+                // 
+                // borrowed_ppu.tick();
+                // next_ppu_task = (PPUScreen, time.add(borrowed_ppu.cycles_to_duration(1)));
+                
                 borrowed_ppu.beginning_of_screen_render();
-
+                
                 let scanline_duration = borrowed_ppu.cycles_to_duration(341);
                 next_ppu_task = (PPUScanline(0), time.add(scanline_duration))
             },
@@ -70,7 +74,6 @@ pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: Rc<RefCell<APU
                 requester.lock().unwrap().request_redraw();
                 
                 next_ppu_task = (PPUScreen, time.add(borrowed_ppu.cycles_to_duration(21 * 341)));
-
             },
             (APU, time) => {
                 let mut apu = apu.borrow_mut();

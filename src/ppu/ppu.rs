@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use crate::cpu::CoreMemory;
 use crate::ppu::palette::Palette;
-use crate::ppu::{index_to_pixel, PPUScrollState, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
+use crate::ppu::{index_to_pixel, PPUInternalRegisters, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::processor::Processor;
 
 pub struct PPU {
@@ -14,12 +14,12 @@ pub struct PPU {
     pub (super) oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
     internal_buffer: WriteBuffer,
+    // tick_count: u16,
     /* shared registers */
     pub (super) ppu_ctrl: u8,
     pub (super) ppu_mask: u8,
     pub (super) ppu_status: u8,
-    pub (super) scroll: PPUScrollState,
-    tmp_scroll: PPUScrollState,
+    pub (super) internal_regs: PPUInternalRegisters,
 }
 
 impl Processor for PPU {
@@ -46,10 +46,28 @@ impl PPU {
             ppu_status: 0,
             ppu_ctrl: 0,
             ppu_mask: 0,
-            scroll: PPUScrollState::default(),
-            tmp_scroll: PPUScrollState::default(),
+            internal_regs: PPUInternalRegisters::default(),
         }))
     }
+
+    // pub fn tick(&mut self) {
+    //     let scanline = self.tick_count / 340;
+    //     let dot = self.tick_count % 340;
+    //
+    //     if scanline <= 239 {
+    //         self.render_scanline(scanline, dot);
+    //     } else if scanline == 240 && dot == 0 {
+    //
+    //     } else if scanline == 241 && dot == 1 {
+    //         /* set vblank flag */
+    //         self.ppu_status = set_bit_on(self.ppu_status, 7);
+    //     } else if scanline == 261 {
+    //
+    //     }
+    //
+    //
+    //     self.tick_count += 1;
+    // }
 
     pub fn beginning_of_screen_render(&mut self) {
         /* dummy scanline */
@@ -59,6 +77,8 @@ impl PPU {
         self.ppu_status = set_bit_off(self.ppu_status, 6);
         /* clear overflow flag */
         self.ppu_status = set_bit_off(self.ppu_status, 5);
+
+        self.internal_regs.copy_y_bits();
     }
 
     pub fn end_of_screen_render(&mut self) {
@@ -77,18 +97,15 @@ impl PPU {
         self.write_buffer.clone()
     }
 
-    #[inline(never)]
     pub fn render_scanline(&mut self, scanline: u8) {
-        if scanline == 0 {
-            self.tmp_scroll = self.scroll.clone();
-        } else {
-            self.tmp_scroll.coarse_x = self.scroll.coarse_x;
-            self.tmp_scroll.nametable = (self.tmp_scroll.nametable & !1) | (self.scroll.nametable & 1);
-        }
-
         let scanline_sprites = self.sprite_evaluation(scanline);
 
         let mut line_buffer = [0; 256*4];
+
+        /* technically should occur at end of previous scanline, but if the entire scanline occurs
+         * at once, this guarantees the CPU has updated its side of things
+         */
+        self.internal_regs.copy_x_bits();
 
         let render_background = self.ppu_mask & (1 << 3) != 0;
         let render_sprites = self.ppu_mask & (1 << 4) != 0;
@@ -106,44 +123,51 @@ impl PPU {
         /* solid background color everywhere we didn't render a sprite or background tile */
         self.render_solid_background_color(&mut line_buffer);
 
-        self.check_for_sprite_zero_hit(scanline);
-
-        /* update scrolling TODO explain */
-        self.tmp_scroll.y_increment();
+        /* update scrolling */
+        self.internal_regs.y_increment();
 
         if scanline >= OVERSCAN {
             self.internal_buffer[Self::pixel_range_for_line(scanline)].copy_from_slice(&line_buffer);
         }
     }
 
-    #[inline(never)]
     fn render_background_tiles(&mut self, scanline: u8, line_buffer: &mut [u8; 1024]) {
+        let sprite0 = self.slice_as_sprite(0);
+        let mut sprite_zero_in_scanline_not_yet_found =  self.ppu_status & (1<<6) == 0 && sprite0.in_scanline(scanline);
+
         for x in (0..0x101).step_by(8) {
-            let tile = self.get_bg_tile(self.read_vram((0x2000
-                | (self.tmp_scroll.nametable as u16) << 10
-                | (self.tmp_scroll.coarse_y as u16) << 5
-                | (self.tmp_scroll.coarse_x as u16)) as usize));
+            let tile = self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize));
             let palette = self.palette_for_current_bg_tile();
+            let tile_offset = x as i16 - self.internal_regs.get_fine_x() as i16;
             for pixel_offset in 0..8 {
-                let pixel_loc = x as i16 + pixel_offset as i16 - self.scroll.fine_x as i16;
-                if pixel_loc < 0 || pixel_loc > 0xff {
+                let pixel_loc = tile_offset + pixel_offset as i16;
+                let index = pixel_loc as usize * 4;
+                if pixel_loc < 0 || pixel_loc > 0xff || line_buffer[index + 3] != 0 {
                     continue;
                 }
                 let brightness = tile.pixel_intensity(pixel_offset as usize,
-                                                      self.tmp_scroll.fine_y as usize);
+                                                      self.internal_regs.get_fine_y() as usize);
 
-                let index = pixel_loc as usize * 4;
-                if brightness > 0 && line_buffer[index + 3] == 0 {
+                if brightness > 0 {
                     /* TODO doesn't handle 16 pixel tall sprites */
                     line_buffer[index..(index + 4)].copy_from_slice(&palette.brightness_to_pixels(brightness));
+
+                    /* sprite zero hit detection */
+                    if sprite_zero_in_scanline_not_yet_found
+                            && pixel_loc as u8 >= sprite0.x && pixel_loc as u8 <= sprite0.x+8
+                            && sprite0.get_brightness_localized(self,
+                                                                pixel_loc as u8 - sprite0.x,
+                                                                scanline - sprite0.get_y()) > 0 {
+                        sprite_zero_in_scanline_not_yet_found = false;
+                        self.ppu_status = set_bit_on(self.ppu_status, 6);
+                    }
                 }
             }
 
-            self.tmp_scroll.coarse_x_increment();
+            self.internal_regs.coarse_x_increment();
         }
     }
 
-    #[inline(never)]
     fn render_solid_background_color(&mut self, line_buffer: &mut [u8; 1024]) {
         /* background color */
         let bg_pixels = self.get_palette(0).brightness_to_pixels(0);
@@ -153,48 +177,13 @@ impl PPU {
             }
         }
     }
-
-    #[inline(never)]
-    fn check_for_sprite_zero_hit(&mut self, scanline: u8) {
-        /* if already set, return */
-        if self.ppu_status & (1<<6) != 0 {
-            return;
-        }
-
-        let mut scroll_data = self.tmp_scroll.clone();
-        scroll_data.coarse_x = self.scroll.coarse_x;
-        scroll_data.nametable = self.scroll.nametable;
-        let sprite0 = self.slice_as_sprite(0);
-        if sprite0.in_scanline(scanline) {
-            let mut x_val = sprite0.x;
-            while x_val >= 8 {
-                scroll_data.coarse_x_increment();
-                x_val -= 8;
-            }
-            for x in 0..8 {
-                if x_val + x >= 8 {
-                    scroll_data.coarse_x_increment();
-                }
-                if sprite0.get_brightness_localized(self, x, scanline - sprite0.get_y()) > 0 {
-                    let bg_tile = self.get_bg_tile(self.read_vram((0x2000
-                        | (scroll_data.nametable as u16) << 10
-                        | (scroll_data.coarse_y as u16) << 5
-                        | (scroll_data.coarse_x as u16)) as usize));
-                    if  bg_tile.pixel_intensity(((sprite0.x + x) % 8) as usize, (scanline % 8) as usize) > 0 {
-                        self.ppu_status = set_bit_on(self.ppu_status, 6);
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    #[inline(never)]
+    
     fn render_sprites(&self, scanline_sprites: &Vec<SpriteInfo>, scanline: u8, line_buffer: &mut [u8], is_foreground: bool) {
         for sprite in scanline_sprites {
             if sprite.is_foreground() != is_foreground {
                 continue;
             }
+
             let sprite_palette = sprite.get_palette(&self);
             /* sprites */
             for i in 0..min(8,(0xff-sprite.x).saturating_add(1)) {
@@ -208,21 +197,20 @@ impl PPU {
         }
     }
 
-    #[inline(never)]
     fn palette_for_current_bg_tile(&self) -> Palette {
         /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
         let addr = 0x23c0
-            | ((self.tmp_scroll.nametable as u16) << 10)
-            | (((self.tmp_scroll.coarse_y as u16) & 0x1c) << 1)
-            | ((self.tmp_scroll.coarse_x as u16) >> 2);
+            | ((self.internal_regs.get_nametable() as u16) << 10)
+            | (((self.internal_regs.get_coarse_y() as u16) & 0x1c) << 1)
+            | ((self.internal_regs.get_coarse_x() as u16) >> 2);
         /* each address controls a 32x32 pixel block; 8 blocks per row */
         let attr_table_value = self.read_vram(addr as usize);
         /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
          * in order from the lowest bits they are: upper left, upper right, bottom left, bottom right
          */
-        let x_low = 8*self.tmp_scroll.coarse_x % 32 < 16;
-        let y_low = 8*self.tmp_scroll.coarse_y % 32 < 16;
+        let x_low = 8*self.internal_regs.get_coarse_x() % 32 < 16;
+        let y_low = 8*self.internal_regs.get_coarse_y() % 32 < 16;
         let attr_table_offset =
             if x_low {
                 if y_low { 0 } else { 4 }
@@ -237,7 +225,6 @@ impl PPU {
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
-    #[inline(never)]
     fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo>{
         let mut scanline_sprites = Vec::new();
         for i in 0..OAM_SIZE/4 {
@@ -266,7 +253,6 @@ impl PPU {
         self.get_tile(tile_index, ((self.ppu_ctrl & 0x8) >> 3) as usize)
     }
 
-    #[inline(never)]
     fn get_bg_tile(&self, tile_index: u8) -> Tile {
         self.get_tile(tile_index, ((self.ppu_ctrl & 0x10) >> 4) as usize)
     }
@@ -318,7 +304,7 @@ impl PPU {
 
         result
     }
-    
+
     pub fn render(&self, chr_data: &[u8], write_buffer: &mut [u8], width: usize) {
         PPU::render_pattern_table(&chr_data[0..(256 * 16)], write_buffer, width, 0);
         PPU::render_pattern_table(&chr_data[(256 * 16)..(256 * 32)], write_buffer, width, 128);
