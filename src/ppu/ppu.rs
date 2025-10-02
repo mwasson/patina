@@ -11,6 +11,7 @@ use crate::processor::Processor;
 pub struct PPU {
     memory: Rc<RefCell<CoreMemory>>,
     vram: VRAM,
+    nametable_mirroring: NametableMirroring,
     pub (super) oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
     internal_buffer: WriteBuffer,
@@ -20,6 +21,15 @@ pub struct PPU {
     pub (super) ppu_mask: u8,
     pub (super) ppu_status: u8,
     pub (super) internal_regs: PPUInternalRegisters,
+}
+
+pub enum NametableMirroring {
+    Horizontal, /* pages are mirrored horizontally (appropriate for vertical games */
+    Vertical, /* pages are mirrored vertically (appropriate for horizontal games ) */
+    #[allow(dead_code)]
+    Single, /* first nametable mirrored four times */
+    #[allow(dead_code)]
+    FourScreen, /* all four nametable/attribute tables available */
 }
 
 impl Processor for PPU {
@@ -42,6 +52,7 @@ impl PPU {
             vram,
             oam,
             write_buffer,
+            nametable_mirroring: rom.nametable_mirroring(),
             internal_buffer: [0; WRITE_BUFFER_SIZE],
             ppu_status: 0,
             ppu_ctrl: 0,
@@ -276,15 +287,24 @@ impl PPU {
     }
     
     pub fn read_vram(&self, addr: usize) -> u8 {
-        self.vram[PPU::vram_address_mirror(addr)]
+        self.vram[self.vram_address_mirror(addr)]
     } 
     
     pub fn write_vram(&mut self, addr: usize, val: u8) {
-        self.vram[PPU::vram_address_mirror(addr)] = val;
+        self.vram[self.vram_address_mirror(addr)] = val;
     }
 
-    pub fn vram_address_mirror(addr: usize) -> usize {
+    pub fn vram_address_mirror(&self, addr: usize) -> usize {
         let mut result = addr;
+
+        if result >= 0x2000 && result < 0x3000 {
+            return match &self.nametable_mirroring {
+                NametableMirroring::Horizontal => result & !0x0400,
+                NametableMirroring::Vertical => result & !0x0800 ,
+                NametableMirroring::Single => result & !0x0c00,
+                NametableMirroring::FourScreen => result,
+            }
+        }
 
         /* palettes are repeated above 0x3f1f */
         if result > 0x3f1f {

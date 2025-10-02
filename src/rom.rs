@@ -1,5 +1,6 @@
 use std::{fs, io};
 use std::io::ErrorKind;
+use crate::ppu::NametableMirroring;
 
 pub struct Rom {
     pub prg_data: Vec<u8>,
@@ -16,6 +17,14 @@ impl Rom {
         println!("Attempting to parse {}", file_ref);
         let rom_data: Vec<u8> = fs::read(file_ref)?;
         Rom::read_rom_data(&rom_data)
+    }
+
+    pub fn nametable_mirroring(&self) -> NametableMirroring {
+        if self.byte_6_flags & 1 != 0 {
+            NametableMirroring::Vertical
+        } else {
+            NametableMirroring::Horizontal
+        }
     }
 
 

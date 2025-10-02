@@ -6,7 +6,7 @@ mod ppu_internal_registers;
 
 pub mod ppu_listener;
 
-pub use ppu::PPU;
+pub use ppu::{PPU, NametableMirroring};
 pub use ppu_registers::PPURegister;
 pub use ppu_internal_registers::PPUInternalRegisters;
 pub use tile::{_index_to_pixel, Tile};
