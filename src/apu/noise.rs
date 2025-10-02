@@ -51,13 +51,21 @@ impl Noise {
             self.shift_register |= feedback << 14;
         }
 
-        if apu_counter == 7456 || apu_counter == 14914 {
+
+        let is_half_frame = apu_counter == 7456 || apu_counter == 14914;
+        let is_quarter_frame = is_half_frame || apu_counter == 3728 || apu_counter == 11185;
+
+        if is_quarter_frame {
+            self.envelope.clock();
+        }
+
+        if is_half_frame || is_quarter_frame {
             self.length_counter.clock();
         }
     }
 
     pub fn amplitude(&self) -> f32 {
-        self.envelope.amplitude() * self.length_counter.amplitude() * (self.shift_register & 1) as f32
+        self.envelope.amplitude() * self.length_counter.amplitude() * (self.shift_register & 1 != 0) as u8 as f32
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -80,16 +88,19 @@ impl MemoryListener for Noise {
     fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
         match address {
             0x400c => {
+                // println!("400c {:x}", value);
                 self.length_counter.set_halt(value & 0x20 != 0);
-                self.envelope.set_envelope(value)
+                self.envelope.set_envelope(value);
                 /* TODO constant volume/envelope flag */
                 /* TODO volume/envelope divider period */
             }
             0x400e => {
+                // println!("400e {:x}", value);
                 self.mode_flag = value & 0x80 != 0;
-                self.timer.set_period(NTSC_NOISE_PERIODS[(value & 0x0f) as usize]);
+                self.timer.set_period(NTSC_NOISE_PERIODS[(value & 0x0f) as usize] / 2);
             }
             0x400f => {
+                // println!("400f {:x}", value);
                 self.length_counter.set_lc(value);
                 self.envelope.start();
             }
