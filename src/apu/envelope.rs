@@ -45,7 +45,7 @@ impl Envelope {
     }
 
     pub fn amplitude(&self) -> f32 {
-        (if self.constant_volume { self.period_or_volume } else { self.decay_level }) as f32 / 15.0
+        (if self.constant_volume { self.period_or_volume } else { self.decay_level }) as f32
     }
 
     pub fn set_envelope(&mut self, data: u8) {

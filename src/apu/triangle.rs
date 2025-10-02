@@ -116,7 +116,7 @@ impl TriangleSequencer {
             vol = 15 - vol;
         }
 
-        (vol as f32) / 15.0
+        vol as f32
     }
 }
 
