@@ -110,7 +110,7 @@ impl TriangleSequencer {
     }
 
     fn amplitude(&self) -> f32 {
-        let mut vol = (self.sequence_index % 16);
+        let mut vol = self.sequence_index % 16;
 
         if self.sequence_index < 16 {
             vol = 15 - vol;

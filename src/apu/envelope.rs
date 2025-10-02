@@ -33,7 +33,7 @@ impl Envelope {
          */
         } else if self.divider == 0 {
             self.divider = self.period_or_volume;
-            if(self.decay_level == 0 && self.loop_flag /* halt flag is also loop flag */) {
+            if self.decay_level == 0 && self.loop_flag /* halt flag is also loop flag */ {
                 self.decay_level = 15;
             } else if self.decay_level > 0 {
                 self.decay_level -= 1;

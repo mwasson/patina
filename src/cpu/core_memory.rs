@@ -47,7 +47,7 @@ impl CoreMemory {
          * of whitelisted addresses; will have to revisit this
          */
         if CoreMemory::is_special_addr(mapped_addr) {
-            if let Some(listener) = self.listeners.get(&address) {
+            if self.listeners.get(&address).is_some() {
                 panic!("read16 not supported for listened-to addresses");
             }
         }

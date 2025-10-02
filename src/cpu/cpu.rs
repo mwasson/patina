@@ -8,7 +8,6 @@ use winit::keyboard::Key;
 use crate::cpu;
 use crate::cpu::{operation_from_memory, AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION};
 use crate::processor::Processor;
-use crate::rom::Rom;
 
 pub struct CPU
 {
@@ -32,7 +31,7 @@ impl Processor for CPU
 impl CPU
 {
 	/* TODO comment */
-	pub fn from_rom(rom: &Rom, memory: Rc<RefCell<CoreMemory>>) -> Box<Self> {
+	pub fn new(memory: Rc<RefCell<CoreMemory>>) -> Box<Self> {
 		let controller = Rc::new(RefCell::new(Controller::new()));
 
 		memory.borrow_mut().register_listener(controller.clone());
@@ -130,7 +129,7 @@ impl CPU
 	pub fn read_mem(&mut self, addr: u16) -> u8 {
 		self.memory.borrow().read(addr)
 	}
-	
+
 	pub fn read_mem16(&mut self, addr: u16) -> u16 {
 		self.memory.borrow().read16(addr)
 	}

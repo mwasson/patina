@@ -14,13 +14,11 @@ use crate::apu::dmc::DMC;
  * but it seems to be the best rate for keeping the sample queue from backing up;
  * not ideal, but seems to have the fewest issues overall
  */
-const SAMPLE_RATE : SampleRate = 44800;
 
 pub struct APU {
     apu_counter: u16,
-    memory: Rc<RefCell<CoreMemory>>,
-    output_stream: OutputStream, /* can't remove this--if it's collected, sound won't play */
-    sink: Sink,                  /* ditto--confusingly, since OutputStream should have a ref */
+    _output_stream: OutputStream, /* can't remove this--if it's collected, sound won't play */
+    _sink: Sink,                  /* ditto--confusingly, since OutputStream should have a ref */
     pulse1: Rc<RefCell<Pulse>>,  /* to it through the Mixer? */
     pulse2: Rc<RefCell<Pulse>>,
     triangle: Rc<RefCell<Triangle>>,
@@ -28,8 +26,6 @@ pub struct APU {
     dmc: Rc<RefCell<DMC>>,
     queue: Arc<RwLock<VecDeque<f32>>>,
 }
-
-const FREQ_CPU : f32 = 1_789_773f32; /* NB: NTSC only, different for PAL */
 
 const PULSE_1_FIRST_ADDR : u16 = 0x4000;
 const PULSE_2_FIRST_ADDR : u16 = 0x4004;
@@ -50,23 +46,20 @@ impl APU {
 
         Rc::new(RefCell::new(APU {
             apu_counter: 0,
-            memory,
-            output_stream: stream_handle,
+            _output_stream: stream_handle,
             pulse1,
             pulse2,
             triangle,
             noise,
             dmc,
             queue,
-            sink
+            _sink: sink,
         }))
     }
 
     #[inline(never)]
     pub fn apu_tick(&mut self) {
         self.apu_counter = (self.apu_counter + 1) % 14915;
-
-        let flags = self.memory.borrow().read_no_listen(0x4015);
 
         self.pulse1.borrow_mut().tick(self.apu_counter);
         self.pulse2.borrow_mut().tick(self.apu_counter);
@@ -111,7 +104,7 @@ impl MemoryListener for APU {
         memory.read_no_listen(address)
     }
 
-    fn write(&mut self, memory: &CoreMemory, address: u16, value: u8) {
+    fn write(&mut self, _memory: &CoreMemory, _address: u16, value: u8) {
         self.pulse1.borrow_mut().set_enabled(value & 0x1 != 0);
         self.pulse2.borrow_mut().set_enabled(value & 0x2 != 0);
         self.triangle.borrow_mut().set_enabled(value & 0x4 != 0);

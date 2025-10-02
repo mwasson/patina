@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use crate::cpu::CoreMemory;
 use crate::ppu::palette::Palette;
-use crate::ppu::{index_to_pixel, PPUInternalRegisters, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
+use crate::ppu::{_index_to_pixel, PPUInternalRegisters, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
 use crate::processor::Processor;
 
 pub struct PPU {
@@ -91,10 +91,6 @@ impl PPU {
 
         /* write new pixels so UI can see them */
         self.write_buffer.lock().unwrap().copy_from_slice(&self.internal_buffer);
-    }
-
-    pub fn get_write_buffer(&self) -> Arc<Mutex<WriteBuffer>> {
-        self.write_buffer.clone()
     }
 
     pub fn render_scanline(&mut self, scanline: u8) {
@@ -305,19 +301,19 @@ impl PPU {
         result
     }
 
-    pub fn render(&self, chr_data: &[u8], write_buffer: &mut [u8], width: usize) {
-        PPU::render_pattern_table(&chr_data[0..(256 * 16)], write_buffer, width, 0);
-        PPU::render_pattern_table(&chr_data[(256 * 16)..(256 * 32)], write_buffer, width, 128);
+    pub fn _render(&self, chr_data: &[u8], write_buffer: &mut [u8], width: usize) {
+        PPU::_render_pattern_table(&chr_data[0..(256 * 16)], write_buffer, width, 0);
+        PPU::_render_pattern_table(&chr_data[(256 * 16)..(256 * 32)], write_buffer, width, 128);
     }
 
-    pub fn render_pattern_table(pattern_table: &[u8], write_buffer: &mut [u8], width: usize, start_x: usize) {
-        for i in (0..256) {
-            let xy = index_to_pixel(16, i);
+    pub fn _render_pattern_table(pattern_table: &[u8], write_buffer: &mut [u8], width: usize, start_x: usize) {
+        for i in 0..256 {
+            let xy = _index_to_pixel(16, i);
             let data_start = i * 16;
             let mut tile_data = [0 as u8; 16];
             tile_data.copy_from_slice(&pattern_table[data_start..data_start + 16]);
             let tile = Tile::from_memory(tile_data);
-            tile.stamp(write_buffer, width, xy.0 * 8 + start_x, xy.1 * 8);
+            tile._stamp(write_buffer, width, xy.0 * 8 + start_x, xy.1 * 8);
         }
     }
 }

@@ -1,15 +1,14 @@
 use std::{fs, io};
 use std::io::ErrorKind;
-use crate::ppu::{Tile, index_to_pixel};
 
 pub struct Rom {
     pub prg_data: Vec<u8>,
     pub chr_data: Vec<u8>,
     pub byte_6_flags: u8, /* TODO: split these out */
     pub byte_7_flags: u8, /* TODO: split these out */
-    pub trainer: Vec<u8>,
-    pub prg_ram: Vec<u8>,
-    pub tv_system: u8, /* TODO: make into a boolean or enum */
+    pub _trainer: Vec<u8>,
+    pub _prg_ram: Vec<u8>,
+    pub _tv_system: u8, /* TODO: make into a boolean or enum */
 }
 
 impl Rom {
@@ -56,9 +55,9 @@ impl Rom {
             chr_data: (&rom_data[chr_rom_start..chr_rom_start + chr_rom_size]).to_vec(),
             byte_6_flags: rom_data[6],
             byte_7_flags: rom_data[7],
-            trainer: vec![], /* TODO */
-            prg_ram: vec![], /* TODO */
-            tv_system: rom_data[9]
+            _trainer: vec![], /* TODO */
+            _prg_ram: vec![], /* TODO */
+            _tv_system: rom_data[9]
         };
 
         println!("Rom flags:");

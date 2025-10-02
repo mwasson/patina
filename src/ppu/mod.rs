@@ -9,7 +9,7 @@ pub mod ppu_listener;
 pub use ppu::PPU;
 pub use ppu_registers::PPURegister;
 pub use ppu_internal_registers::PPUInternalRegisters;
-pub use tile::{index_to_pixel, pixel_to_index, Tile};
+pub use tile::{_index_to_pixel, Tile};
 
 pub const OAM_SIZE : usize = 256;
 pub const PPU_MEMORY_SIZE : usize = 1 << 14; /* 16kb */

@@ -8,13 +8,13 @@ pub trait Processor {
         Duration::from_nanos((1e9 as u64)*(cycles as u64)/(self.clock_speed()))
     }
 
-    fn run_timed<F,U>(&mut self, cycles:u128, f:F) -> U where
+    fn _run_timed<F,U>(&mut self, cycles:u128, f:F) -> U where
         F: FnOnce(&mut Self) -> U,
     {
-        self.run_timed_from_start(cycles, Instant::now(), f)
+        self._run_timed_from_start(cycles, Instant::now(), f)
     }
 
-    fn run_timed_from_start<F,U>(&mut self, cycles:u128, start_time:Instant, f: F) -> U where
+    fn _run_timed_from_start<F,U>(&mut self, cycles:u128, start_time:Instant, f: F) -> U where
         F: FnOnce(&mut Self) -> U,
     {
         let result = f(self);

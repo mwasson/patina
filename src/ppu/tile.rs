@@ -1,5 +1,3 @@
-use crate::rom::Rom;
-
 #[derive(Debug)]
 pub struct Tile
 {
@@ -15,14 +13,14 @@ impl Tile
     }
 
     /* TODO serious comments required */
-    pub fn render(&self) -> [u8; 4*8*8]{
+    pub fn _render(&self) -> [u8; 4*8*8]{
         let mut out = [0; 4*8*8];
 
         for row in 0..8 {
             for col in 0..8 {
                 let val = self.pixel_intensity(col, row);
                 let result:u8 = (val as u16 * 256 / 4) as u8;
-                let out_index = pixel_to_index(8,col,row);
+                let out_index = _pixel_to_index(8,col,row);
                 out[out_index..(out_index+4)].copy_from_slice(&[result,result,result,0xff]);
             }
         }
@@ -30,11 +28,11 @@ impl Tile
         out
     }
 
-    pub fn stamp(&self, write_buffer: &mut [u8], width: usize, x: usize, y: usize) {
+    pub fn _stamp(&self, write_buffer: &mut [u8], width: usize, x: usize, y: usize) {
         let mut tile_index = 0;
-        for chunk in self.render().chunks_exact(4) {
-            let tile_xy = index_to_pixel(8, tile_index);
-            let index = pixel_to_index(width, x+tile_xy.0, y+tile_xy.1);
+        for chunk in self._render().chunks_exact(4) {
+            let tile_xy = _index_to_pixel(8, tile_index);
+            let index = _pixel_to_index(width, x+tile_xy.0, y+tile_xy.1);
             write_buffer[index..index+4].copy_from_slice(chunk);
             tile_index += 1;
         }
@@ -52,18 +50,18 @@ impl Tile
     /* checks if a given bit in a bit array is set, and returns 1 if true, 0 otherwise;
      * in this case the highest order bit is the 0th column, lowest order is the 7th column
      * as we work from left to right */
-    fn bit_set(&self, bit_array: u8, col: usize) -> u8 {
+    fn _bit_set(&self, bit_array: u8, col: usize) -> u8 {
         (bit_array & (1 << 7 - col)) >> 7 - col
     }
 }
 
 
 /* TODO comment */
-pub fn index_to_pixel(width:usize, index:usize) -> (usize, usize) {
+pub fn _index_to_pixel(width:usize, index:usize) -> (usize, usize) {
     (index % width, index/width)
 }
 
 /* TODO comment */
-pub fn pixel_to_index(width:usize, x:usize, y:usize) -> usize {
+pub fn _pixel_to_index(width:usize, x:usize, y:usize) -> usize {
     4*(width*y + x)
 }

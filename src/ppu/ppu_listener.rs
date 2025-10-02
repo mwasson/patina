@@ -72,7 +72,7 @@ impl MemoryListener for PPUListener {
                     let result = self.read_buffer;
                     self.read_buffer = ppu.read_vram(self.vram_address as usize);
                     
-                    self.vram_address += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };;
+                    self.vram_address += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
 
                     result
                 }
@@ -138,9 +138,8 @@ impl MemoryListener for PPUListener {
                     ppu.internal_regs.w = !ppu.internal_regs.w
                 }
                 PPUDATA => {
-                    let vram_addr = ppu.internal_regs.v as usize;
                     ppu.write_vram(self.vram_address as usize, value);
-                    self.vram_address += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };;
+                    self.vram_address += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
                 }
                 OAMDMA => {
                     let base_addr = (value as u16) << 8;
