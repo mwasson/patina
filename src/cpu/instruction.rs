@@ -398,6 +398,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x16 => (Instruction::ASL, ZeroPageX, 6, 2),
 		0x18 => (Instruction::CLC, Implicit, 2, 1),
 		0x19 => (Instruction::ORA, AbsoluteY, 4, 3), /*boundary*/
+		0x1a => (Instruction::NOP, Implicit, 2, 1), /* unofficial */
 		0x1d => (Instruction::ORA, AbsoluteX, 4, 3), /*boundary*/
 		0x1e => (Instruction::ASL, AbsoluteX, 7, 3),
 		0x20 => (Instruction::JSR, Absolute, 6, 3),
@@ -417,6 +418,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x36 => (Instruction::ROL, ZeroPageX, 6, 2),
 		0x38 => (Instruction::SEC, Implicit, 2, 1),
 		0x39 => (Instruction::AND, AbsoluteY, 4, 3), /*boundary*/
+		0x3a => (Instruction::NOP, Implicit, 2, 1), /* unofficial */
 		0x3d => (Instruction::AND, AbsoluteX, 4, 3), /*boundary*/
 		0x3e => (Instruction::ROL, AbsoluteX, 7, 3),
 		0x40 => (Instruction::RTI, Implicit, 6, 1),
@@ -435,6 +437,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x56 => (Instruction::LSR, ZeroPageX, 6, 2),
 		0x58 => (Instruction::CLI, Implicit, 2, 1),
 		0x59 => (Instruction::EOR, AbsoluteY, 4, 3), /*boundary*/
+		0x5a => (Instruction::NOP, Implicit, 2, 1), /* unofficial */
 		0x5d => (Instruction::EOR, AbsoluteX, 4, 3), /*boundary*/
 		0x5e => (Instruction::LSR, AbsoluteX, 7, 3),
 		0x60 => (Instruction::RTS, Implicit, 6, 1),
@@ -453,6 +456,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x76 => (Instruction::ROR, ZeroPageX, 6, 2),
 		0x78 => (Instruction::SEI, Implicit, 2, 1),
 		0x79 => (Instruction::ADC, AbsoluteY, 4, 3), /*boundary*/
+		0x7a => (Instruction::NOP, Implicit, 2, 1), /* unofficial */
 		0x7d => (Instruction::ADC, AbsoluteX, 4, 3), /*boundary*/
 		0x7e => (Instruction::ROR, AbsoluteX, 7, 3),
 		0x81 => (Instruction::STA, IndirectX, 6, 2),
@@ -513,6 +517,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xd6 => (Instruction::DEC, ZeroPageX, 6, 2),
 		0xd8 => (Instruction::CLD, Implicit, 2, 1),
 		0xd9 => (Instruction::CMP, AbsoluteY, 4, 3), /*boundary*/
+		0xda => (Instruction::NOP, Implicit, 2, 1), /* unofficial */
 		0xdd => (Instruction::CMP, AbsoluteX, 4, 3), /*boundary*/
 		0xde => (Instruction::DEC, AbsoluteX, 7, 3),
 		0xe0 => (Instruction::CPX, Immediate, 2, 2),
@@ -532,6 +537,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xf6 => (Instruction::INC, ZeroPageX, 6, 2),
 		0xf8 => (Instruction::SED, Implicit, 2, 1),
 		0xf9 => (Instruction::SBC, AbsoluteY, 4, 3), /*boundary*/
+		0xfa => (Instruction::NOP, Implicit, 2, 1), /* unofficial */
 		0xfd => (Instruction::SBC, AbsoluteX, 4, 3), /*boundary*/
 		0xfe => (Instruction::INC, AbsoluteX, 7, 3),
 		_ => handle_unknown_opcode(opcode)
