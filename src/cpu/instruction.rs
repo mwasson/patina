@@ -64,8 +64,11 @@ pub enum Instruction
 	/* clear & set flags */
 	CLC, /* Clear Carry */
 	CLD, /* Clear Decimal */
+	CLI, /* Clear Interrupt Disable */
+	CLV, /* Clear Overflow */
 	SEC, /* Set Carry Flag */
-	SEI, /* Set InterruptDisable */
+	SED, /* Set Decimal Flag */
+	SEI, /* Set Interrupt Disable */
 
 	/* stack operations */
 	PHA, /* Push A */
@@ -144,6 +147,16 @@ impl Instruction
 			}
 			Instruction::CLD => {
 				cpu.update_flag(StatusFlag::Decimal, false);
+			}
+			Instruction::CLI => {
+				/* TODO: The effect is delayed "one instruction".
+				 * Does that mean one cycle, or until the next instruction?
+				 * how to implement this?
+				 */
+				cpu.update_flag(StatusFlag::InterruptDisable, false);
+			}
+			Instruction::CLV => {
+				cpu.update_flag(StatusFlag::Overflow, false);
 			}
 			Instruction::CMP => {
 				Self::compare(cpu, addr_mode, b1, b2, cpu.accumulator);
@@ -271,6 +284,9 @@ impl Instruction
 			}
 			Instruction::SEC => {
 				StatusFlag::Carry.update_bool(cpu, true);
+			}
+			Instruction::SED => {
+				StatusFlag::Decimal.update_bool(cpu, true);
 			}
 			Instruction::SEI => {
 				/* TODO: The effect is delayed "one instruction".
@@ -417,6 +433,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0x51 => (Instruction::EOR, IndirectY, 5, 2), /*boundary*/
 		0x55 => (Instruction::EOR, ZeroPageX, 4, 2),
 		0x56 => (Instruction::LSR, ZeroPageX, 6, 2),
+		0x58 => (Instruction::CLI, Implicit, 2, 1),
 		0x59 => (Instruction::EOR, AbsoluteY, 4, 3), /*boundary*/
 		0x5d => (Instruction::EOR, AbsoluteX, 4, 3), /*boundary*/
 		0x5e => (Instruction::LSR, AbsoluteX, 7, 3),
@@ -473,6 +490,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xb4 => (Instruction::LDY, ZeroPageX, 4, 2),
 		0xb5 => (Instruction::LDA, ZeroPageX, 4, 2),
 		0xb6 => (Instruction::LDX, ZeroPageY, 4, 2),
+		0xb8 => (Instruction::CLV, Implicit, 2, 1),
 		0xb9 => (Instruction::LDA, AbsoluteY, 4, 3), /*boundary*/
 		0xba => (Instruction::TSX, Implicit, 2, 1),
 		0xbc => (Instruction::LDY, AbsoluteX, 4, 3), /*boundary*/
@@ -512,6 +530,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
 		0xf1 => (Instruction::SBC, IndirectY, 5, 2),
 		0xf5 => (Instruction::SBC, ZeroPageX, 4, 2),
 		0xf6 => (Instruction::INC, ZeroPageX, 6, 2),
+		0xf8 => (Instruction::SED, Implicit, 2, 1),
 		0xf9 => (Instruction::SBC, AbsoluteY, 4, 3), /*boundary*/
 		0xfd => (Instruction::SBC, AbsoluteX, 4, 3), /*boundary*/
 		0xfe => (Instruction::INC, AbsoluteX, 7, 3),
