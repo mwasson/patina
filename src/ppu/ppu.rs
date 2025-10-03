@@ -192,9 +192,9 @@ impl PPU {
             }
 
             let sprite_palette = sprite.get_palette(&self);
-            /* sprites */
             for i in 0..min(8,(0xff-sprite.x).saturating_add(1)) {
                 let brightness = sprite.get_brightness_localized(self, i, scanline - sprite.get_y());
+                /* TODO: bug here where sprite can wrap around the screen */
                 let pixel_index = sprite.x.wrapping_add(i) as usize * 4;
                 let pixels = sprite_palette.brightness_to_pixels(brightness);
                 if brightness > 0 && line_buffer[pixel_index+3] == 0 {
