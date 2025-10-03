@@ -70,7 +70,7 @@ impl Pulse
 
     pub fn set_enabled(&mut self, enabled: bool) {
         if self.enabled && !enabled {
-            self.length_counter.set_halt(true);
+            self.length_counter.silence();
         }
         self.enabled = enabled;
     }

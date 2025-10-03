@@ -8,7 +8,7 @@ const LENGTH_COUNTER_LOOKUP : [u8; 32] = [
 
 pub struct LengthCounter {
     period: u8,
-    count: u8,
+    pub count: u8,
     halt: bool,
 }
 
@@ -28,7 +28,11 @@ impl LengthCounter {
     }
 
     pub fn is_active(&self) -> bool {
-        !self.halt && self.count > 0
+        self.count > 0
+    }
+
+    pub fn silence(&mut self) {
+        self.count = 0;
     }
 
     pub fn amplitude(&self) -> f32 {
