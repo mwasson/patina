@@ -78,7 +78,7 @@ impl Noise {
 
 impl MemoryListener for Noise {
     fn get_addresses(&self) -> Vec<u16> {
-        [0x400c, 0x400e, 0x400f].to_vec()
+        [0x400c, 0x400d, 0x400e, 0x400f].to_vec()
     }
 
     fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
@@ -94,13 +94,12 @@ impl MemoryListener for Noise {
                 /* TODO constant volume/envelope flag */
                 /* TODO volume/envelope divider period */
             }
+            0x400d => { /* unused */}
             0x400e => {
-                // println!("400e {:x}", value);
                 self.mode_flag = value & 0x80 != 0;
                 self.timer.set_period(NTSC_NOISE_PERIODS[(value & 0x0f) as usize] / 2);
             }
             0x400f => {
-                // println!("400f {:x}", value);
                 self.length_counter.set_lc(value);
                 self.envelope.start();
             }
