@@ -16,7 +16,7 @@ pub struct CoreMemory {
     memory: Box<[u8; MEMORY_SIZE]>,
     nmi_flag: bool, /* a convenience, to avoid a PPU dependency on the CPU */
     listeners: FnvHashMap<u16, Rc<RefCell<dyn MemoryListener>>>,
-    pub mapper: Box<dyn Mapper>,
+    pub mapper: Rc<RefCell<Box<dyn Mapper>>>,
 }
 
 impl CoreMemory {
@@ -60,7 +60,7 @@ impl CoreMemory {
     fn read_no_listen_no_map(&self, address: u16) -> u8 {
         /* high addresses go to the on-cartridge mapper */
         if address >= 0x4020 {
-            self.mapper.read_prg(address)
+            self.mapper.borrow().read_prg(address)
         /* low addresses handled by on-board memory */
         } else {
             self.memory[address as usize]
@@ -73,14 +73,14 @@ impl CoreMemory {
         if mapped_addr < 0x4000 {
             dest.copy_from_slice(&self.memory[mapped_addr..mapped_addr + size]);
         } else {
-            dest.copy_from_slice(&self.mapper.read_prg_slice(address, size));
+            dest.copy_from_slice(&self.mapper.borrow().read_prg_slice(address, size));
         }
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
         /* high addresses go to the on-cartridge mapper */
         if address >= 0x4020 {
-            self.mapper.write_prg(address, value);
+            self.mapper.borrow_mut().write_prg(address, value);
         /* low addresses handled by on-board memory */
         } else {
             let mapped_addr = self.map_address(address);

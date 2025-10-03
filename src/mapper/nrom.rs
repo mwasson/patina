@@ -1,5 +1,5 @@
 use crate::mapper::Mapper;
-use crate::ppu::Tile;
+use crate::ppu::{NametableMirroring, Tile};
 use crate::rom::Rom;
 
 const PRG_BANK_SIZE: usize = 1 << 15;
@@ -9,6 +9,7 @@ pub struct NROM {
     prg_ram: Box<[u8; PRG_BANK_SIZE]>,
     chr_ram: Box<[u8; CHR_BANK_SIZE]>,
     is_32_kb: bool, /* NROM can be either 32kb or 16kb mirrored */
+    nametable_mirroring: NametableMirroring,
 }
 
 impl NROM {
@@ -25,6 +26,7 @@ impl NROM {
             prg_ram,
             chr_ram,
             is_32_kb,
+            nametable_mirroring: rom.nametable_mirroring()
         }
     }
 
@@ -57,15 +59,11 @@ impl Mapper for NROM {
         self.chr_ram[address as usize]
     }
 
-    fn read_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
-        let pattern_table_base : usize = 0x1000 * pattern_table_num;
-        let tile_start = pattern_table_base + (tile_index as usize * 16);
-        let mut memcopy = [0u8; 16];
-        memcopy.copy_from_slice(&self.chr_ram[tile_start..tile_start+16]);
-        Tile::from_memory(memcopy)
-    }
-
     fn write_chr(&mut self, address: u16, value: u8) {
         panic!("NROM: ATTEMPTED TO WRITE TO CHR-ROM ADDRESS 0x{address:x} VALUE 0x{value:x}");
+    }
+    
+    fn get_nametable_mirroring(&self) -> NametableMirroring {
+        self.nametable_mirroring.clone()
     }
 }

@@ -12,7 +12,10 @@ pub use ppu_internal_registers::PPUInternalRegisters;
 pub use tile::{_index_to_pixel, Tile};
 
 const OAM_SIZE : usize = 256;
-const VRAM_SIZE : usize = 1 << 11; /* 2kb internal VRAM generally used for nametables */
+/* 4kb VRAM covering the entirety of the nametable space; in reality only 2kb is used but this
+ * makes addressing easier
+ */
+const VRAM_SIZE : usize = 1 << 12;
 const PALETTE_MEMORY_SIZE: usize = 32;
 /* number of lines at the top of the screen to not actually show */
 const OVERSCAN : u8 = 10;

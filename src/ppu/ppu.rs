@@ -4,13 +4,14 @@ use std::cmp::min;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use crate::cpu::CoreMemory;
+use crate::mapper::Mapper;
 use crate::ppu::palette::Palette;
 use crate::ppu::{_index_to_pixel, PPUInternalRegisters, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, WRITE_BUFFER_SIZE, PALETTE_MEMORY_SIZE, VRAM_SIZE};
 use crate::processor::Processor;
 
 pub struct PPU {
     memory: Rc<RefCell<CoreMemory>>,
-    nametable_mirroring: NametableMirroring,
+    mapper: Rc<RefCell<Box<dyn Mapper>>>,
     pub (super) oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
     internal_buffer: WriteBuffer,
@@ -24,9 +25,10 @@ pub struct PPU {
     pub (super) internal_regs: PPUInternalRegisters,
 }
 
+#[derive(Clone)]
 pub enum NametableMirroring {
-    Horizontal, /* pages are mirrored horizontally (appropriate for vertical games */
-    Vertical, /* pages are mirrored vertically (appropriate for horizontal games ) */
+    Horizontal, /* pages are mirrored horizontally (appropriate for vertical games) */
+    Vertical, /* pages are mirrored vertically (appropriate for horizontal games) */
     #[allow(dead_code)]
     Single, /* first nametable mirrored four times */
     #[allow(dead_code)]
@@ -42,13 +44,14 @@ impl Processor for PPU {
 impl PPU {
 
     pub fn from_rom(rom: &Rom, write_buffer: Arc<Mutex<WriteBuffer>>, memory: Rc<RefCell<CoreMemory>>) -> Rc<RefCell<PPU>> {
+        let mapper = memory.clone().borrow().mapper.clone();
         Rc::new(RefCell::new(PPU {
             memory,
+            mapper,
             write_buffer,
             oam: [0; OAM_SIZE],
             vram: [0; VRAM_SIZE],
             palette_memory: [0; PALETTE_MEMORY_SIZE],
-            nametable_mirroring: rom.nametable_mirroring(),
             internal_buffer: [0; WRITE_BUFFER_SIZE],
             ppu_status: 0,
             ppu_ctrl: 0,
@@ -261,7 +264,7 @@ impl PPU {
     }
 
     fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
-        self.memory.borrow().mapper.read_tile(tile_index, pattern_table_num)
+        self.mapper.borrow().read_tile(tile_index, pattern_table_num)
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
@@ -283,7 +286,7 @@ impl PPU {
 
         /* pattern tables (CHR data) */
         if mapped_address < 0x2000 {
-            self.memory.borrow().mapper.read_chr(mapped_address as u16)
+            self.mapper.borrow().read_chr(mapped_address as u16)
         /* nametables and attribute tables */
         } else if mapped_address < 0x3f00 {
             self.vram[mapped_address - 0x2000]
@@ -298,7 +301,7 @@ impl PPU {
 
         /* pattern tables (CHR data) */
         if mapped_address < 0x2000 {
-            self.memory.borrow_mut().mapper.write_chr(mapped_address as u16, val);
+            self.mapper.borrow_mut().write_chr(mapped_address as u16, val);
         /* nametables and attribute tables */
         } else if mapped_address < 0x3f00 {
             self.vram[mapped_address - 0x2000] = val;
@@ -312,7 +315,7 @@ impl PPU {
         let mut result = addr;
 
         if result >= 0x2000 && result < 0x3000 {
-            return match &self.nametable_mirroring {
+            return match &self.mapper.borrow().get_nametable_mirroring() {
                 NametableMirroring::Horizontal => result & !0x0400,
                 NametableMirroring::Vertical => result & !0x0800 ,
                 NametableMirroring::Single => result & !0x0c00,
@@ -344,7 +347,7 @@ impl PPU {
         for i in 0..256 {
             let xy = _index_to_pixel(16, i);
             let data_start = i * 16;
-            let mut tile_data = [0 as u8; 16];
+            let mut tile_data = [0u8; 16];
             tile_data.copy_from_slice(&pattern_table[data_start..data_start + 16]);
             let tile = Tile::from_memory(tile_data);
             tile._stamp(write_buffer, width, xy.0 * 8 + start_x, xy.1 * 8);

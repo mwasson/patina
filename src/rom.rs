@@ -1,5 +1,7 @@
 use std::{fs, io};
+use std::cell::RefCell;
 use std::io::ErrorKind;
+use std::rc::Rc;
 use crate::mapper::Mapper;
 use crate::ppu::NametableMirroring;
 
@@ -28,7 +30,7 @@ impl Rom {
         }
     }
 
-    pub fn initialize_mapper(&self) -> Box<dyn Mapper> {
+    pub fn initialize_mapper(&self) -> Rc<RefCell<Box<dyn Mapper>>> {
         let lower_nybble = (self.byte_6_flags & 0xf0) >> 4;
         let upper_nybble = self.byte_7_flags & 0xf0;
         crate::mapper::load_mapper(upper_nybble | lower_nybble, self)
