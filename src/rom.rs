@@ -1,5 +1,6 @@
 use std::{fs, io};
 use std::io::ErrorKind;
+use crate::mapper::Mapper;
 use crate::ppu::NametableMirroring;
 
 pub struct Rom {
@@ -25,6 +26,12 @@ impl Rom {
         } else {
             NametableMirroring::Horizontal
         }
+    }
+
+    pub fn initialize_mapper(&self) -> Box<dyn Mapper> {
+        let lower_nybble = (self.byte_6_flags & 0xf0) >> 4;
+        let upper_nybble = self.byte_7_flags & 0xf0;
+        crate::mapper::load_mapper(upper_nybble | lower_nybble, self)
     }
 
 

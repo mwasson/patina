@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use fnv::FnvHashMap;
 use crate::cpu::MEMORY_SIZE;
+use crate::mapper::Mapper;
 use crate::rom::Rom;
 
 pub trait MemoryListener {
@@ -12,21 +13,22 @@ pub trait MemoryListener {
 }
 
 pub struct CoreMemory {
-    memory: [u8; MEMORY_SIZE],
+    memory: Box<[u8; MEMORY_SIZE]>,
     nmi_flag: bool, /* a convenience, to avoid a PPU dependency on the CPU */
-    listeners: FnvHashMap<u16, Rc<RefCell<dyn MemoryListener>>>
+    listeners: FnvHashMap<u16, Rc<RefCell<dyn MemoryListener>>>,
+    mapper: Box<dyn Mapper>,
 }
 
 impl CoreMemory {
     pub fn new(rom: &Rom) -> CoreMemory {
-        /* TODO: handling RAM, mappers, etc. */
-        let mut memory = [0; MEMORY_SIZE];
-        memory[(0x10000 - rom.prg_data.len())..0x10000].copy_from_slice(&*rom.prg_data);
+        let mapper = rom.initialize_mapper();
+        let memory = Box::new([0; MEMORY_SIZE]);
 
         CoreMemory {
             memory,
             nmi_flag: false,
-            listeners:  FnvHashMap::with_capacity_and_hasher(10, Default::default())
+            listeners:  FnvHashMap::with_capacity_and_hasher(10, Default::default()),
+            mapper,
         }
     }
 
@@ -38,7 +40,7 @@ impl CoreMemory {
             }
         }
 
-        self.memory[mapped_addr as usize]
+        self.read_no_listen_no_map(mapped_addr)
     }
 
     pub fn read16(&self, address: u16) -> u16 {
@@ -52,36 +54,51 @@ impl CoreMemory {
             }
         }
 
-        let lo_byte = self.memory[mapped_addr as usize] as u16;
-        let hi_byte = self.memory[(mapped_addr+1) as usize] as u16;
+        let lo_byte = self.read_no_listen_no_map(mapped_addr) as u16;
+        let hi_byte = self.read_no_listen_no_map(mapped_addr+1) as u16;
 
         lo_byte | (hi_byte << 8)
     }
 
-    pub fn read_no_listen(&self, address: u16) -> u8 {
-        self.memory[self.map_address(address) as usize]
+    fn read_no_listen_no_map(&self, address: u16) -> u8 {
+        /* high addresses go to the on-cartridge mapper */
+        if address >= 0x4020 {
+            self.mapper.read(address)
+        /* low addresses handled by on-board memory */
+        } else {
+            self.memory[address as usize]
+        }
     }
 
     /* NB: this does not activate listeners! */
     pub fn read_slice(&self, address: u16, size: usize) -> &[u8]{
         let mapped_addr = self.map_address(address) as usize;
-
-        &self.memory[mapped_addr..mapped_addr + size]
+        if mapped_addr < 0x4000 {
+            &self.memory[mapped_addr..mapped_addr + size]
+        } else {
+            self.mapper.read_slice(address, size)
+        }
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
-        let mapped_addr = self.map_address(address);
-        /* TODO HACK: speed up memory access by only looking for listeners on a small number
-         * of whitelisted addresses; will have to revisit this
-         */
-        if CoreMemory::is_special_addr(mapped_addr) {
-            if let Some(listener) = self.listeners.get(&mapped_addr) {
-                listener.borrow_mut().write(self, mapped_addr, value);
+        /* high addresses go to the on-cartridge mapper */
+        if address >= 0x4020 {
+            self.mapper.write(address, value);
+        /* low addresses handled by on-board memory */
+        } else {
+            let mapped_addr = self.map_address(address);
+            /* TODO HACK: speed up memory access by only looking for listeners on a small number
+             * of whitelisted addresses; will have to revisit this
+             */
+            if CoreMemory::is_special_addr(mapped_addr) {
+                if let Some(listener) = self.listeners.get(&mapped_addr) {
+                    listener.borrow_mut().write(self, mapped_addr, value);
+                    return;
+                }
             }
-        }
 
-        /* note that even if there's a listener, it still writes like normal */
-        self.memory[mapped_addr as usize] = value;
+            self.memory[mapped_addr as usize] = value;
+        }
     }
 
     pub fn is_special_addr(address: u16) -> bool {
@@ -109,12 +126,22 @@ impl CoreMemory {
     }
 
     fn map_address(&self, addr: u16) -> u16 {
-        if addr > 0x7ff && addr <= 0x1fff {
-            addr & 0x7ff
-        } else if addr >= 0x2000 && addr <= 0x3FFF { /* ppu registers */
-            0x2000 | (addr & 0x7)
+        if addr <= 0x3fff {
+            if addr > 0x7ff && addr <= 0x1fff {
+                addr & 0x7ff
+            } else if addr > 0x1fff {
+                /* ppu registers */
+                0x2000 | (addr & 0x7)
+            } else {
+                addr
+            }
         } else {
             addr
         }
+    }
+
+    pub fn open_bus(&self) -> u8 {
+        /* TODO not how hardware behaves */
+        0
     }
 }

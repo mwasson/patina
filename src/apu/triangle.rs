@@ -67,8 +67,8 @@ impl MemoryListener for Triangle {
         [0x4008,0x400a,0x400b].to_vec()
     }
 
-    fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
-        memory.read_no_listen(address)
+    fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
+        memory.open_bus()
     }
 
     fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {

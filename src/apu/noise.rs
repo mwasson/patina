@@ -81,8 +81,8 @@ impl MemoryListener for Noise {
         [0x400c, 0x400e, 0x400f].to_vec()
     }
 
-    fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
-        memory.read_no_listen(address)
+    fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
+        memory.open_bus()
     }
 
     fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {

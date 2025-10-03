@@ -21,6 +21,7 @@ mod ppu;
 mod processor;
 mod scheduler;
 mod apu;
+mod mapper;
 
 fn main() -> Result<(), Box<dyn Error>> {
 	println!("Here begins the Patina project. An inauspicious start?");

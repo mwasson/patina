@@ -9,7 +9,8 @@ const CONTROLLER_ADDRESS: u16 = 0x4016;
 #[derive(Clone)]
 pub struct Controller {
     key_source: Arc<Mutex<HashSet<Key>>>,
-    inputs_in_order: Vec<u8>
+    inputs_in_order: Vec<u8>,
+    old_value: u8,
 }
 
 impl Controller {
@@ -17,6 +18,7 @@ impl Controller {
         Controller {
             key_source: Arc::new(Mutex::new(HashSet::new())), /* will be overwritten, that's fine */
             inputs_in_order: Vec::new(),
+            old_value: 0,
         }
     }
 
@@ -61,10 +63,10 @@ impl MemoryListener for Controller {
         self.get_next_byte()
     }
 
-    fn write(&mut self, memory: &CoreMemory, address: u16, value: u8) {
-        let old_value = memory.read_no_listen(address);
-        if old_value & 1 == 1 && value & 1 == 0 {
+    fn write(&mut self, _memory: &CoreMemory, _address: u16, value: u8) {
+        if self.old_value & 1 == 1 && value & 1 == 0 {
             self.record_data();
         }
+        self.old_value = value; 
     }
 }

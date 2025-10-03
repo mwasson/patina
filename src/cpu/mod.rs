@@ -13,7 +13,7 @@ pub use instruction::RealizedInstruction;
 pub use cpu::CPU;
 pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
-pub const MEMORY_SIZE: usize = 1<<16;
+pub const MEMORY_SIZE: usize = 1<<11; /* 2kB onboard RAM */
 
 const INITIAL_PC_LOCATION: u16 = 0xfffc;
 

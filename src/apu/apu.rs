@@ -97,19 +97,21 @@ impl Processor for APU {
 
 impl MemoryListener for APU {
     fn get_addresses(&self) -> Vec<u16> {
-        [0x4015].to_vec()
+        [0x4015, 0x4017].to_vec()
     }
 
-    fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
-        memory.read_no_listen(address)
+    fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
+        memory.open_bus()
     }
 
-    fn write(&mut self, _memory: &CoreMemory, _address: u16, value: u8) {
-        self.pulse1.borrow_mut().set_enabled(value & 0x1 != 0);
-        self.pulse2.borrow_mut().set_enabled(value & 0x2 != 0);
-        self.triangle.borrow_mut().set_enabled(value & 0x4 != 0);
-        self.noise.borrow_mut().set_enabled(value & 0x8 != 0);
-        self.dmc.borrow_mut().set_enabled(value & 0x10 != 0);
+    fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
+        if address == 0x4015 {
+            self.pulse1.borrow_mut().set_enabled(value & 0x1 != 0);
+            self.pulse2.borrow_mut().set_enabled(value & 0x2 != 0);
+            self.triangle.borrow_mut().set_enabled(value & 0x4 != 0);
+            self.noise.borrow_mut().set_enabled(value & 0x8 != 0);
+            self.dmc.borrow_mut().set_enabled(value & 0x10 != 0);
+        }
     }
 }
 

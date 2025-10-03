@@ -63,7 +63,7 @@ impl DMC {
         }
 
         if self.sample_buffer.is_none() && self.sample_bytes_remaining > 0 {
-            self.sample_buffer = Some(self.memory.borrow().read(self.current_address));
+            self.sample_buffer = Some(self.memory.borrow_mut().read(self.current_address));
             if self.current_address == 0xffff {
                 self.current_address = 0x8000;
             } else {

@@ -130,9 +130,9 @@ impl MemoryListener for Pulse {
         [a, a+1, a+2, a+3].to_vec()
     }
 
-    fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
+    fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
         /* open bus, this shouldn't be done */
-        memory.read_no_listen(address)
+        memory.open_bus()
     }
 
     fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
