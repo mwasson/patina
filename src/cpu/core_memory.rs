@@ -16,19 +16,16 @@ pub struct CoreMemory {
     memory: Box<[u8; MEMORY_SIZE]>,
     nmi_flag: bool, /* a convenience, to avoid a PPU dependency on the CPU */
     listeners: FnvHashMap<u16, Rc<RefCell<dyn MemoryListener>>>,
-    mapper: Box<dyn Mapper>,
+    pub mapper: Box<dyn Mapper>,
 }
 
 impl CoreMemory {
     pub fn new(rom: &Rom) -> CoreMemory {
-        let mapper = rom.initialize_mapper();
-        let memory = Box::new([0; MEMORY_SIZE]);
-
         CoreMemory {
-            memory,
+            memory: Box::new([0; MEMORY_SIZE]),
             nmi_flag: false,
             listeners:  FnvHashMap::with_capacity_and_hasher(10, Default::default()),
-            mapper,
+            mapper: rom.initialize_mapper(),
         }
     }
 
@@ -63,7 +60,7 @@ impl CoreMemory {
     fn read_no_listen_no_map(&self, address: u16) -> u8 {
         /* high addresses go to the on-cartridge mapper */
         if address >= 0x4020 {
-            self.mapper.read(address)
+            self.mapper.read_prg(address)
         /* low addresses handled by on-board memory */
         } else {
             self.memory[address as usize]
@@ -71,19 +68,19 @@ impl CoreMemory {
     }
 
     /* NB: this does not activate listeners! */
-    pub fn read_slice(&self, address: u16, size: usize) -> &[u8]{
+    pub fn copy_slice(&self, address: u16, size: usize, dest: &mut [u8]) {
         let mapped_addr = self.map_address(address) as usize;
         if mapped_addr < 0x4000 {
-            &self.memory[mapped_addr..mapped_addr + size]
+            dest.copy_from_slice(&self.memory[mapped_addr..mapped_addr + size]);
         } else {
-            self.mapper.read_slice(address, size)
+            dest.copy_from_slice(&self.mapper.read_prg_slice(address, size));
         }
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
         /* high addresses go to the on-cartridge mapper */
         if address >= 0x4020 {
-            self.mapper.write(address, value);
+            self.mapper.write_prg(address, value);
         /* low addresses handled by on-board memory */
         } else {
             let mapped_addr = self.map_address(address);

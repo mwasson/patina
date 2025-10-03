@@ -5,16 +5,17 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use crate::cpu::CoreMemory;
 use crate::ppu::palette::Palette;
-use crate::ppu::{_index_to_pixel, PPUInternalRegisters, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, PPU_MEMORY_SIZE, VRAM, WRITE_BUFFER_SIZE};
+use crate::ppu::{_index_to_pixel, PPUInternalRegisters, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, WRITE_BUFFER_SIZE, PALETTE_MEMORY_SIZE, VRAM_SIZE};
 use crate::processor::Processor;
 
 pub struct PPU {
     memory: Rc<RefCell<CoreMemory>>,
-    vram: VRAM,
     nametable_mirroring: NametableMirroring,
     pub (super) oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
     internal_buffer: WriteBuffer,
+    vram: [u8; VRAM_SIZE],
+    palette_memory: [u8; PALETTE_MEMORY_SIZE],
     // tick_count: u16,
     /* shared registers */
     pub (super) ppu_ctrl: u8,
@@ -41,17 +42,12 @@ impl Processor for PPU {
 impl PPU {
 
     pub fn from_rom(rom: &Rom, write_buffer: Arc<Mutex<WriteBuffer>>, memory: Rc<RefCell<CoreMemory>>) -> Rc<RefCell<PPU>> {
-        let mut vram: [u8; PPU_MEMORY_SIZE] = [0; PPU_MEMORY_SIZE];
-        let oam : [u8; OAM_SIZE] = [0; OAM_SIZE]; /* TODO: link this to CPU memory? */
-
-        /* copy over character data; TODO surely this is not correct even in the no-mapper case*/
-        vram[0x0000..rom.chr_data.len()].copy_from_slice(&rom.chr_data);
-
-        Rc::new(RefCell::new(PPU { 
+        Rc::new(RefCell::new(PPU {
             memory,
-            vram,
-            oam,
             write_buffer,
+            oam: [0; OAM_SIZE],
+            vram: [0; VRAM_SIZE],
+            palette_memory: [0; PALETTE_MEMORY_SIZE],
             nametable_mirroring: rom.nametable_mirroring(),
             internal_buffer: [0; WRITE_BUFFER_SIZE],
             ppu_status: 0,
@@ -265,17 +261,13 @@ impl PPU {
     }
 
     fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
-        let pattern_table_base : usize = 0x1000 * pattern_table_num;
-        let tile_start = pattern_table_base + (tile_index as usize * 16);
-        let mut memcopy = [0u8; 16];
-        memcopy.copy_from_slice(&self.vram[tile_start..tile_start+16]);
-        Tile::from_memory(memcopy)
+        self.memory.borrow().mapper.read_tile(tile_index, pattern_table_num)
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
-        let palette_mem_loc : usize = 0x3f00 + (palette_index as usize)*4;
+        let palette_mem_loc : usize = (palette_index as usize)*4;
         let mut palette_data = [0u8; 4];
-        palette_data.copy_from_slice(&self.vram[palette_mem_loc..palette_mem_loc+4]);
+        palette_data.copy_from_slice(&self.palette_memory[palette_mem_loc..palette_mem_loc+4]);
 
         Palette::new(palette_data)
     }
@@ -285,13 +277,35 @@ impl PPU {
         let range_width = 4*256; /* 4 bytes per pixel, 256 pixels per line */
         start*range_width..(start+1)*range_width
     }
-    
+
     pub fn read_vram(&self, addr: usize) -> u8 {
-        self.vram[self.vram_address_mirror(addr)]
-    } 
-    
+        let mapped_address = self.vram_address_mirror(addr);
+
+        /* pattern tables (CHR data) */
+        if mapped_address < 0x2000 {
+            self.memory.borrow().mapper.read_chr(mapped_address as u16)
+        /* nametables and attribute tables */
+        } else if mapped_address < 0x3f00 {
+            self.vram[mapped_address - 0x2000]
+        /* palettes */
+        } else {
+            self.palette_memory[mapped_address - 0x3f00]
+        }
+    }
+
     pub fn write_vram(&mut self, addr: usize, val: u8) {
-        self.vram[self.vram_address_mirror(addr)] = val;
+        let mapped_address = self.vram_address_mirror(addr);
+
+        /* pattern tables (CHR data) */
+        if mapped_address < 0x2000 {
+            self.memory.borrow_mut().mapper.write_chr(mapped_address as u16, val);
+        /* nametables and attribute tables */
+        } else if mapped_address < 0x3f00 {
+            self.vram[mapped_address - 0x2000] = val;
+            /* palettes */
+        } else {
+            self.palette_memory[mapped_address - 0x3f00] = val;
+        }
     }
 
     pub fn vram_address_mirror(&self, addr: usize) -> usize {

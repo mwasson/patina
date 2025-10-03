@@ -143,7 +143,7 @@ impl MemoryListener for PPUListener {
                 }
                 OAMDMA => {
                     let base_addr = (value as u16) << 8;
-                    ppu.oam.copy_from_slice(memory.read_slice(base_addr, OAM_SIZE));
+                    memory.copy_slice(base_addr, OAM_SIZE, &mut ppu.oam);
                 }
                 _ => { panic!("unimplemented ppu listener write for {updated_register:?}") }
             }
