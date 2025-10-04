@@ -1,15 +1,11 @@
 #[derive(Debug)]
-pub struct Palette
-{
-    data: [u8; 4]
+pub struct Palette {
+    data: [u8; 4],
 }
 
-impl Palette
-{
+impl Palette {
     pub fn new(data: [u8; 4]) -> Palette {
-        Palette {
-            data
-        }
+        Palette { data }
     }
 
     #[inline(never)]
@@ -26,7 +22,7 @@ impl Palette
     /* TODO buggy; messes up Bubble Bobble's colors */
     #[allow(dead_code)]
     #[inline(never)]
-    fn apply_value(value:u8, pixels: [u8; 4]) -> [u8; 4] {
+    fn apply_value(value: u8, pixels: [u8; 4]) -> [u8; 4] {
         /* reverse engineered from https://www.nesdev.org/wiki/NTSC_video#Converting_YUV_to_signal_RGB,
          * assuming we already have RGB values where Y = 0 and treating 'value' as the same as luma
          */
@@ -41,7 +37,7 @@ impl Palette
 
     #[inline(never)]
     /* based on Wiki values */
-    fn hue_lookup(hue:u8) -> [u8; 4] {
+    fn hue_lookup(hue: u8) -> [u8; 4] {
         match hue {
             0x00 => [0x62, 0x62, 0x62, 0xff], /* dark gray */
             0x01 => [0x00, 0x1c, 0x95, 0xff],
@@ -107,7 +103,7 @@ impl Palette
             0x3d => [0xb8, 0xb8, 0xb8, 0xff],
             0x3e => [0x00, 0x00, 0x00, 0xff],
             0x3f => [0x00, 0x00, 0x00, 0xff],
-            _ => panic!("impossible hue {hue}")
+            _ => panic!("impossible hue {hue}"),
         }
     }
 }

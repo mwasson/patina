@@ -12,7 +12,7 @@ impl Timer {
     }
 
     /* Returns true if the timer looped */
-    pub fn clock(&mut self) -> bool{
+    pub fn clock(&mut self) -> bool {
         if self.count == 0 {
             self.count = self.period;
             true
@@ -21,7 +21,7 @@ impl Timer {
             false
         }
     }
-    
+
     /* for setting the period directly */
     pub fn set_period(&mut self, period: u16) {
         self.period = period;

@@ -24,7 +24,7 @@ impl Sweep {
             ones_complement,
         }
     }
-    
+
     pub fn clock(&mut self, timer: &mut Timer) {
         self.muting = timer.period < 8;
         if self.enabled && self.shift != 0 && self.divider == 0 {
@@ -54,7 +54,11 @@ impl Sweep {
     }
 
     pub fn amplitude(&self) -> f32 {
-        if self.muting { 0.0 } else { 1.0 }
+        if self.muting {
+            0.0
+        } else {
+            1.0
+        }
     }
 
     pub fn set_sweep(&mut self, data: u8) {

@@ -1,11 +1,11 @@
 mod apu;
-mod pulse;
+mod dmc;
 mod envelope;
+mod length_counter;
+mod noise;
+mod pulse;
 mod sweep;
 mod timer;
-mod length_counter;
 mod triangle;
-mod noise;
-mod dmc;
 
 pub use apu::APU;

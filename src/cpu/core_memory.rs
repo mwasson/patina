@@ -1,9 +1,9 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use fnv::FnvHashMap;
 use crate::cpu::MEMORY_SIZE;
 use crate::mapper::Mapper;
 use crate::rom::Rom;
+use fnv::FnvHashMap;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub trait MemoryListener {
     fn get_addresses(&self) -> Vec<u16>;
@@ -24,7 +24,7 @@ impl CoreMemory {
         CoreMemory {
             memory: Box::new([0; MEMORY_SIZE]),
             nmi_flag: false,
-            listeners:  FnvHashMap::with_capacity_and_hasher(10, Default::default()),
+            listeners: FnvHashMap::with_capacity_and_hasher(10, Default::default()),
             mapper: rom.initialize_mapper(),
         }
     }
@@ -52,7 +52,7 @@ impl CoreMemory {
         }
 
         let lo_byte = self.read_no_listen_no_map(mapped_addr) as u16;
-        let hi_byte = self.read_no_listen_no_map(mapped_addr+1) as u16;
+        let hi_byte = self.read_no_listen_no_map(mapped_addr + 1) as u16;
 
         lo_byte | (hi_byte << 8)
     }

@@ -1,6 +1,7 @@
+use crate::apu::dmc::DMC;
+use crate::apu::noise::Noise;
 use crate::apu::pulse::Pulse;
 use crate::apu::triangle::Triangle;
-use crate::apu::noise::Noise;
 use crate::cpu::{CoreMemory, MemoryListener};
 use crate::processor::Processor;
 use rodio::{ChannelCount, OutputStream, SampleRate, Sink, Source};
@@ -9,7 +10,6 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use crate::apu::dmc::DMC;
 /* TODO This is a little bit faster than the theoretical rate that we should be sampling at,
  * but it seems to be the best rate for keeping the sample queue from backing up;
  * not ideal, but seems to have the fewest issues overall
@@ -19,7 +19,7 @@ pub struct APU {
     apu_counter: u16,
     _output_stream: OutputStream, /* can't remove this--if it's collected, sound won't play */
     _sink: Sink,                  /* ditto--confusingly, since OutputStream should have a ref */
-    pulse1: Rc<RefCell<Pulse>>,  /* to it through the Mixer? */
+    pulse1: Rc<RefCell<Pulse>>,   /* to it through the Mixer? */
     pulse2: Rc<RefCell<Pulse>>,
     triangle: Rc<RefCell<Triangle>>,
     noise: Rc<RefCell<Noise>>,
@@ -27,13 +27,13 @@ pub struct APU {
     queue: Arc<RwLock<VecDeque<f32>>>,
 }
 
-const PULSE_1_FIRST_ADDR : u16 = 0x4000;
-const PULSE_2_FIRST_ADDR : u16 = 0x4004;
+const PULSE_1_FIRST_ADDR: u16 = 0x4000;
+const PULSE_2_FIRST_ADDR: u16 = 0x4004;
 
 impl APU {
-    pub fn new(memory: Rc<RefCell<CoreMemory>>) -> Rc::<RefCell::<APU>> {
-        let stream_handle = rodio::OutputStreamBuilder::open_default_stream()
-            .expect("open default audio stream");
+    pub fn new(memory: Rc<RefCell<CoreMemory>>) -> Rc<RefCell<APU>> {
+        let stream_handle =
+            rodio::OutputStreamBuilder::open_default_stream().expect("open default audio stream");
         let sink = Sink::connect_new(&stream_handle.mixer());
         let queue = Arc::new(RwLock::new(VecDeque::new()));
         sink.append(BufferedMixedSource::new(queue.clone()));
@@ -73,7 +73,7 @@ impl APU {
             queue.push_back(self.mix());
         }
     }
-    
+
     fn mix(&self) -> f32 {
         let pulse1_vol = self.pulse1.borrow().amplitude();
         let pulse2_vol = self.pulse2.borrow().amplitude();
@@ -82,8 +82,9 @@ impl APU {
         let dmc_vol = self.dmc.borrow().amplitude();
 
         /* formulae from https://www.nesdev.org/wiki/APU_Mixer */
-        let pulse_out = 95.88/(8128.0 / (pulse1_vol + pulse2_vol) + 100.0);
-        let tnd_out = 159.79/(1.0 / (triangle_vol/8227.0 + noise_vol/12241.0 + dmc_vol/22638.0)+ 100.0);
+        let pulse_out = 95.88 / (8128.0 / (pulse1_vol + pulse2_vol) + 100.0);
+        let tnd_out = 159.79
+            / (1.0 / (triangle_vol / 8227.0 + noise_vol / 12241.0 + dmc_vol / 22638.0) + 100.0);
 
         pulse_out + tnd_out
     }
@@ -91,7 +92,7 @@ impl APU {
 
 impl Processor for APU {
     fn clock_speed(&self) -> u64 {
-        894880//1_789_773/2 /* TODO constantize */
+        894880 //1_789_773/2 /* TODO constantize */
     }
 }
 
@@ -117,9 +118,7 @@ impl MemoryListener for APU {
 
 impl BufferedMixedSource {
     fn new(queue: Arc<RwLock<VecDeque<f32>>>) -> BufferedMixedSource {
-        BufferedMixedSource {
-            queue,
-        }
+        BufferedMixedSource { queue }
     }
 }
 

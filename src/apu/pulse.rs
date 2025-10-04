@@ -1,22 +1,21 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::apu::envelope::Envelope;
 use crate::apu::length_counter::LengthCounter;
 use crate::apu::sweep::Sweep;
 use crate::apu::timer::Timer;
 use crate::cpu::{CoreMemory, MemoryListener};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /* waveform descriptions from https://www.nesdev.org/wiki/APU_Pulse */
-const PULSE_DUTIES : [[bool;8];4] = [
-    [false,true,false,false,false,false,false,false],
-    [false,true,true,false,false,false,false,false],
-    [false,true,true,true,true,false,false,false],
-    [true,false,false,true,true,true,true,true],
+const PULSE_DUTIES: [[bool; 8]; 4] = [
+    [false, true, false, false, false, false, false, false],
+    [false, true, true, false, false, false, false, false],
+    [false, true, true, true, true, false, false, false],
+    [true, false, false, true, true, true, true, true],
 ];
 
-pub struct Pulse
-{
-    first_address : u16,
+pub struct Pulse {
+    first_address: u16,
     envelope: Envelope,
     length_counter: LengthCounter,
     sweep: Sweep,
@@ -24,12 +23,15 @@ pub struct Pulse
     enabled: bool,
 }
 
-impl Pulse
-{
+impl Pulse {
     /* initializes a pulse, links it up as a listener on CoreMemory, and
      * wraps it appropriately
      */
-    pub fn initialize(first_addr: u16, is_first_channel:bool, memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<Pulse>> {
+    pub fn initialize(
+        first_addr: u16,
+        is_first_channel: bool,
+        memory: &Rc<RefCell<CoreMemory>>,
+    ) -> Rc<RefCell<Pulse>> {
         let pulse_ref = Rc::new(RefCell::new(Pulse::new(first_addr, is_first_channel)));
         memory.borrow_mut().register_listener(pulse_ref.clone());
 
@@ -76,13 +78,13 @@ impl Pulse
         self.enabled = enabled;
     }
 
-    fn set_duty_envelope(&mut self, byte0:u8) {
+    fn set_duty_envelope(&mut self, byte0: u8) {
         self.sequencer.duty = ((byte0 & 0xc0) >> 6) as usize; /* NB: does not change duty_index */
         self.envelope.set_envelope(byte0);
         self.length_counter.set_halt(byte0 & 0x20 != 0);
     }
 
-    fn set_lc_timer_hi(&mut self, byte3:u8) {
+    fn set_lc_timer_hi(&mut self, byte3: u8) {
         self.sequencer.timer.set_timer_hi(byte3);
         self.length_counter.set_lc(byte3);
 
@@ -92,9 +94,9 @@ impl Pulse
     }
 
     pub fn amplitude(&self) -> f32 {
-        self.length_counter.amplitude() 
+        self.length_counter.amplitude()
             * self.envelope.amplitude()
-            * self.sequencer.amplitude() 
+            * self.sequencer.amplitude()
             * self.sweep.amplitude()
     }
 }
@@ -110,10 +112,10 @@ impl PulseSequencer {
         PulseSequencer {
             timer: Timer::new(),
             duty: 0,
-            duty_index: 0
+            duty_index: 0,
         }
     }
-    
+
     fn clock(&mut self) {
         if self.timer.clock() {
             self.duty_index = (self.duty_index + 1) % 8
@@ -128,7 +130,7 @@ impl PulseSequencer {
 impl MemoryListener for Pulse {
     fn get_addresses(&self) -> Vec<u16> {
         let a = self.first_address;
-        [a, a+1, a+2, a+3].to_vec()
+        [a, a + 1, a + 2, a + 3].to_vec()
     }
 
     fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
@@ -151,7 +153,10 @@ impl MemoryListener for Pulse {
                 self.set_lc_timer_hi(value);
             }
             _ => {
-                panic!("APU instrument passed invalid memory address 0x{:x}", address);
+                panic!(
+                    "APU instrument passed invalid memory address 0x{:x}",
+                    address
+                );
             }
         }
     }

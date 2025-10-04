@@ -1,12 +1,11 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::apu::timer::Timer;
 use crate::cpu::{CoreMemory, MemoryListener};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /* different for PAL */
-const NTSC_RATE_MAP : [u16; 16] = [
-    428, 380, 340, 320, 286, 254, 226, 214,
-    190, 160, 142, 128, 106,  84,  72,  54
+const NTSC_RATE_MAP: [u16; 16] = [
+    428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54,
 ];
 
 pub struct DMC {
@@ -56,7 +55,7 @@ impl DMC {
             enabled: false,
         }
     }
-    
+
     pub fn tick(&mut self, _apu_counter: u16) {
         if !self.enabled {
             return;
@@ -114,7 +113,7 @@ impl DMC {
 
 impl MemoryListener for DMC {
     fn get_addresses(&self) -> Vec<u16> {
-        [0x4010,0x4011,0x4012,0x4013].to_vec()
+        [0x4010, 0x4011, 0x4012, 0x4013].to_vec()
     }
 
     fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
@@ -144,7 +143,7 @@ impl MemoryListener for DMC {
                 self.sample_length = ((value as u16) << 4) | 1;
                 self.sample_bytes_remaining = self.sample_length;
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }

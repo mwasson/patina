@@ -1,14 +1,12 @@
 #[derive(Debug, Default, Clone)]
-pub struct PPUInternalRegisters
-{
+pub struct PPUInternalRegisters {
     pub v: u16,
     pub t: u16,
     pub x: u8,
     pub w: bool,
 }
 
-impl PPUInternalRegisters
-{
+impl PPUInternalRegisters {
     pub fn get_coarse_x(&self) -> u8 {
         (self.v & 0x1f) as u8
     }
@@ -117,7 +115,7 @@ impl PPUInternalRegisters
             } else if coarse_y == 31 {
                 self.set_coarse_y(0);
             } else {
-                self.set_coarse_y(coarse_y+1);
+                self.set_coarse_y(coarse_y + 1);
             }
         }
     }

@@ -1,9 +1,9 @@
-use std::{fs, io};
+use crate::mapper::Mapper;
+use crate::ppu::NametableMirroring;
 use std::cell::RefCell;
 use std::io::ErrorKind;
 use std::rc::Rc;
-use crate::mapper::Mapper;
-use crate::ppu::NametableMirroring;
+use std::{fs, io};
 
 pub struct Rom {
     pub prg_data: Vec<u8>,
@@ -36,7 +36,6 @@ impl Rom {
         crate::mapper::load_mapper(upper_nybble | lower_nybble, self)
     }
 
-
     /* TODO: Result should probably be std Result, not io Result */
     fn read_rom_data(rom_data: &Vec<u8>) -> io::Result<Rom> {
         println!("ROM validation...");
@@ -48,13 +47,16 @@ impl Rom {
 
         let header_data = &rom_data[0..4];
         if header_data != b"NES\x1A" {
-            error_msg = format!("The ROM's header must meet the NES ROM specification; however, it was: {:?}", header_data);
+            error_msg = format!(
+                "The ROM's header must meet the NES ROM specification; however, it was: {:?}",
+                header_data
+            );
         }
 
         /* parse section sizes; PRG ROM is in 16k increments,
          * CHR ROM is in 8k (and can be zero) TODO: this does not handle that case */
-        let prg_rom_size = (rom_data[4] as usize) * (1 << 14 /*16k*/);
-        let chr_rom_size = (rom_data[5] as usize) * (1 << 13 /*8k*/);
+        let prg_rom_size = (rom_data[4] as usize) * (1 << 14/*16k*/);
+        let chr_rom_size = (rom_data[5] as usize) * (1 << 13/*8k*/);
 
         /* todo: assert bytes 10-15 are zero */
 
@@ -75,7 +77,7 @@ impl Rom {
             byte_7_flags: rom_data[7],
             _trainer: vec![], /* TODO */
             _prg_ram: vec![], /* TODO */
-            _tv_system: rom_data[9]
+            _tv_system: rom_data[9],
         };
 
         println!("Rom flags:");

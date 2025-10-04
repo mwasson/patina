@@ -26,7 +26,7 @@ impl NROM {
             prg_ram,
             chr_ram,
             is_32_kb,
-            nametable_mirroring: rom.nametable_mirroring()
+            nametable_mirroring: rom.nametable_mirroring(),
         }
     }
 

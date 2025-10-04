@@ -1,8 +1,8 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::apu::length_counter::LengthCounter;
 use crate::apu::timer::Timer;
 use crate::cpu::{CoreMemory, MemoryListener};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Triangle {
     sequencer: TriangleSequencer,
@@ -27,7 +27,7 @@ impl Triangle {
             enabled: false,
         }
     }
-    
+
     pub fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
@@ -64,7 +64,7 @@ impl Triangle {
 
 impl MemoryListener for Triangle {
     fn get_addresses(&self) -> Vec<u16> {
-        [0x4008,0x4009,0x400a,0x400b].to_vec()
+        [0x4008, 0x4009, 0x400a, 0x400b].to_vec()
     }
 
     fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
@@ -86,7 +86,7 @@ impl MemoryListener for Triangle {
                 self.length_counter.set_lc(value);
                 self.linear_counter.set_reload();
             }
-            _ => panic!("invalid triangle memory address")
+            _ => panic!("invalid triangle memory address"),
         }
     }
 }
@@ -158,7 +158,7 @@ impl LinearCounter {
         self.reload_flag = true;
     }
 
-    fn load_lin_counter_data(&mut self, data:u8) {
+    fn load_lin_counter_data(&mut self, data: u8) {
         self.control_flag = data & 0x80 != 0;
         self.reload_value = data & 0x7f;
     }

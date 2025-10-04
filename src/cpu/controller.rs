@@ -1,8 +1,8 @@
+use crate::cpu::core_memory::MemoryListener;
+use crate::cpu::CoreMemory;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use winit::keyboard::{Key, NamedKey};
-use crate::cpu::core_memory::MemoryListener;
-use crate::cpu::CoreMemory;
 
 const CONTROLLER_ADDRESS: u16 = 0x4016;
 
@@ -38,7 +38,8 @@ impl Controller {
         self.push_key_press(&recorded_keys, Key::Named(NamedKey::Enter)); /* start */
         self.push_key_press(&recorded_keys, Key::Named(NamedKey::Tab)); /* select */
         self.push_key_press(&recorded_keys, Key::Character("z".parse().unwrap())); /* B */
-        self.push_key_press(&recorded_keys, Key::Character("x".parse().unwrap())); /* A */
+        self.push_key_press(&recorded_keys, Key::Character("x".parse().unwrap()));
+        /* A */
     }
 
     pub fn get_next_byte(&mut self) -> u8 {
@@ -46,16 +47,17 @@ impl Controller {
     }
 
     fn push_key_press(&mut self, recorded_keys: &HashSet<Key>, key: Key) {
-        self.inputs_in_order.push(if recorded_keys.contains(&key) { 1 } else { 0})
+        self.inputs_in_order
+            .push(if recorded_keys.contains(&key) { 1 } else { 0 })
     }
 }
 
 impl MemoryListener for Controller {
     fn get_addresses(&self) -> Vec<u16> {
         let mut addrs = Vec::new();
-        
+
         addrs.push(CONTROLLER_ADDRESS);
-        
+
         addrs
     }
 
@@ -67,6 +69,6 @@ impl MemoryListener for Controller {
         if self.old_value & 1 == 1 && value & 1 == 0 {
             self.record_data();
         }
-        self.old_value = value; 
+        self.old_value = value;
     }
 }

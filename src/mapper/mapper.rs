@@ -1,6 +1,6 @@
+use crate::ppu::{NametableMirroring, Tile};
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::ppu::{NametableMirroring, Tile};
 
 pub trait Mapper {
     fn read_prg(&self, address: u16) -> u8;

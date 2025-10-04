@@ -2,7 +2,7 @@ use crate::mapper::Mapper;
 use crate::ppu::NametableMirroring;
 use crate::rom::Rom;
 
-const SHIFT_REGISTER_INITIAL_VAL : u8 = 1 << 4;
+const SHIFT_REGISTER_INITIAL_VAL: u8 = 1 << 4;
 
 /* TODO does not necessarily correctly handle consecutive cycle writes; this might become
  * an issue if we reach cycle accuracy
@@ -12,7 +12,7 @@ const SHIFT_REGISTER_INITIAL_VAL : u8 = 1 << 4;
 
 #[derive(Debug)]
 enum PrgRomBankMode {
-    Mode32kb, /* switch 32kb banks, ignoring low bit of bank number */
+    Mode32kb,         /* switch 32kb banks, ignoring low bit of bank number */
     Mode16KbFixLower, /* 16kb banks, 0x8000 fixed to first bank, switch 0xc000 */
     Mode16KbFixUpper, /* 16kb banks, switch 0x8000, 0xc000 fixed to last bank */
 }
@@ -22,7 +22,7 @@ pub struct MMC1 {
     prg_ram: Box<[u8; 1 << 15]>, /* optional RAM; TODO size can only be determined in NES 2.0 ROMs*/
     prg_rom: Box<Vec<u8>>,
     chr_ram: Box<Vec<u8>>, /* might be ROM */
-    ram_bank_index: u8, /* TODO not used? */
+    ram_bank_index: u8,    /* TODO not used? */
     chr_bank_0: u8,
     chr_bank_1: u8,
     chr_bank_mode: bool, /* true == switch two 4kb banks; false == switch single 8kb bank */
@@ -35,10 +35,10 @@ impl MMC1 {
     pub fn new(rom: &Rom) -> MMC1 {
         /* TODO AWFUL--but length of chr data in rom doesn't determine CHR-RAM space */
         let mut chr_rom = Vec::with_capacity(1 << 16);
-        for _i in 0..1<<16 {
+        for _i in 0..1 << 16 {
             chr_rom.push(0);
         }
-        for i in 0 ..rom.chr_data.len() {
+        for i in 0..rom.chr_data.len() {
             chr_rom[i] = rom.chr_data[i];
         }
 
@@ -113,7 +113,7 @@ impl MMC1 {
         match self.prg_bank_mode {
             PrgRomBankMode::Mode32kb => {
                 (self.prg_bank_index >> 1) * 0x8000 + address as usize - 0x8000
-            },
+            }
             PrgRomBankMode::Mode16KbFixLower => {
                 if address < 0xc000 {
                     /* read from first bank */
@@ -121,7 +121,7 @@ impl MMC1 {
                 } else {
                     self.prg_bank_index * 0x4000 + address as usize - 0xc000
                 }
-            },
+            }
             PrgRomBankMode::Mode16KbFixUpper => {
                 if address < 0xc000 {
                     self.prg_bank_index * 0x4000 + address as usize - 0x8000
@@ -142,13 +142,17 @@ impl MMC1 {
         if self.chr_bank_mode {
             let bank_size = 0x1000;
             let is_bank_1 = address & 0x1000 != 0;
-            let bank_num = if is_bank_1 { self.chr_bank_1 } else { self.chr_bank_0 } as usize;
+            let bank_num = if is_bank_1 {
+                self.chr_bank_1
+            } else {
+                self.chr_bank_0
+            } as usize;
             let bank_offset = if is_bank_1 { 0x1000 } else { 0 };
             bank_size * bank_num + (address - bank_offset) as usize
         /* 8kb mode */
         } else {
             let bank_size = 0x2000;
-            bank_size * (self.chr_bank_0>>1) as usize + address as usize
+            bank_size * (self.chr_bank_0 >> 1) as usize + address as usize
         }
     }
 }
@@ -165,10 +169,10 @@ impl Mapper for MMC1 {
     fn read_prg_slice(&self, address: u16, size: usize) -> &[u8] {
         if address < 0x8000 {
             let index = self.prg_ram_index(address);
-            &self.prg_ram[index..index+size]
+            &self.prg_ram[index..index + size]
         } else {
             let index = self.prg_rom_index(address);
-            &self.prg_rom[index..index+size]
+            &self.prg_rom[index..index + size]
         }
     }
 

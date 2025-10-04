@@ -1,6 +1,5 @@
 #[derive(Debug)]
-pub enum PPURegister
-{
+pub enum PPURegister {
     PPUCTRL,
     PPUMASK,
     PPUSTATUS,
@@ -12,8 +11,7 @@ pub enum PPURegister
     OAMDMA,
 }
 
-impl PPURegister
-{
+impl PPURegister {
     pub fn address(register: &PPURegister) -> u16 {
         match register {
             PPURegister::PPUCTRL => 0x2000,
@@ -39,7 +37,7 @@ impl PPURegister
             0x2006 => Some(PPURegister::PPUADDR),
             0x2007 => Some(PPURegister::PPUDATA),
             0x4014 => Some(PPURegister::OAMDMA),
-            _ => None
+            _ => None,
         }
     }
 }

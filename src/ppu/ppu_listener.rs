@@ -1,13 +1,12 @@
+use crate::cpu::CoreMemory;
+use crate::cpu::MemoryListener;
+use crate::ppu::PPURegister::*;
+use crate::ppu::{PPURegister, OAM_SIZE, PPU};
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::cpu::MemoryListener;
-use crate::cpu::CoreMemory;
-use crate::ppu::PPURegister::*;
-use crate::ppu::{PPURegister, PPU, OAM_SIZE};
 
 #[derive(Clone)]
-pub struct PPUListener
-{
+pub struct PPUListener {
     ppu: Rc<RefCell<PPU>>,
     read_buffer: u8,
 
@@ -19,8 +18,7 @@ pub struct PPUListener
     vram_address: u16,
 }
 
-impl PPUListener
-{
+impl PPUListener {
     pub fn new(ppu: Rc<RefCell<PPU>>) -> PPUListener {
         PPUListener {
             ppu,
@@ -51,12 +49,8 @@ impl MemoryListener for PPUListener {
         if let Some(updated_register) = PPURegister::from_addr(address) {
             let mut ppu = self.ppu.borrow_mut();
             match updated_register {
-                PPUCTRL => {
-                    ppu.ppu_ctrl
-                }
-                PPUMASK => {
-                    ppu.ppu_mask
-                }
+                PPUCTRL => ppu.ppu_ctrl,
+                PPUMASK => ppu.ppu_mask,
                 PPUSTATUS => {
                     ppu.internal_regs.w = false;
                     let result = ppu.ppu_status;
@@ -71,15 +65,20 @@ impl MemoryListener for PPUListener {
                 PPUDATA => {
                     let result = self.read_buffer;
                     self.read_buffer = ppu.read_vram(self.vram_address as usize);
-                    
+
                     self.vram_address += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
 
                     result
                 }
-                _ => { panic!("unimplemented {:?}", updated_register) }
+                _ => {
+                    panic!("unimplemented {:?}", updated_register)
+                }
             }
         } else {
-            panic!("PPU listener was given non-PPU register address 0x{:?}", address)
+            panic!(
+                "PPU listener was given non-PPU register address 0x{:?}",
+                address
+            )
         }
     }
 
@@ -100,7 +99,7 @@ impl MemoryListener for PPUListener {
                     /* TODO: anything here?  */
                     /* TODO: OAMADDR should also be set to 0 during pre-render and visible scanlines */
                     if value != 0 {
-                       panic!("oamaddr not implemented for non-zero values");
+                        panic!("oamaddr not implemented for non-zero values");
                     }
                 }
                 OAMDATA => {
@@ -122,7 +121,8 @@ impl MemoryListener for PPUListener {
                 }
                 PPUADDR => {
                     if ppu.internal_regs.is_first_write() {
-                        self.vram_address = (self.vram_address & 0xff) | (((value & 0x3f) as u16) << 8);
+                        self.vram_address =
+                            (self.vram_address & 0xff) | (((value & 0x3f) as u16) << 8);
                     } else {
                         self.vram_address = (self.vram_address & 0xff00) | (value as u16);
                         /* separately, this could affect the PPU's registers--even just clearing
@@ -131,7 +131,6 @@ impl MemoryListener for PPUListener {
                          */
                         ppu.internal_regs.t = self.vram_address;
                         ppu.internal_regs.v = self.vram_address;
-
                     }
                     ppu.internal_regs.w = !ppu.internal_regs.w
                 }
@@ -143,7 +142,9 @@ impl MemoryListener for PPUListener {
                     let base_addr = (value as u16) << 8;
                     memory.copy_slice(base_addr, OAM_SIZE, &mut ppu.oam);
                 }
-                _ => { panic!("unimplemented ppu listener write for {updated_register:?}") }
+                _ => {
+                    panic!("unimplemented ppu listener write for {updated_register:?}")
+                }
             }
         }
     }

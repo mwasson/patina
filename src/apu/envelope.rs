@@ -18,7 +18,7 @@ impl Envelope {
             loop_flag: false,
         }
     }
-    
+
     pub fn clock(&mut self) {
         /* if the start flag is set, reset the envelope: decay level is maxed out, and
          * the divider goes back to the beignning of the period
@@ -33,7 +33,9 @@ impl Envelope {
          */
         } else if self.divider == 0 {
             self.divider = self.period_or_volume;
-            if self.decay_level == 0 && self.loop_flag /* halt flag is also loop flag */ {
+            if self.decay_level == 0 && self.loop_flag
+            /* halt flag is also loop flag */
+            {
                 self.decay_level = 15;
             } else if self.decay_level > 0 {
                 self.decay_level -= 1;
@@ -45,7 +47,11 @@ impl Envelope {
     }
 
     pub fn amplitude(&self) -> f32 {
-        (if self.constant_volume { self.period_or_volume } else { self.decay_level }) as f32
+        (if self.constant_volume {
+            self.period_or_volume
+        } else {
+            self.decay_level
+        }) as f32
     }
 
     pub fn set_envelope(&mut self, data: u8) {
