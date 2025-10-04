@@ -1,3 +1,4 @@
+mod bank_array;
 mod mapper;
 mod mmc1;
 mod nrom;
@@ -11,6 +12,12 @@ use crate::mapper::mmc1::MMC1;
 use crate::mapper::uxrom::UxROM;
 use crate::rom::Rom;
 pub use mapper::Mapper;
+
+/* common bank sizes; u16 since they must fit in the CPU address space */
+const SIZE_4_KB: u16 = 1 << 12;
+const SIZE_8_KB: u16 = 1 << 13;
+const SIZE_16_KB: u16 = 1 << 14;
+const SIZE_32_KB: u16 = 1 << 15;
 
 pub fn load_mapper(mapper_num: u8, rom: &Rom) -> Rc<RefCell<Box<dyn Mapper>>> {
     let mapper: Box<dyn Mapper> = match mapper_num {

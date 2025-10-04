@@ -1,4 +1,5 @@
-use crate::mapper::Mapper;
+use crate::mapper::bank_array::BankArray;
+use crate::mapper::{Mapper, SIZE_16_KB, SIZE_32_KB, SIZE_4_KB, SIZE_8_KB};
 use crate::ppu::NametableMirroring;
 use crate::rom::Rom;
 
@@ -19,10 +20,9 @@ enum PrgRomBankMode {
 
 pub struct MMC1 {
     shift_register: u8,
-    prg_ram: Box<[u8; 1 << 15]>, /* optional RAM; TODO size can only be determined in NES 2.0 ROMs*/
-    prg_rom: Box<Vec<u8>>,
-    chr_ram: Box<Vec<u8>>, /* might be ROM */
-    ram_bank_index: u8,    /* TODO not used? */
+    prg_ram: Box<[u8; SIZE_32_KB as usize]>, /* optional RAM; TODO size can only be determined in NES 2.0 ROMs*/
+    prg_banks: BankArray,
+    chr_banks: BankArray,
     chr_bank_0: u8,
     chr_bank_1: u8,
     chr_bank_mode: bool, /* true == switch two 4kb banks; false == switch single 8kb bank */
@@ -33,30 +33,26 @@ pub struct MMC1 {
 
 impl MMC1 {
     pub fn new(rom: &Rom) -> MMC1 {
-        /* TODO AWFUL--but length of chr data in rom doesn't determine CHR-RAM space */
-        let mut chr_rom = Vec::with_capacity(1 << 16);
-        for _i in 0..1 << 16 {
-            chr_rom.push(0);
-        }
-        for i in 0..rom.chr_data.len() {
-            chr_rom[i] = rom.chr_data[i];
-        }
+        let prg_banks = BankArray::new(SIZE_16_KB, 0x8000, rom.prg_data.clone());
+        let chr_banks = BankArray::new(SIZE_8_KB, 0, rom.chr_data.clone());
 
-        let prg_rom = Box::new(rom.prg_data.clone());
-
-        MMC1 {
+        let mut result = MMC1 {
             shift_register: SHIFT_REGISTER_INITIAL_VAL,
             prg_ram: Box::new([0; 1 << 15]),
-            prg_rom,
-            chr_ram: Box::new(chr_rom), /* NB: might actually be CHR-RAM */
-            ram_bank_index: 0,
+            prg_banks,
+            chr_banks,
             chr_bank_0: 0,
             chr_bank_1: 1,
             chr_bank_mode: false,
             prg_bank_mode: PrgRomBankMode::Mode16KbFixUpper, /* empirically determined default mode */
             prg_bank_index: 0,
             nametable_mirroring: NametableMirroring::Horizontal,
-        }
+        };
+
+        result.update_prg_banks();
+        result.update_chr_banks();
+
+        result
     }
 
     fn listen_for_state_change(&mut self, address: u16, value: u8) {
@@ -90,18 +86,22 @@ impl MMC1 {
                         3 => PrgRomBankMode::Mode16KbFixUpper,
                         _ => PrgRomBankMode::Mode32kb, /* 0 or 1 */
                     };
+                    self.update_prg_banks();
                     /* bit 4: CHR-ROM bank mode: 1 == switch 8kb, 0 == switch 4kb */
                     self.chr_bank_mode = self.shift_register & 0x10 != 0;
+                    self.update_chr_banks();
                 /* CHR bank 0 */
                 } else if address < 0xc000 {
                     self.chr_bank_0 = self.shift_register;
+                    self.update_chr_banks();
                 /* CHR bank 1 */
                 } else if address < 0xe000 {
                     self.chr_bank_1 = self.shift_register;
+                    self.update_chr_banks();
                 /* PRG bank */
                 } else {
-                    /* bits 0-3: select 16kb PRG-ROM bank, first bit ignored in 32kb mode */
                     self.prg_bank_index = (self.shift_register & 0xf) as usize;
+                    self.update_prg_banks();
                     /* TODO: bit 4 disables the PRG-RAM chip. In practice, what does that mean? */
                 }
                 self.shift_register = SHIFT_REGISTER_INITIAL_VAL;
@@ -109,51 +109,39 @@ impl MMC1 {
         }
     }
 
-    fn prg_rom_index(&self, address: u16) -> usize {
+    fn update_prg_banks(&mut self) {
         match self.prg_bank_mode {
             PrgRomBankMode::Mode32kb => {
-                (self.prg_bank_index >> 1) * 0x8000 + address as usize - 0x8000
+                self.prg_banks.change_bank_size(SIZE_32_KB);
+                /* first bit ignored in 32kb mode */
+                self.prg_banks.set_bank(0, self.prg_bank_index >> 1);
             }
             PrgRomBankMode::Mode16KbFixLower => {
-                if address < 0xc000 {
-                    /* read from first bank */
-                    address as usize - 0x8000
-                } else {
-                    self.prg_bank_index * 0x4000 + address as usize - 0xc000
-                }
+                self.prg_banks.change_bank_size(SIZE_16_KB);
+                self.prg_banks.set_bank(0, 0);
+                self.prg_banks.set_bank(1, self.prg_bank_index);
             }
             PrgRomBankMode::Mode16KbFixUpper => {
-                if address < 0xc000 {
-                    self.prg_bank_index * 0x4000 + address as usize - 0x8000
-                } else {
-                    /* read from last bank */
-                    self.prg_rom.len() - 0x4000 + address as usize - 0xc000
-                }
+                self.prg_banks.change_bank_size(SIZE_16_KB);
+                self.prg_banks.set_bank(0, self.prg_bank_index);
+                self.prg_banks.set_last_bank(1);
             }
+        }
+    }
+
+    fn update_chr_banks(&mut self) {
+        if self.chr_bank_mode {
+            self.chr_banks.change_bank_size(SIZE_4_KB);
+            self.chr_banks.set_bank(0, self.chr_bank_0 as usize);
+            self.chr_banks.set_bank(1, self.chr_bank_1 as usize);
+        } else {
+            self.chr_banks.change_bank_size(SIZE_8_KB);
+            self.chr_banks.set_bank(0, (self.chr_bank_0 >> 1) as usize);
         }
     }
 
     fn prg_ram_index(&self, address: u16) -> usize {
-        (address as usize - 0x6000) + (self.ram_bank_index as usize * 0x2000)
-    }
-
-    fn chr_index(&self, address: u16) -> usize {
-        /* 4kb mode */
-        if self.chr_bank_mode {
-            let bank_size = 0x1000;
-            let is_bank_1 = address & 0x1000 != 0;
-            let bank_num = if is_bank_1 {
-                self.chr_bank_1
-            } else {
-                self.chr_bank_0
-            } as usize;
-            let bank_offset = if is_bank_1 { 0x1000 } else { 0 };
-            bank_size * bank_num + (address - bank_offset) as usize
-        /* 8kb mode */
-        } else {
-            let bank_size = 0x2000;
-            bank_size * (self.chr_bank_0 >> 1) as usize + address as usize
-        }
+        address as usize - 0x6000
     }
 }
 
@@ -162,7 +150,7 @@ impl Mapper for MMC1 {
         if address < 0x8000 {
             self.prg_ram[self.prg_ram_index(address)]
         } else {
-            self.prg_rom[self.prg_rom_index(address)]
+            self.prg_banks.read(address)
         }
     }
 
@@ -171,31 +159,26 @@ impl Mapper for MMC1 {
             let index = self.prg_ram_index(address);
             &self.prg_ram[index..index + size]
         } else {
-            let index = self.prg_rom_index(address);
-            &self.prg_rom[index..index + size]
+            self.prg_banks.read_slice(address, size)
         }
     }
 
     fn write_prg(&mut self, address: u16, value: u8) {
-        let usize_addr = address as usize;
-
         /* below 0x8000, it's writing to PRG-RAM, which we assume exists TODO update for NES 2.0 */
-        if usize_addr < 0x8000 {
-            self.prg_ram[(usize_addr - 0x6000) + (self.ram_bank_index as usize * 0x2000)] = value;
-        /* otherwise, we don't actually write to memory: these addresses are only for changing
-         * MMC1 internal state */
+        if address < 0x8000 {
+            self.prg_ram[self.prg_ram_index(address)] = value;
+        /* otherwise, writing to an MMC1 register */
         } else {
             self.listen_for_state_change(address, value);
         }
     }
 
     fn read_chr(&self, address: u16) -> u8 {
-        self.chr_ram[self.chr_index(address)]
+        self.chr_banks.read(address)
     }
 
     fn write_chr(&mut self, address: u16, value: u8) {
-        let index = self.chr_index(address);
-        self.chr_ram[index] = value;
+        self.chr_banks.write(address, value);
     }
 
     fn get_nametable_mirroring(&self) -> NametableMirroring {
