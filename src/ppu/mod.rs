@@ -9,7 +9,7 @@ pub mod ppu_listener;
 pub use ppu::{PPU, NametableMirroring};
 pub use ppu_registers::PPURegister;
 pub use ppu_internal_registers::PPUInternalRegisters;
-pub use tile::{_index_to_pixel, Tile};
+pub use tile::Tile;
 
 const OAM_SIZE : usize = 256;
 /* 4kb VRAM covering the entirety of the nametable space; in reality only 2kb is used but this

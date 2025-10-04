@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use crate::cpu::CoreMemory;
 use crate::mapper::Mapper;
 use crate::ppu::palette::Palette;
-use crate::ppu::{_index_to_pixel, PPUInternalRegisters, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, WRITE_BUFFER_SIZE, PALETTE_MEMORY_SIZE, VRAM_SIZE};
+use crate::ppu::{PPUInternalRegisters, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, WRITE_BUFFER_SIZE, PALETTE_MEMORY_SIZE, VRAM_SIZE};
 use crate::processor::Processor;
 
 pub struct PPU {
@@ -155,8 +155,8 @@ impl PPU {
                 if pixel_loc < 0 || pixel_loc > 0xff || line_buffer[index + 3] != 0 {
                     continue;
                 }
-                let brightness = tile.pixel_intensity(pixel_offset as usize,
-                                                      self.internal_regs.get_fine_y() as usize);
+                let brightness = tile.pixel_intensity(&self.mapper.borrow(), pixel_offset,
+                                                      self.internal_regs.get_fine_y());
 
                 if brightness > 0 {
                     /* TODO doesn't handle 16 pixel tall sprites */
@@ -269,15 +269,15 @@ impl PPU {
         } else {
             (tile_index, (self.ppu_ctrl & 0x8) >> 3)
         };
-        self.get_tile(tile_index, pattern_table as usize, self.tall_sprites)
+        self.get_tile(tile_index, pattern_table)
     }
 
     fn get_bg_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, ((self.ppu_ctrl & 0x10) >> 4) as usize, false)
+        self.get_tile(tile_index, ((self.ppu_ctrl & 0x10) >> 4))
     }
 
-    fn get_tile(&self, tile_index: u8, pattern_table_num: usize, tall_tiles: bool) -> Tile {
-        self.mapper.borrow().read_tile(tile_index, pattern_table_num, tall_tiles)
+    fn get_tile(&self, tile_index: u8, pattern_table_num: u8) -> Tile {
+        self.mapper.borrow().read_tile(tile_index, pattern_table_num)
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
@@ -357,22 +357,6 @@ impl PPU {
             result
         }
     }
-
-    pub fn _render(&self, chr_data: &[u8], write_buffer: &mut [u8], width: usize) {
-        PPU::_render_pattern_table(&chr_data[0..(256 * 16)], write_buffer, width, 0);
-        PPU::_render_pattern_table(&chr_data[(256 * 16)..(256 * 32)], write_buffer, width, 128);
-    }
-
-    pub fn _render_pattern_table(pattern_table: &[u8], write_buffer: &mut [u8], width: usize, start_x: usize) {
-        for i in 0..256 {
-            let xy = _index_to_pixel(16, i);
-            let data_start = i * 16;
-            let mut tile_data = Vec::with_capacity(16);
-            tile_data.copy_from_slice(&pattern_table[data_start..data_start + 16]);
-            let tile = Tile::from_memory(tile_data);
-            tile._stamp(write_buffer, width, xy.0 * 8 + start_x, xy.1 * 8);
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -396,15 +380,15 @@ impl SpriteInfo {
 
     fn get_brightness_localized(&self, ppu: &PPU, x: u8, y: u8) -> u8 {
         let tile = ppu.get_sprite_tile(self.tile_index); /* TODO is this right? */
-        let mut x_to_use = x as usize;
+        let mut x_to_use = x;
         if self.attrs & 0x40 != 0 { /* flipped horizontally */
             x_to_use = 7-x_to_use;
         }
-        let mut y_to_use = y as usize;
+        let mut y_to_use = y;
         if self.attrs & 0x80 != 0 { /* flipped vertically */
-            y_to_use = (ppu.sprite_height()-1) as usize - y_to_use;
+            y_to_use = (ppu.sprite_height()-1) - y_to_use;
         }
-        tile.pixel_intensity(x_to_use, y_to_use)
+        tile.pixel_intensity(&ppu.mapper.borrow(), x_to_use, y_to_use)
     }
 
     fn get_palette(&self, ppu: &PPU) -> Palette {

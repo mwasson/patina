@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::ppu::{NametableMirroring, Tile};
 
 pub trait Mapper {
@@ -10,15 +12,10 @@ pub trait Mapper {
     fn read_chr(&self, address: u16) -> u8;
 
     #[inline(never)]
-    fn read_tile(&self, tile_index: u8, pattern_table_num: usize, double_height: bool) -> Tile {
-        let pattern_table_base : usize = 0x1000 * pattern_table_num;
-        let len = if double_height { 32 } else { 16 };
-        let tile_start = pattern_table_base + (tile_index as usize * 16);
-        let mut memcopy = Vec::with_capacity(len);
-        for i in 0..len {
-            memcopy.push(self.read_chr(tile_start as u16 + i as u16));
-        }
-        Tile::from_memory(memcopy)
+    fn read_tile(&self, tile_index: u8, pattern_table_num: u8) -> Tile {
+        let pattern_table_base = 0x1000u16 * pattern_table_num as u16;
+        let tile_start = pattern_table_base + (tile_index as u16 * 16);
+        Tile::new(tile_start)
     }
 
     fn write_chr(&mut self, address: u16, value: u8);
