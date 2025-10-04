@@ -17,11 +17,14 @@ impl Palette
         let color_info = self.data[brightness as usize];
 
         let hue = color_info & 0x3f;
-        let value = color_info & 0xc0;
+        // let value = color_info & 0xc0;
 
-        Palette::apply_value(value, Palette::hue_lookup(hue))
+        // Palette::apply_value(value, Palette::hue_lookup(hue))
+        Palette::hue_lookup(hue)
     }
-    
+
+    /* TODO buggy; messes up Bubble Bobble's colors */
+    #[allow(dead_code)]
     #[inline(never)]
     fn apply_value(value:u8, pixels: [u8; 4]) -> [u8; 4] {
         /* reverse engineered from https://www.nesdev.org/wiki/NTSC_video#Converting_YUV_to_signal_RGB,
