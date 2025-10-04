@@ -15,7 +15,9 @@ pub use status_flag::StatusFlag;
 pub use crate::cpu::instruction::from_opcode;
 pub const MEMORY_SIZE: usize = 1<<11; /* 2kB onboard RAM */
 
+const NMI_HANDLER_LOCATION : u16 = 0xfffa;
 const INITIAL_PC_LOCATION: u16 = 0xfffc;
+const IRQ_HANDLER_LOCATION : u16 = 0xfffe;
 
 #[derive(Debug)]
 pub struct Operation

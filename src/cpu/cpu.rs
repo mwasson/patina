@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use winit::keyboard::Key;
 use crate::cpu;
-use crate::cpu::{operation_from_memory, AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION};
+use crate::cpu::{operation_from_memory, AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION, IRQ_HANDLER_LOCATION, NMI_HANDLER_LOCATION};
 use crate::processor::Processor;
 
 pub struct CPU
@@ -107,7 +107,7 @@ impl CPU
 		self.push_memory_loc(self.program_counter.wrapping_add(offset as u16));
 		self.push((self.status & !(1<<4))| (1 << 5));
 		self.update_flag(StatusFlag::InterruptDisable, false);
-		/* TODO: jump to IRQ handler */
+		self.program_counter = self.read_mem16(IRQ_HANDLER_LOCATION);
 	}
 	pub fn addr_from_mem16(&mut self, lo_byte_addr: u16) -> u16 {
 		self.read_mem16(lo_byte_addr)
@@ -120,7 +120,7 @@ impl CPU
 		/* push processor status register on stack */
 		self.push((self.status & !(1<<4))| (1 << 5));
 		/* read NMI handler address from 0xFFFA/0xFFFB and jump to that address*/
-		self.program_counter = AddressingMode::Indirect.resolve_address_u16(self, 0xfffa);
+		self.program_counter = AddressingMode::Indirect.resolve_address_u16(self, NMI_HANDLER_LOCATION);
 	}
 
 	pub fn write_mem(&mut self, addr: u16, data: u8) {
