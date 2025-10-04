@@ -1,5 +1,5 @@
 use crate::mapper::Mapper;
-use crate::ppu::{NametableMirroring, Tile};
+use crate::ppu::NametableMirroring;
 use crate::rom::Rom;
 
 const PRG_BANK_SIZE: usize = 1 << 15;
@@ -62,7 +62,7 @@ impl Mapper for NROM {
     fn write_chr(&mut self, address: u16, value: u8) {
         panic!("NROM: ATTEMPTED TO WRITE TO CHR-ROM ADDRESS 0x{address:x} VALUE 0x{value:x}");
     }
-    
+
     fn get_nametable_mirroring(&self) -> NametableMirroring {
         self.nametable_mirroring.clone()
     }

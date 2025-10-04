@@ -26,12 +26,12 @@ pub struct PPU {
     pub (super) internal_regs: PPUInternalRegisters,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug)]
 pub enum NametableMirroring {
     Horizontal, /* pages are mirrored horizontally (appropriate for vertical games) */
     Vertical, /* pages are mirrored vertically (appropriate for horizontal games) */
-    #[allow(dead_code)]
-    Single, /* first nametable mirrored four times */
+    SingleNametable0, /* first nametable mirrored four times */
+    SingleNametable1, /* second nametable mirrored four times */
     #[allow(dead_code)]
     FourScreen, /* all four nametable/attribute tables available */
 }
@@ -303,7 +303,7 @@ impl PPU {
         if mapped_address < 0x2000 {
             self.mapper.borrow().read_chr(mapped_address as u16)
         /* nametables and attribute tables */
-        } else if mapped_address < 0x3f00 {
+        } else if mapped_address < 0x3000 {
             self.vram[mapped_address - 0x2000]
         /* palettes */
         } else {
@@ -329,28 +329,35 @@ impl PPU {
     pub fn vram_address_mirror(&self, addr: usize) -> usize {
         let mut result = addr;
 
-        if result >= 0x2000 && result < 0x3000 {
-            return match &self.mapper.borrow().get_nametable_mirroring() {
-                NametableMirroring::Horizontal => result & !0x0400,
-                NametableMirroring::Vertical => result & !0x0800 ,
-                NametableMirroring::Single => result & !0x0c00,
+        if result < 0x2000 {
+            result
+        } else if result < 0x3f00 {
+            if result >= 0x3000 {
+                result -= 0x1000;
+            }
+
+            /* TODO document */
+            match self.mapper.borrow().get_nametable_mirroring() {
+                NametableMirroring::Horizontal => result & !0x0800,
+                NametableMirroring::Vertical => (result & !0x0C00) | ((result & 0x0800) >> 1),
+                NametableMirroring::SingleNametable0 => result & !0x0c00,
+                NametableMirroring::SingleNametable1 => (result & !0x0c00) + 0x400,
                 NametableMirroring::FourScreen => result,
             }
-        }
-
-        /* palettes are repeated above 0x3f1f */
-        if result > 0x3f1f {
+        } else {
+            /* palettes are repeated above 0x3f1f */
             result = 0x3f00 | (result & 0xff);
-        }
-        /* the first color of corresponding background and sprite palettes are shared;
-         * this doesn't have any real effect, except if the true background color is
-         * written to at 0x3f10
-         */
-        if result & 0xfff0 == 0x3f10 && result % 4 == 0 {
-            result -= 0x10;
-        }
 
-        result
+            /* the first color of corresponding background and sprite palettes are shared;
+             * this doesn't have any real effect, except if the true background color is
+             * written to 0x3f10
+             */
+            if result == 0x3f10 {
+                result -= 0x10;
+            }
+
+            result
+        }
     }
 
     pub fn _render(&self, chr_data: &[u8], write_buffer: &mut [u8], width: usize) {

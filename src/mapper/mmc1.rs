@@ -10,6 +10,7 @@ const SHIFT_REGISTER_INITIAL_VAL : u8 = 1 << 4;
 
 /* TODO only implements default MMC1 behavior, does not handle SEROM, SHROM, SH1ROM, etc. */
 
+#[derive(Debug)]
 enum PrgRomBankMode {
     Mode32kb, /* switch 32kb banks, ignoring low bit of bank number */
     Mode16KbFixLower, /* 16kb banks, 0x8000 fixed to first bank, switch 0xc000 */
@@ -21,9 +22,9 @@ pub struct MMC1 {
     prg_ram: Box<[u8; 1 << 15]>, /* optional RAM; TODO size can only be determined in NES 2.0 ROMs*/
     prg_rom: Box<Vec<u8>>,
     chr_ram: Box<Vec<u8>>, /* might be ROM */
-    ram_bank_index: u8,
-    chr_bank_0: usize,
-    chr_bank_1: usize,
+    ram_bank_index: u8, /* TODO not used? */
+    chr_bank_0: u8,
+    chr_bank_1: u8,
     chr_bank_mode: bool, /* true == switch two 4kb banks; false == switch single 8kb bank */
     prg_bank_mode: PrgRomBankMode,
     prg_bank_index: usize,
@@ -34,7 +35,7 @@ impl MMC1 {
     pub fn new(rom: &Rom) -> MMC1 {
         /* TODO AWFUL--but length of chr data in rom doesn't determine CHR-RAM space */
         let mut chr_rom = Vec::with_capacity(1 << 16);
-        for i in 0..(1<<16) {
+        for _i in 0..1<<16 {
             chr_rom.push(0);
         }
         for i in 0 ..rom.chr_data.len() {
@@ -59,9 +60,10 @@ impl MMC1 {
     }
 
     fn listen_for_state_change(&mut self, address: u16, value: u8) {
-        /* a write with bit 7 set resets the shift register */
+        /* a write with bit 7 set resets the mapper */
         if value & 0x80 != 0 {
             self.shift_register = SHIFT_REGISTER_INITIAL_VAL;
+            self.prg_bank_mode = PrgRomBankMode::Mode16KbFixUpper;
         } else {
             /* the shift register is full when the initial 1 has reached the end */
             let shift_register_full = self.shift_register & 1 != 0;
@@ -73,12 +75,12 @@ impl MMC1 {
             /* if we're full, write to the appropriate register, based on where the fifth write
              * occurred, then empty the shift register
              */
-            if (shift_register_full) {
+            if shift_register_full {
                 /* control register */
                 if address < 0xa000 {
                     self.nametable_mirroring = match self.shift_register & 3 {
-                        0 => NametableMirroring::Single, /* TODO 'lower bank' */
-                        1 => NametableMirroring::Single, /* TODO 'upper bank' */
+                        0 => NametableMirroring::SingleNametable0,
+                        1 => NametableMirroring::SingleNametable1,
                         2 => NametableMirroring::Horizontal,
                         _ => NametableMirroring::Vertical,
                     };
@@ -89,13 +91,13 @@ impl MMC1 {
                         _ => PrgRomBankMode::Mode32kb, /* 0 or 1 */
                     };
                     /* bit 4: CHR-ROM bank mode: 1 == switch 8kb, 0 == switch 4kb */
-                    self.chr_bank_mode = value & 0x10 != 0;
+                    self.chr_bank_mode = self.shift_register & 0x10 != 0;
                 /* CHR bank 0 */
                 } else if address < 0xc000 {
-                    self.write_chr_bank_data(false, self.shift_register);
+                    self.chr_bank_0 = self.shift_register;
                 /* CHR bank 1 */
                 } else if address < 0xe000 {
-                    self.write_chr_bank_data(true, self.shift_register);
+                    self.chr_bank_1 = self.shift_register;
                 /* PRG bank */
                 } else {
                     /* bits 0-3: select 16kb PRG-ROM bank, first bit ignored in 32kb mode */
@@ -104,14 +106,6 @@ impl MMC1 {
                 }
                 self.shift_register = SHIFT_REGISTER_INITIAL_VAL;
             }
-        }
-    }
-
-    fn write_chr_bank_data(&mut self, is_bank_1: bool, data: u8) {
-        if is_bank_1 {
-            self.chr_bank_1 = data as usize
-        } else {
-            self.chr_bank_0 = data as usize
         }
     }
 
@@ -144,16 +138,17 @@ impl MMC1 {
     }
 
     fn chr_index(&self, address: u16) -> usize {
-        let bank_size: usize = if self.chr_bank_mode { 0x1000 } else { 0x2000 };
-        let is_bank_1 = address & 0x1000 != 0;
         /* 4kb mode */
         if self.chr_bank_mode {
-            let bank_num = if is_bank_1 { self.chr_bank_1 } else { self.chr_bank_0 };
+            let bank_size = 0x1000;
+            let is_bank_1 = address & 0x1000 != 0;
+            let bank_num = if is_bank_1 { self.chr_bank_1 } else { self.chr_bank_0 } as usize;
             let bank_offset = if is_bank_1 { 0x1000 } else { 0 };
             bank_size * bank_num + (address - bank_offset) as usize
         /* 8kb mode */
         } else {
-            bank_size * (self.chr_bank_0 >> 1) + address as usize
+            let bank_size = 0x2000;
+            bank_size * (self.chr_bank_0>>1) as usize + address as usize
         }
     }
 }
@@ -183,9 +178,8 @@ impl Mapper for MMC1 {
         /* below 0x8000, it's writing to PRG-RAM, which we assume exists TODO update for NES 2.0 */
         if usize_addr < 0x8000 {
             self.prg_ram[(usize_addr - 0x6000) + (self.ram_bank_index as usize * 0x2000)] = value;
-        /* otherwise, we don't actually write: these addresses are only for changing
-         * MMC1 internal state
-         */
+        /* otherwise, we don't actually write to memory: these addresses are only for changing
+         * MMC1 internal state */
         } else {
             self.listen_for_state_change(address, value);
         }

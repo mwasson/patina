@@ -24,9 +24,9 @@ impl Rom {
 
     pub fn nametable_mirroring(&self) -> NametableMirroring {
         if self.byte_6_flags & 1 != 0 {
-            NametableMirroring::Vertical
-        } else {
             NametableMirroring::Horizontal
+        } else {
+            NametableMirroring::Vertical
         }
     }
 
