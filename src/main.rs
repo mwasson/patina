@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	
 	thread::spawn(move || {
 		let memory = Rc::new(RefCell::new(CoreMemory::new(&rom)));
-		let ppu = PPU::from_rom(&rom, write_buffer_clone, memory.clone());
+		let ppu = PPU::new(write_buffer_clone, memory.clone());
 		let mut cpu = CPU::new(memory.clone());
 		
 		let apu = APU::new(memory.clone());

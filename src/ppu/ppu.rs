@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use crate::rom::Rom;
 use std::cmp::min;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -43,8 +42,7 @@ impl Processor for PPU {
 }
 
 impl PPU {
-
-    pub fn from_rom(rom: &Rom, write_buffer: Arc<Mutex<WriteBuffer>>, memory: Rc<RefCell<CoreMemory>>) -> Rc<RefCell<PPU>> {
+    pub fn new(write_buffer: Arc<Mutex<WriteBuffer>>, memory: Rc<RefCell<CoreMemory>>) -> Rc<RefCell<PPU>> {
         let mapper = memory.clone().borrow().mapper.clone();
         Rc::new(RefCell::new(PPU {
             memory,
