@@ -1,12 +1,12 @@
 #[derive(Debug)]
 pub struct Tile
 {
-    data: [u8; 16]
+    data: Vec<u8>
 }
 
 impl Tile
 {
-    pub fn from_memory(memory: [u8; 16]) -> Tile {
+    pub fn from_memory(memory: Vec<u8>) -> Tile {
         Tile {
             data: memory
         }
@@ -41,8 +41,12 @@ impl Tile
     #[inline(never)]
     pub fn pixel_intensity(&self, x:usize, y:usize) -> u8 {
         let rev_x = 7-x;
-        let big = self.data[8+y] >> rev_x;
-        let small = self.data[y] >> rev_x;
+        /* double tall sprites are actually two regular 8x8 tiles glued together,
+         * so for the second half we need to increment values by 8 to index it correctly
+         */
+        let y_row = if y > 7 { y + 8 } else { y };
+        let big = self.data[y_row+8] >> rev_x;
+        let small = self.data[y_row] >> rev_x;
         ((big & 1) << 1) | (small & 1)
         // self.bit_set(self.data[y], x) + 2*self.bit_set(self.data[8+y], x)
     }

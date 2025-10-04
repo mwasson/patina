@@ -22,6 +22,7 @@ pub struct PPU {
     pub (super) ppu_ctrl: u8,
     pub (super) ppu_mask: u8,
     pub (super) ppu_status: u8,
+    pub (super) tall_sprites: bool, /* if true, sprites are 16 pixels tall instead of 8 */
     pub (super) internal_regs: PPUInternalRegisters,
 }
 
@@ -57,6 +58,7 @@ impl PPU {
             ppu_ctrl: 0,
             ppu_mask: 0,
             internal_regs: PPUInternalRegisters::default(),
+            tall_sprites: false,
         }))
     }
 
@@ -132,14 +134,17 @@ impl PPU {
         /* update scrolling */
         self.internal_regs.y_increment();
 
-        if scanline >= OVERSCAN {
+        if scanline >= OVERSCAN && scanline <= 240 - OVERSCAN {
             self.internal_buffer[Self::pixel_range_for_line(scanline)].copy_from_slice(&line_buffer);
         }
     }
 
+    #[inline(never)]
     fn render_background_tiles(&mut self, scanline: u8, line_buffer: &mut [u8; 1024]) {
         let sprite0 = self.slice_as_sprite(0);
-        let mut sprite_zero_in_scanline_not_yet_found =  self.ppu_status & (1<<6) == 0 && sprite0.in_scanline(scanline);
+        let mut sprite_zero_in_scanline_not_yet_found =
+            self.ppu_status & (1<<6) == 0
+            && sprite0.in_scanline(scanline, self.sprite_height());
 
         for x in (0..0x101).step_by(8) {
             let tile = self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize));
@@ -203,6 +208,10 @@ impl PPU {
         }
     }
 
+    fn sprite_height(&self) -> u8 {
+        if self.tall_sprites { 16 } else { 8 }
+    }
+
     fn palette_for_current_bg_tile(&self) -> Palette {
         /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
@@ -235,7 +244,7 @@ impl PPU {
         let mut scanline_sprites = Vec::new();
         for i in 0..OAM_SIZE/4 {
             let sprite_data = self.slice_as_sprite(i);
-            if sprite_data.in_scanline(scanline_num) {
+            if sprite_data.in_scanline(scanline_num, self.sprite_height()) {
                 /* already found eight sprites, set overflow */
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
                 if scanline_sprites.len() >= 8 {
@@ -254,17 +263,21 @@ impl PPU {
         SpriteInfo::from_memory(&sprite_data)
     }
 
-    /* TODO: handle 8x16 sprites */
     fn get_sprite_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, ((self.ppu_ctrl & 0x8) >> 3) as usize)
+        let (tile_index, pattern_table) = if self.tall_sprites {
+            (tile_index & !1, tile_index & 1)
+        } else {
+            (tile_index, (self.ppu_ctrl & 0x8) >> 3)
+        };
+        self.get_tile(tile_index, pattern_table as usize, self.tall_sprites)
     }
 
     fn get_bg_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, ((self.ppu_ctrl & 0x10) >> 4) as usize)
+        self.get_tile(tile_index, ((self.ppu_ctrl & 0x10) >> 4) as usize, false)
     }
 
-    fn get_tile(&self, tile_index: u8, pattern_table_num: usize) -> Tile {
-        self.mapper.borrow().read_tile(tile_index, pattern_table_num)
+    fn get_tile(&self, tile_index: u8, pattern_table_num: usize, tall_tiles: bool) -> Tile {
+        self.mapper.borrow().read_tile(tile_index, pattern_table_num, tall_tiles)
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
@@ -347,7 +360,7 @@ impl PPU {
         for i in 0..256 {
             let xy = _index_to_pixel(16, i);
             let data_start = i * 16;
-            let mut tile_data = [0u8; 16];
+            let mut tile_data = Vec::with_capacity(16);
             tile_data.copy_from_slice(&pattern_table[data_start..data_start + 16]);
             let tile = Tile::from_memory(tile_data);
             tile._stamp(write_buffer, width, xy.0 * 8 + start_x, xy.1 * 8);
@@ -366,8 +379,8 @@ struct SpriteInfo
 }
 
 impl SpriteInfo {
-    fn in_scanline(&self, scanline: u8) -> bool {
-            self.get_y() <= scanline && scanline - self.get_y() < 8 /* TODO ppu.sprite_size() */
+    fn in_scanline(&self, scanline: u8, sprite_height: u8) -> bool {
+            self.get_y() <= scanline && scanline - self.get_y() < sprite_height
     }
 
     fn get_y(&self) -> u8 {
@@ -381,8 +394,8 @@ impl SpriteInfo {
             x_to_use = 7-x_to_use;
         }
         let mut y_to_use = y as usize;
-        if self.attrs & 0x80 != 0 { /* flipped horizontally */
-            y_to_use = 7-y_to_use;
+        if self.attrs & 0x80 != 0 { /* flipped vertically */
+            y_to_use = (ppu.sprite_height()-1) as usize - y_to_use;
         }
         tile.pixel_intensity(x_to_use, y_to_use)
     }

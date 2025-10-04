@@ -88,9 +88,7 @@ impl MemoryListener for PPUListener {
             let mut ppu = self.ppu.borrow_mut();
             match updated_register {
                 PPUCTRL => {
-                    // if value & 0x20 != 0 {
-                    //     panic!("Uh oh, we're in 16 pixel sprite mode..."); /* TODO unimplemented */
-                    // }
+                    ppu.tall_sprites = value & 0x20 != 0;
                     ppu.ppu_ctrl = value;
                     ppu.internal_regs.set_nametable_t(value & 0x3);
                     /* TODO writing triggers an immediate NMI when in vblank PPUSTATUS */
