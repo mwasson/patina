@@ -44,10 +44,9 @@ impl AddressingMode {
                 cpu.addr_from_mem16(addr(byte1, byte2))
             }
             AddressingMode::IndirectX => {
-                let loc = byte1.wrapping_add(cpu.index_x);
-                cpu.addr_from_mem16(loc as u16)
+                cpu.read_mem16(zero_page_addr(byte1.wrapping_add(cpu.index_x)))
             }
-            AddressingMode::IndirectY => cpu.addr_from_mem16(byte1 as u16) + cpu.index_y as u16,
+            AddressingMode::IndirectY => cpu.read_mem16(zero_page_addr(byte1)) + cpu.index_y as u16,
         };
 
         result

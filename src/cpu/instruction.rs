@@ -180,8 +180,6 @@ impl Instruction {
                 cpu.update_zero_neg_flags(cpu.index_y);
             }
             Instruction::JMP => {
-                /* TODO: if this directly sets PC to the value in memory,
-                 * does this imply other things that set PC need an offset? */
                 cpu.program_counter = addr_mode.resolve_address(cpu, b1, b2);
             }
             Instruction::JSR => {

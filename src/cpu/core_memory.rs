@@ -51,8 +51,13 @@ impl CoreMemory {
             }
         }
 
+        /* there's a bug where if there's a page crossing, it reads from the bottom of the same
+         * page */
+        let in_page_addr = (mapped_addr % 256) as u8;
+        let page_base = mapped_addr & !0xff;
+        let hi_byte_addr = page_base + in_page_addr.wrapping_add(1) as u16;
         let lo_byte = self.read_no_listen_no_map(mapped_addr) as u16;
-        let hi_byte = self.read_no_listen_no_map(mapped_addr + 1) as u16;
+        let hi_byte = self.read_no_listen_no_map(hi_byte_addr) as u16;
 
         lo_byte | (hi_byte << 8)
     }
