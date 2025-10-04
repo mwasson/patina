@@ -1,4 +1,3 @@
-use std::time;
 use std::time::{Duration, Instant};
 
 pub trait Processor {
@@ -21,7 +20,7 @@ pub trait Processor {
     {
         let result = f(self);
         let ns = (1e9 as u64) * (cycles as u64) / (self.clock_speed());
-        let frame_duration = time::Duration::from_nanos(ns);
+        let frame_duration = Duration::from_nanos(ns);
         let sleep_time = frame_duration.saturating_sub(start_time.elapsed());
 
         // while !frame_duration.saturating_sub(start_time.elapsed()).is_zero() {

@@ -1,6 +1,4 @@
 use crate::mapper::Mapper;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct Tile {
     tile_addr: u16,

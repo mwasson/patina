@@ -309,7 +309,7 @@ impl PPU {
     }
 
     fn get_bg_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, ((self.ppu_ctrl & 0x10) >> 4))
+        self.get_tile(tile_index, (self.ppu_ctrl & 0x10) >> 4)
     }
 
     fn get_tile(&self, tile_index: u8, pattern_table_num: u8) -> Tile {
