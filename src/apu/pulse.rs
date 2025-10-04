@@ -47,7 +47,8 @@ impl Pulse
             enabled: false,
         }
     }
-    
+
+    #[inline(never)]
     pub(crate) fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;

@@ -105,6 +105,7 @@ impl PPU {
         self.write_buffer.lock().unwrap().copy_from_slice(&self.internal_buffer);
     }
 
+    #[inline(never)]
     pub fn render_scanline(&mut self, scanline: u8) {
         let scanline_sprites = self.sprite_evaluation(scanline);
 
@@ -188,7 +189,8 @@ impl PPU {
             }
         }
     }
-    
+
+    #[inline(never)]
     fn render_sprites(&self, scanline_sprites: &Vec<SpriteInfo>, scanline: u8, line_buffer: &mut [u8], is_foreground: bool) {
         for sprite in scanline_sprites {
             if sprite.is_foreground() != is_foreground {
