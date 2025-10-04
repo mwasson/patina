@@ -78,8 +78,12 @@ impl CoreMemory {
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
+        /* addresses that appear to be control registers for the Famicom Disk System; ignore */
+        if address >= 0x4020 && address < 0x4100 {
+            return;
+        }
         /* high addresses go to the on-cartridge mapper */
-        if address >= 0x4020 {
+        if address >= 0x4100 {
             self.mapper.borrow_mut().write_prg(address, value);
         /* low addresses handled by on-board memory */
         } else {
