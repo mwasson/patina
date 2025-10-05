@@ -19,6 +19,7 @@ impl Envelope {
         }
     }
 
+    #[cfg_attr(debug_assertions, inline(never))]
     pub fn clock(&mut self) {
         /* if the start flag is set, reset the envelope: decay level is maxed out, and
          * the divider goes back to the beignning of the period

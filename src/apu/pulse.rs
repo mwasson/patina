@@ -50,7 +50,7 @@ impl Pulse {
         }
     }
 
-    #[inline(never)]
+    #[cfg_attr(debug_assertions, inline(never))]
     pub(crate) fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
@@ -116,6 +116,7 @@ impl PulseSequencer {
         }
     }
 
+    #[cfg_attr(debug_assertions, inline(never))]
     fn clock(&mut self) {
         if self.timer.clock() {
             self.duty_index = (self.duty_index + 1) % 8

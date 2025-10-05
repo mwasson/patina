@@ -112,7 +112,7 @@ impl PPU {
             .copy_from_slice(&self.internal_buffer);
     }
 
-    #[inline(never)]
+    #[cfg_attr(debug_assertions, inline(never))]
     pub fn render_scanline(&mut self, scanline: u8) {
         let scanline_sprites = self.sprite_evaluation(scanline);
 
@@ -148,7 +148,7 @@ impl PPU {
         }
     }
 
-    #[inline(never)]
+    #[cfg_attr(debug_assertions, inline(never))]
     fn render_background_tiles(&mut self, scanline: u8, line_buffer: &mut [u8; 1024]) {
         let sprite0 = self.slice_as_sprite(0);
         let mut sprite_zero_in_scanline_not_yet_found =
@@ -206,7 +206,7 @@ impl PPU {
         }
     }
 
-    #[inline(never)]
+    #[cfg_attr(debug_assertions, inline(never))]
     fn render_sprites(
         &self,
         scanline_sprites: &Vec<SpriteInfo>,

@@ -21,7 +21,7 @@ enum TaskType {
     APU,
 }
 
-#[inline(never)]
+#[cfg_attr(debug_assertions, inline(never))]
 pub(crate) fn simulate(
     cpu: &mut CPU,
     ppu: Rc<RefCell<PPU>>,

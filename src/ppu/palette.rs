@@ -8,7 +8,7 @@ impl Palette {
         Palette { data }
     }
 
-    #[inline(never)]
+    #[cfg_attr(debug_assertions, inline(never))]
     pub fn brightness_to_pixels(&self, brightness: u8) -> [u8; 4] {
         let color_info = self.data[brightness as usize];
 
@@ -21,7 +21,7 @@ impl Palette {
 
     /* TODO buggy; messes up Bubble Bobble's colors */
     #[allow(dead_code)]
-    #[inline(never)]
+    #[cfg_attr(debug_assertions, inline(never))]
     fn apply_value(value: u8, pixels: [u8; 4]) -> [u8; 4] {
         /* reverse engineered from https://www.nesdev.org/wiki/NTSC_video#Converting_YUV_to_signal_RGB,
          * assuming we already have RGB values where Y = 0 and treating 'value' as the same as luma
@@ -35,7 +35,7 @@ impl Palette {
         output
     }
 
-    #[inline(never)]
+    #[cfg_attr(debug_assertions, inline(never))]
     /* based on Wiki values */
     fn hue_lookup(hue: u8) -> [u8; 4] {
         match hue {

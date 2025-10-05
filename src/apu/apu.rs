@@ -57,7 +57,7 @@ impl APU {
         }))
     }
 
-    #[inline(never)]
+    #[cfg_attr(debug_assertions, inline(never))]
     pub fn apu_tick(&mut self) {
         self.apu_counter = (self.apu_counter + 1) % 14915;
 

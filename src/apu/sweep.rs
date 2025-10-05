@@ -25,6 +25,7 @@ impl Sweep {
         }
     }
 
+    #[cfg_attr(debug_assertions, inline(never))]
     pub fn clock(&mut self, timer: &mut Timer) {
         self.muting = timer.period < 8;
         if self.enabled && self.shift != 0 && self.divider == 0 {

@@ -9,7 +9,7 @@ pub trait Mapper {
 
     fn read_chr(&self, address: u16) -> u8;
 
-    #[inline(never)]
+    #[cfg_attr(debug_assertions, inline(never))]
     fn read_tile(&self, tile_index: u8, pattern_table_num: u8) -> Tile {
         let pattern_table_base = 0x1000u16 * pattern_table_num as u16;
         let tile_start = pattern_table_base + (tile_index as u16 * 16);

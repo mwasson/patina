@@ -39,6 +39,7 @@ impl Noise {
         }
     }
 
+    #[cfg_attr(debug_assertions, inline(never))]
     pub fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
