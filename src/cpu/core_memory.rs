@@ -32,11 +32,10 @@ impl CoreMemory {
     pub fn read(&self, address: u16) -> u8 {
         let mapped_addr = self.map_address(address);
         if CoreMemory::is_special_addr(mapped_addr) {
-            if let Some(listener) = self.listeners.get(&address) {
+            if let Some(listener) = self.listeners.get(&mapped_addr) {
                 return listener.borrow_mut().read(self, mapped_addr);
             }
         }
-
         self.read_no_listen_no_map(mapped_addr)
     }
 

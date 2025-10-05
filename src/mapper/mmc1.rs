@@ -20,14 +20,14 @@ enum PrgRomBankMode {
 
 pub struct MMC1 {
     shift_register: u8,
-    prg_ram: Box<[u8; SIZE_32_KB as usize]>, /* optional RAM; TODO size can only be determined in NES 2.0 ROMs*/
+    prg_ram: Box<[u8; 1 << 15]>, /* optional RAM; TODO size can only be determined in NES 2.0 ROMs*/
     prg_banks: BankArray,
     chr_banks: BankArray,
     chr_bank_0: u8,
     chr_bank_1: u8,
     chr_bank_mode: bool, /* true == switch two 4kb banks; false == switch single 8kb bank */
     prg_bank_mode: PrgRomBankMode,
-    prg_bank_index: usize,
+    prg_bank_index: u8,
     nametable_mirroring: NametableMirroring,
 }
 
@@ -100,7 +100,7 @@ impl MMC1 {
                     self.update_chr_banks();
                 /* PRG bank */
                 } else {
-                    self.prg_bank_index = (self.shift_register & 0xf) as usize;
+                    self.prg_bank_index = (self.shift_register & 0xf);
                     self.update_prg_banks();
                     /* TODO: bit 4 disables the PRG-RAM chip. In practice, what does that mean? */
                 }
@@ -132,11 +132,11 @@ impl MMC1 {
     fn update_chr_banks(&mut self) {
         if self.chr_bank_mode {
             self.chr_banks.change_bank_size(SIZE_4_KB);
-            self.chr_banks.set_bank(0, self.chr_bank_0 as usize);
-            self.chr_banks.set_bank(1, self.chr_bank_1 as usize);
+            self.chr_banks.set_bank(0, self.chr_bank_0);
+            self.chr_banks.set_bank(1, self.chr_bank_1);
         } else {
             self.chr_banks.change_bank_size(SIZE_8_KB);
-            self.chr_banks.set_bank(0, (self.chr_bank_0 >> 1) as usize);
+            self.chr_banks.set_bank(0, self.chr_bank_0 >> 1);
         }
     }
 

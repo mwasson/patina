@@ -38,7 +38,7 @@ impl Mapper for UxROM {
     fn write_prg(&mut self, address: u16, value: u8) {
         if address >= 0x8000 {
             /* TODO: should be 0x7 for some variants */
-            self.prg_banks.set_bank(0, (value & 0xf) as usize);
+            self.prg_banks.set_bank(0, value & 0xf);
         } else {
             /* can ignore these writes */
         }
