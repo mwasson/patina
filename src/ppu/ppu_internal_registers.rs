@@ -141,4 +141,9 @@ impl PPUInternalRegisters {
         self.set_fine_y(self.get_fine_y_tmp());
         self.set_nametable((self.get_nametable() & 0x1) | (self.get_nametable_t() & 0x2));
     }
+
+    #[cfg_attr(feature = "profiling", inline(never))]
+    pub fn get_tile_left(&self) -> u8 {
+        (self.get_coarse_x() << 3).wrapping_sub(self.get_fine_x())
+    }
 }

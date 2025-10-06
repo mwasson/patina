@@ -48,7 +48,7 @@ pub(crate) fn simulate(
 
         match next_task {
             (CPU, time) => {
-                next_cpu_task = (CPU, cpu.transition(time));
+                next_cpu_task = (CPU, cpu.transition(*time));
             }
             (PPUScreen, time) => {
                 let mut borrowed_ppu = ppu.borrow_mut();
@@ -63,10 +63,10 @@ pub(crate) fn simulate(
             }
             (PPUScanline(scanline), time) => {
                 let mut borrowed_ppu = ppu.borrow_mut();
-                borrowed_ppu.render_scanline(scanline);
+                borrowed_ppu.render_scanline(*scanline);
 
                 let scanline_duration = borrowed_ppu.cycles_to_duration(341);
-                let next_task_type = if scanline == 239 {
+                let next_task_type = if *scanline == 239 {
                     PPUVBlank
                 } else {
                     PPUScanline(scanline + 1)
@@ -96,22 +96,22 @@ pub(crate) fn simulate(
 }
 
 #[cfg_attr(feature = "profiling", inline(never))]
-fn next_task(
-    t1: &(TaskType, Instant),
-    t2: &(TaskType, Instant),
-    t3: &(TaskType, Instant),
-) -> (TaskType, Instant) {
+fn next_task<'a>(
+    t1: &'a (TaskType, Instant),
+    t2: &'a (TaskType, Instant),
+    t3: &'a (TaskType, Instant),
+) -> &'a (TaskType, Instant) {
     let mut best = t1;
 
-    if best.1.gt(&t2.1) {
+    if best.1 > t2.1  {
         best = t2;
     }
 
-    if best.1.gt(&t3.1) {
+    if best.1 > t3.1 {
         best = t3;
     }
 
-    best.clone()
+    best
 }
 
 pub struct RenderRequester {

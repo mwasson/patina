@@ -8,12 +8,13 @@ use crate::ppu::{
 use crate::processor::Processor;
 use std::cell::RefCell;
 use std::cmp::min;
+use std::hash::Hash;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 pub struct PPU {
     memory: Rc<RefCell<CoreMemory>>,
-    mapper: Rc<RefCell<Box<dyn Mapper>>>,
+    pub(super) mapper: Rc<RefCell<Box<dyn Mapper>>>,
     pub(super) oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
     internal_buffer: WriteBuffer,
@@ -109,16 +110,18 @@ impl PPU {
         self.write_buffer
             .lock()
             .unwrap()
-            .copy_from_slice(&self.internal_buffer);
+            .copy_from_slice(self.internal_buffer.as_slice());
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
     pub fn render_scanline(&mut self, scanline: u8) {
-        let scanline_sprites = self.sprite_evaluation(scanline);
+        let (mut foreground_sprites, mut background_sprites) = self.sprite_evaluation(scanline);
 
-        let mut line_buffer = [0; 256 * 4];
+        if (scanline + OVERSCAN >= 240) {
+            return;
+        }
 
-        /* technically should occur at end of previous scanline, but if the entire scanline occurs
+        /* technically should occur at the end of previous scanline, but if the entire scanline occurs
          * at once, this guarantees the CPU has updated its side of things
          */
         self.internal_regs.copy_x_bits();
@@ -126,112 +129,137 @@ impl PPU {
         let render_background = self.ppu_mask & (1 << 3) != 0;
         let render_sprites = self.ppu_mask & (1 << 4) != 0;
 
-        if render_sprites {
-            self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, true);
-        }
-        if render_background {
-            self.render_background_tiles(scanline, &mut line_buffer);
-        }
-        if render_sprites {
-            self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, false);
-        }
+        let mut tile = self.get_current_tile();
+        let mut palette = self.palette_for_current_bg_tile();
+        let mut index: usize = scanline as usize * 1024;
+        let sprite0_in_scanline = self
+            .slice_as_sprite(0)
+            .in_scanline(scanline, self.sprite_height());
+        let mut found_sprite0 = false;
 
-        /* solid background color everywhere we didn't render a sprite or background tile */
-        self.render_solid_background_color(&mut line_buffer);
+        for x in 0..=255 {
+            'pixel: {
+                if render_sprites
+                    && self.render_sprites(&mut foreground_sprites, scanline, x, index)
+                {
+                    break 'pixel;
+                }
+                if render_background {
+                    let (drew, sprite0_hit) = self.render_background_tiles(
+                        scanline,
+                        x,
+                        index,
+                        &mut tile,
+                        &palette,
+                        sprite0_in_scanline & !found_sprite0,
+                    );
+                    found_sprite0 |= sprite0_hit;
+                    if drew {
+                        break 'pixel;
+                    }
+                }
+                if render_sprites
+                    && self.render_sprites(&mut background_sprites, scanline, x, index)
+                {
+                    break 'pixel;
+                }
+                self.render_solid_background_color(index);
+            }
+            index += 4;
+            if x % 8 + self.internal_regs.get_fine_x() == 7 {
+                self.internal_regs.coarse_x_increment();
+                tile = self.get_current_tile();
+                palette = self.palette_for_current_bg_tile();
+            }
+        }
 
         /* update scrolling */
         self.internal_regs.y_increment();
-
-        if scanline >= OVERSCAN && scanline <= 240 - OVERSCAN {
-            self.internal_buffer[Self::pixel_range_for_line(scanline)]
-                .copy_from_slice(&line_buffer);
-        }
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn render_background_tiles(&mut self, scanline: u8, line_buffer: &mut [u8; 1024]) {
-        let sprite0 = self.slice_as_sprite(0);
-        let mut sprite_zero_in_scanline_not_yet_found =
-            self.ppu_status & (1 << 6) == 0 && sprite0.in_scanline(scanline, self.sprite_height());
+    fn render_background_tiles(
+        &mut self,
+        scanline: u8,
+        x: u8,
+        index: usize,
+        tile: &mut Tile,
+        palette: &Palette,
+        check_sprite0: bool,
+    ) -> (bool, bool) {
+        let brightness = tile.pixel_intensity(
+            &self,
+            (x - self.internal_regs.get_tile_left()) % 8,
+            self.internal_regs.get_fine_y(),
+        );
 
-        for x in (0..0x101).step_by(8) {
-            let tile = self
-                .get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize));
-            let palette = self.palette_for_current_bg_tile();
-            let tile_offset = x as i16 - self.internal_regs.get_fine_x() as i16;
-            for pixel_offset in 0..8 {
-                let pixel_loc = tile_offset + pixel_offset as i16;
-                let index = pixel_loc as usize * 4;
-                if pixel_loc < 0 || pixel_loc > 0xff || line_buffer[index + 3] != 0 {
-                    continue;
-                }
-                let brightness = tile.pixel_intensity(
-                    &self.mapper.borrow(),
-                    pixel_offset,
-                    self.internal_regs.get_fine_y(),
-                );
+        let mut drew = false;
+        let mut sprite0_hit = false;
 
-                if brightness > 0 {
-                    /* TODO doesn't handle 16 pixel tall sprites */
-                    line_buffer[index..(index + 4)]
-                        .copy_from_slice(&palette.brightness_to_pixels(brightness));
+        if brightness > 0 {
+            drew = true;
+            /* TODO doesn't handle 16 pixel tall sprites */
+            self.internal_buffer[index..(index + 4)]
+                .copy_from_slice(palette.brightness_to_pixels(brightness));
 
-                    /* sprite zero hit detection */
-                    if sprite_zero_in_scanline_not_yet_found
-                        && pixel_loc as u8 >= sprite0.x
-                        && pixel_loc as u8 <= sprite0.x + 8
-                        && sprite0.get_brightness_localized(
-                            self,
-                            pixel_loc as u8 - sprite0.x,
-                            scanline - sprite0.get_y(),
-                        ) > 0
-                    {
-                        sprite_zero_in_scanline_not_yet_found = false;
-                        self.ppu_status = set_bit_on(self.ppu_status, 6);
-                    }
-                }
+            if check_sprite0 {
+                sprite0_hit = self.check_sprite0(scanline, x);
             }
+        }
+        (drew, sprite0_hit)
+    }
 
-            self.internal_regs.coarse_x_increment();
+    #[cfg_attr(feature = "profiling", inline(never))]
+    fn check_sprite0(&mut self, scanline: u8, x: u8) -> bool {
+        let mut sprite0 = self.slice_as_sprite(0);
+
+        /* sprite zero hit detection */
+        if x >= sprite0.x
+            && x < sprite0.x + 8
+            && sprite0.get_brightness_localized(self, x - sprite0.x, scanline - sprite0.get_y()) > 0
+        {
+            self.ppu_status = set_bit_on(self.ppu_status, 6);
+            true
+        } else {
+            false
         }
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn render_solid_background_color(&mut self, line_buffer: &mut [u8; 1024]) {
+    fn get_current_tile(&self) -> Tile {
+        self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize))
+    }
+
+    #[cfg_attr(feature = "profiling", inline(never))]
+    fn render_solid_background_color(&mut self, index: usize) {
         /* background color */
-        let bg_pixels = self.get_palette(0).brightness_to_pixels(0);
-        for x in 0..0x100 {
-            if line_buffer[x * 4 + 3] == 0 {
-                line_buffer[(x * 4)..(x * 4 + 4)].copy_from_slice(&bg_pixels);
-            }
-        }
+        let palette0 = self.get_palette(0);
+        let bg_pixels = palette0.brightness_to_pixels(0);
+        self.internal_buffer[index..index + 4].copy_from_slice(bg_pixels);
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
     fn render_sprites(
-        &self,
-        scanline_sprites: &Vec<SpriteInfo>,
+        &mut self,
+        scanline_sprites: &mut Vec<SpriteInfo>,
         scanline: u8,
-        line_buffer: &mut [u8],
-        is_foreground: bool,
-    ) {
+        x: u8,
+        pixel_index: usize,
+    ) -> bool {
         for sprite in scanline_sprites {
-            if sprite.is_foreground() != is_foreground {
-                continue;
-            }
-
-            let sprite_palette = sprite.get_palette(&self);
-            for i in 0..min(8, (0xff - sprite.x).saturating_add(1)) {
+            /* TODO doesn't render sprites on edges */
+            if sprite.x <= x && sprite.x + 8 > x {
                 let brightness =
-                    sprite.get_brightness_localized(self, i, scanline - sprite.get_y());
-                /* TODO: bug here where sprite can wrap around the screen */
-                let pixel_index = sprite.x.wrapping_add(i) as usize * 4;
-                let pixels = sprite_palette.brightness_to_pixels(brightness);
-                if brightness > 0 && line_buffer[pixel_index + 3] == 0 {
-                    line_buffer[pixel_index..pixel_index + 4].copy_from_slice(&pixels);
-                }
+                    sprite.get_brightness_localized(self, x - sprite.x, scanline - sprite.get_y());
+                if brightness > 0 {
+                    let sprite_palette = sprite.get_palette(&self);
+                    let pixels = sprite_palette.brightness_to_pixels(brightness);
+                    self.internal_buffer[pixel_index..pixel_index + 4].copy_from_slice(pixels);
+                    return true;
+                };
             }
         }
+        false
     }
 
     fn sprite_height(&self) -> u8 {
@@ -279,21 +307,28 @@ impl PPU {
      * sprite overflow bit if necessary.
      */
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo> {
-        let mut scanline_sprites = Vec::new();
+    fn sprite_evaluation(&mut self, scanline_num: u8) -> (Vec<SpriteInfo>, Vec<SpriteInfo>) {
+        let mut foreground_sprites = Vec::new();
+        let mut background_sprites = Vec::new();
+        let mut sprites_found = 0;
         for i in 0..OAM_SIZE / 4 {
             let sprite_data = self.slice_as_sprite(i);
             if sprite_data.in_scanline(scanline_num, self.sprite_height()) {
                 /* already found eight sprites, set overflow */
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
-                if scanline_sprites.len() >= 8 {
+                if sprites_found >= 8 {
                     self.ppu_status = set_bit_on(self.ppu_status, 1);
                     break;
                 }
-                scanline_sprites.push(sprite_data);
+                sprites_found += 1;
+                if sprite_data.is_foreground() {
+                    foreground_sprites.push(sprite_data);
+                } else {
+                    background_sprites.push(sprite_data);
+                }
             }
         }
-        scanline_sprites
+        (foreground_sprites, background_sprites)
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
@@ -330,12 +365,6 @@ impl PPU {
         palette_data.copy_from_slice(&self.palette_memory[palette_mem_loc..palette_mem_loc + 4]);
 
         Palette::new(palette_data)
-    }
-
-    fn pixel_range_for_line(y: u8) -> core::ops::Range<usize> {
-        let start = (y - OVERSCAN) as usize; /* don't show the first few lines */
-        let range_width = 4 * 256; /* 4 bytes per pixel, 256 pixels per line */
-        start * range_width..(start + 1) * range_width
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
@@ -415,6 +444,7 @@ struct SpriteInfo {
     tile_index: u8,
     attrs: u8,
     x: u8,
+    cached_tile: Option<Tile>,
 }
 
 impl SpriteInfo {
@@ -427,8 +457,11 @@ impl SpriteInfo {
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn get_brightness_localized(&self, ppu: &PPU, x: u8, y: u8) -> u8 {
-        let tile = ppu.get_sprite_tile(self.tile_index); /* TODO is this right? */
+    fn get_brightness_localized(&mut self, ppu: &PPU, x: u8, y: u8) -> u8 {
+        if self.cached_tile.is_none() {
+            self.cached_tile = Some(ppu.get_sprite_tile(self.tile_index));
+        }
+        let mut tile = self.cached_tile.unwrap(); /* TODO is this right? */
         let mut x_to_use = x;
         if self.attrs & 0x40 != 0 {
             /* flipped horizontally */
@@ -439,7 +472,7 @@ impl SpriteInfo {
             /* flipped vertically */
             y_to_use = (ppu.sprite_height() - 1) - y_to_use;
         }
-        tile.pixel_intensity(&ppu.mapper.borrow(), x_to_use, y_to_use)
+        tile.pixel_intensity(ppu, x_to_use, y_to_use)
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
@@ -458,6 +491,7 @@ impl SpriteInfo {
             tile_index: src_slice[1],
             attrs: src_slice[2],
             x: src_slice[3],
+            cached_tile: None,
         }
     }
 }

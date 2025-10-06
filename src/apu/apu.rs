@@ -19,8 +19,8 @@ pub struct APU {
     apu_counter: u16,
     _output_stream: OutputStream, /* can't remove this--if it's collected, sound won't play */
     _sink: Sink,                  /* ditto--confusingly, since OutputStream should have a ref */
-    pulse1: Rc<RefCell<Pulse>>,   /* to it through the Mixer? */
-    pulse2: Rc<RefCell<Pulse>>,
+    pulse1: Pulse,                /* to it through the Mixer? */
+    pulse2: Pulse,
     triangle: Rc<RefCell<Triangle>>,
     noise: Rc<RefCell<Noise>>,
     dmc: Rc<RefCell<DMC>>,
@@ -38,8 +38,8 @@ impl APU {
         let queue = Arc::new(RwLock::new(VecDeque::new()));
         sink.append(BufferedMixedSource::new(queue.clone()));
 
-        let pulse1: Rc<RefCell<Pulse>> = Pulse::initialize(PULSE_1_FIRST_ADDR, true, &memory);
-        let pulse2: Rc<RefCell<Pulse>> = Pulse::initialize(PULSE_2_FIRST_ADDR, false, &memory);
+        let pulse1: Pulse = Pulse::new(PULSE_1_FIRST_ADDR, true);
+        let pulse2: Pulse = Pulse::new(PULSE_2_FIRST_ADDR, false);
         let triangle: Rc<RefCell<Triangle>> = Triangle::initialize(&memory);
         let noise: Rc<RefCell<Noise>> = Noise::initialize(&memory);
         let dmc: Rc<RefCell<DMC>> = DMC::initialize(&memory);
@@ -61,8 +61,8 @@ impl APU {
     pub fn apu_tick(&mut self) {
         self.apu_counter = (self.apu_counter + 1) % 14915;
 
-        self.pulse1.borrow_mut().tick(self.apu_counter);
-        self.pulse2.borrow_mut().tick(self.apu_counter);
+        self.pulse1.tick(self.apu_counter);
+        self.pulse2.tick(self.apu_counter);
         self.triangle.borrow_mut().tick(self.apu_counter);
         self.noise.borrow_mut().tick(self.apu_counter);
         self.dmc.borrow_mut().tick(self.apu_counter);
@@ -75,8 +75,8 @@ impl APU {
     }
 
     fn mix(&self) -> f32 {
-        let pulse1_vol = self.pulse1.borrow().amplitude();
-        let pulse2_vol = self.pulse2.borrow().amplitude();
+        let pulse1_vol = self.pulse1.amplitude();
+        let pulse2_vol = self.pulse2.amplitude();
         let triangle_vol = self.triangle.borrow().amplitude();
         let noise_vol = self.noise.borrow().amplitude();
         let dmc_vol = self.dmc.borrow().amplitude();
@@ -98,7 +98,7 @@ impl Processor for APU {
 
 impl MemoryListener for APU {
     fn get_addresses(&self) -> Vec<u16> {
-        [0x4015, 0x4017].to_vec()
+        [0x4000, 0x4001, 0x4002, 0x4003, 0x4004, 0x4005, 0x4006, 0x4007, 0x4015, 0x4017].to_vec()
     }
 
     fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
@@ -106,10 +106,14 @@ impl MemoryListener for APU {
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
-        if address == 0x4015 {
-            self.pulse1.borrow_mut().set_enabled(value & 0x1 != 0);
-            self.pulse2.borrow_mut().set_enabled(value & 0x2 != 0);
+    fn write(&mut self, memory: &CoreMemory, address: u16, value: u8) {
+        if address < 0x4004 {
+            self.pulse1.write(memory, address, value);
+        } else if address < 0x4008 {
+            self.pulse2.write(memory, address, value);
+        } else if address == 0x4015 {
+            self.pulse1.set_enabled(value & 0x1 != 0);
+            self.pulse2.set_enabled(value & 0x2 != 0);
             self.triangle.borrow_mut().set_enabled(value & 0x4 != 0);
             self.noise.borrow_mut().set_enabled(value & 0x8 != 0);
             self.dmc.borrow_mut().set_enabled(value & 0x10 != 0);
