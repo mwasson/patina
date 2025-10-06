@@ -56,6 +56,7 @@ impl DMC {
         }
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn tick(&mut self, _apu_counter: u16) {
         if !self.enabled {
             return;

@@ -18,7 +18,7 @@ impl LengthCounter {
         }
     }
 
-    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn clock(&mut self) {
         if !self.halt && self.count != 0 {
             self.count -= 1;

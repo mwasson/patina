@@ -57,7 +57,7 @@ impl APU {
         }))
     }
 
-    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn apu_tick(&mut self) {
         self.apu_counter = (self.apu_counter + 1) % 14915;
 
@@ -105,6 +105,7 @@ impl MemoryListener for APU {
         memory.open_bus()
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
         if address == 0x4015 {
             self.pulse1.borrow_mut().set_enabled(value & 0x1 != 0);

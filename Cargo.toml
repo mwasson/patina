@@ -3,6 +3,9 @@ name = "patina"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+profiling = []
+
 [dependencies]
 fnv = "1.0.7"
 pixels = "0.15.0"

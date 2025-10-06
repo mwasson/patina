@@ -12,6 +12,7 @@ impl Timer {
     }
 
     /* Returns true if the timer looped */
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn clock(&mut self) -> bool {
         if self.count == 0 {
             self.count = self.period;

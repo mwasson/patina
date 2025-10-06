@@ -112,7 +112,7 @@ impl PPU {
             .copy_from_slice(&self.internal_buffer);
     }
 
-    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn render_scanline(&mut self, scanline: u8) {
         let scanline_sprites = self.sprite_evaluation(scanline);
 
@@ -148,7 +148,7 @@ impl PPU {
         }
     }
 
-    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn render_background_tiles(&mut self, scanline: u8, line_buffer: &mut [u8; 1024]) {
         let sprite0 = self.slice_as_sprite(0);
         let mut sprite_zero_in_scanline_not_yet_found =
@@ -196,6 +196,7 @@ impl PPU {
         }
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn render_solid_background_color(&mut self, line_buffer: &mut [u8; 1024]) {
         /* background color */
         let bg_pixels = self.get_palette(0).brightness_to_pixels(0);
@@ -206,7 +207,7 @@ impl PPU {
         }
     }
 
-    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn render_sprites(
         &self,
         scanline_sprites: &Vec<SpriteInfo>,
@@ -241,6 +242,7 @@ impl PPU {
         }
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn palette_for_current_bg_tile(&self) -> Palette {
         /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
@@ -276,6 +278,7 @@ impl PPU {
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo> {
         let mut scanline_sprites = Vec::new();
         for i in 0..OAM_SIZE / 4 {
@@ -293,12 +296,14 @@ impl PPU {
         scanline_sprites
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
         let mut sprite_data = [0u8; 4];
         sprite_data.copy_from_slice(&self.oam[sprite_index * 4..sprite_index * 4 + 4]);
         SpriteInfo::from_memory(&sprite_data)
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn get_sprite_tile(&self, tile_index: u8) -> Tile {
         let (tile_index, pattern_table) = if self.tall_sprites {
             (tile_index & !1, tile_index & 1)
@@ -318,6 +323,7 @@ impl PPU {
             .read_tile(tile_index, pattern_table_num)
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn get_palette(&self, palette_index: u8) -> Palette {
         let palette_mem_loc: usize = (palette_index as usize) * 4;
         let mut palette_data = [0u8; 4];
@@ -332,6 +338,7 @@ impl PPU {
         start * range_width..(start + 1) * range_width
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn read_vram(&self, addr: usize) -> u8 {
         let mapped_address = self.vram_address_mirror(addr);
 
@@ -347,6 +354,7 @@ impl PPU {
         }
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn write_vram(&mut self, addr: usize, val: u8) {
         let mapped_address = self.vram_address_mirror(addr);
 
@@ -364,6 +372,7 @@ impl PPU {
         }
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn vram_address_mirror(&self, addr: usize) -> usize {
         let mut result = addr;
 
@@ -417,6 +426,7 @@ impl SpriteInfo {
         self.y + 1
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn get_brightness_localized(&self, ppu: &PPU, x: u8, y: u8) -> u8 {
         let tile = ppu.get_sprite_tile(self.tile_index); /* TODO is this right? */
         let mut x_to_use = x;
@@ -432,6 +442,7 @@ impl SpriteInfo {
         tile.pixel_intensity(&ppu.mapper.borrow(), x_to_use, y_to_use)
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn get_palette(&self, ppu: &PPU) -> Palette {
         ppu.get_palette((self.attrs & 0x3) + 4)
     }

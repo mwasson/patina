@@ -37,7 +37,7 @@ impl BankArray {
         self.banks.clear();
         self.bank_size_log = bank_size_log;
         self.bank_size = 1 << bank_size_log;
-        self.bank_size_mask = self.bank_size-1;
+        self.bank_size_mask = self.bank_size - 1;
         self.base_address_index = self.base_address >> self.bank_size_log;
         for _i in 0..self.base_address_index {
             self.banks.push(0);
@@ -58,7 +58,7 @@ impl BankArray {
         }
     }
 
-    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn read(&self, address: u16) -> u8 {
         let usize_addr = address as usize;
         if usize_addr >= self.base_address {
@@ -87,7 +87,7 @@ impl BankArray {
     }
 
     /* TODO explain */
-    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn map_address(&self, address: usize) -> usize {
         self.banks[address >> self.bank_size_log] | (address & self.bank_size_mask)
     }

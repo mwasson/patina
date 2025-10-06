@@ -39,7 +39,7 @@ impl Pulse {
     }
 
     /* private constructor */
-    fn new(first_address: u16, is_second_channel: bool) -> Pulse {
+    pub fn new(first_address: u16, is_second_channel: bool) -> Pulse {
         Pulse {
             first_address,
             envelope: Envelope::new(),
@@ -50,7 +50,7 @@ impl Pulse {
         }
     }
 
-    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub(crate) fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
@@ -116,7 +116,7 @@ impl PulseSequencer {
         }
     }
 
-    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(feature = "profiling", inline(never))]
     fn clock(&mut self) {
         if self.timer.clock() {
             self.duty_index = (self.duty_index + 1) % 8

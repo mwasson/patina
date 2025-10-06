@@ -39,6 +39,7 @@ impl CoreMemory {
         self.read_no_listen_no_map(mapped_addr)
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn read16(&self, address: u16) -> u16 {
         let mapped_addr = self.map_address(address);
         /* TODO HACK: speed up memory access by only looking for listeners on a small number
@@ -72,6 +73,7 @@ impl CoreMemory {
     }
 
     /* NB: this does not activate listeners! */
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn copy_slice(&self, address: u16, size: usize, dest: &mut [u8]) {
         let mapped_addr = self.map_address(address) as usize;
         if mapped_addr < 0x4000 {
@@ -81,6 +83,7 @@ impl CoreMemory {
         }
     }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn write(&mut self, address: u16, value: u8) {
         /* addresses that appear to be control registers for the Famicom Disk System; ignore */
         if address >= 0x4020 && address < 0x4100 {
