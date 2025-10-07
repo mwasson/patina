@@ -4,7 +4,6 @@ use crate::ppu::PPU;
 use crate::processor::Processor;
 use crate::scheduler::TaskType::*;
 use std::cell::RefCell;
-use std::hash::Hash;
 use std::ops::Add;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -12,7 +11,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 use winit::window::Window;
 
-#[derive(Hash, Eq, PartialEq)]
 enum TaskType {
     CPU,
     PPUScreen,
@@ -51,9 +49,6 @@ pub(crate) fn simulate(
             }
             (PPUScreen, time) => {
                 let mut borrowed_ppu = ppu.borrow_mut();
-                //
-                // borrowed_ppu.tick();
-                // next_ppu_task = (PPUScreen, time.add(borrowed_ppu.cycles_to_duration(1)));
 
                 borrowed_ppu.beginning_of_screen_render();
 

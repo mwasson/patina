@@ -167,9 +167,11 @@ impl PPU {
         let index = scanline as usize * 1024 + x as usize * 4;
         self.internal_buffer[index..index + 4].copy_from_slice(pixel);
         if x % 8 + self.internal_regs.get_fine_x() == 7 {
-            self.internal_regs.coarse_x_increment();
+            let coarse_x = self.internal_regs.coarse_x_increment();
             self.current_tile = Some(self.get_current_tile());
-            self.current_palette = Some(self.palette_for_current_bg_tile());
+            if coarse_x % 2 == 0 {
+                self.current_palette = Some(self.palette_for_current_bg_tile());
+            }
         }
     }
 
