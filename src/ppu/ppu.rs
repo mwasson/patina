@@ -153,7 +153,7 @@ impl PPU {
             self.ppu_status & (1 << 6) == 0 && sprite0.in_scanline(scanline, self.sprite_height());
 
         for x in (0..0x101).step_by(8) {
-            let tile = self
+            let mut tile = self
                 .get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize));
             let palette = self.palette_for_current_bg_tile();
             let tile_offset = x as i16 - self.internal_regs.get_fine_x() as i16;
@@ -418,7 +418,7 @@ impl SpriteInfo {
     }
 
     fn get_brightness_localized(&self, ppu: &PPU, x: u8, y: u8) -> u8 {
-        let tile = ppu.get_sprite_tile(self.tile_index); /* TODO is this right? */
+        let mut tile = ppu.get_sprite_tile(self.tile_index); /* TODO is this right? */
         let mut x_to_use = x;
         if self.attrs & 0x40 != 0 {
             /* flipped horizontally */

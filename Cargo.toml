@@ -17,6 +17,7 @@ codegen-units = 256
 rpath = false
 
 [dependencies]
+bit_reverse = "0.1.8"
 fnv = "1.0.7"
 pixels = "0.15.0"
 rodio = "0.21.1"

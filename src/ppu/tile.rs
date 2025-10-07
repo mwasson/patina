@@ -1,17 +1,26 @@
 use crate::mapper::Mapper;
+use bit_reverse::LookupReverse;
 
 pub struct Tile {
     tile_addr: u16,
+    cached_y: u8, /* used to determine if cached_big and cached_small are valid */
+    cached_big: u8,
+    cached_small: u8,
 }
 
 impl Tile {
     pub fn new(tile_addr: u16) -> Tile {
-        Tile { tile_addr }
+        Tile {
+            tile_addr,
+            cached_y: 0xff, /* initial invalid value */
+            cached_big: 0,
+            cached_small: 0,
+        }
     }
 
     /* TODO serious comments required */
     #[allow(dead_code)]
-    pub fn render(&self, mapper: &Box<dyn Mapper>) -> [u8; 4 * 8 * 8] {
+    pub fn render(&mut self, mapper: &Box<dyn Mapper>) -> [u8; 4 * 8 * 8] {
         let mut out = [0; 4 * 8 * 8];
 
         for row in 0..8 {
@@ -28,7 +37,7 @@ impl Tile {
 
     #[allow(dead_code)]
     pub fn stamp(
-        &self,
+        &mut self,
         mapper: &Box<dyn Mapper>,
         write_buffer: &mut [u8],
         width: usize,
@@ -44,23 +53,25 @@ impl Tile {
         }
     }
 
-    pub fn pixel_intensity(&self, mapper: &Box<dyn Mapper>, x: u8, y: u8) -> u8 {
-        let rev_x = 7 - x;
-        /* double tall sprites are actually two regular 8x8 tiles glued together,
-         * so for the second half we need to increment values by 8 to index it correctly
-         */
-        let y_row = if y > 7 { y + 8 } else { y } as u16;
-        let big = mapper.read_chr(self.tile_addr + y_row + 8) >> rev_x;
-        let small = mapper.read_chr(self.tile_addr + y_row) >> rev_x;
+    pub fn pixel_intensity(&mut self, mapper: &Box<dyn Mapper>, x: u8, y: u8) -> u8 {
+        self.populate_cache(mapper, y);
+        let big = self.cached_big >> x;
+        let small = self.cached_small >> x;
         ((big & 1) << 1) | (small & 1)
-        // self.bit_set(self.data[y], x) + 2*self.bit_set(self.data[8+y], x)
     }
 
-    /* checks if a given bit in a bit array is set, and returns 1 if true, 0 otherwise;
-     * in this case the highest order bit is the 0th column, lowest order is the 7th column
-     * as we work from left to right */
-    fn _bit_set(&self, bit_array: u8, col: usize) -> u8 {
-        (bit_array & (1 << 7 - col)) >> 7 - col
+    fn populate_cache(&mut self, mapper: &Box<dyn Mapper>, y: u8) {
+        if self.cached_y != y {
+            self.cached_y = y;
+            /* double tall sprites are actually two regular 8x8 tiles glued together,
+             * so for the second half we need to increment values by 8 to index it correctly
+             */
+            let y_row = self.tile_addr + (if y > 8 { y + 8 } else { y } as u16);
+            /* memory stores bits in the opposite order of x indexing; reversing them here
+             * to avoid a subtraction later */
+            self.cached_big = LookupReverse::swap_bits(mapper.read_chr(y_row + 8));
+            self.cached_small = LookupReverse::swap_bits(mapper.read_chr(y_row));
+        }
     }
 }
 
