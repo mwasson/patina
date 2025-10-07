@@ -113,7 +113,7 @@ impl PPU {
     }
 
     pub fn render_scanline(&mut self, scanline: u8) {
-        let scanline_sprites = self.sprite_evaluation(scanline);
+        let (foreground_sprites, background_sprites) = self.sprite_evaluation(scanline);
 
         let mut line_buffer = [0; 256 * 4];
 
@@ -126,13 +126,13 @@ impl PPU {
         let render_sprites = self.ppu_mask & (1 << 4) != 0;
 
         if render_sprites {
-            self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, true);
+            self.render_sprites(&foreground_sprites, scanline, &mut line_buffer);
         }
         if render_background {
             self.render_background_tiles(scanline, &mut line_buffer);
         }
         if render_sprites {
-            self.render_sprites(&scanline_sprites, scanline, &mut line_buffer, false);
+            self.render_sprites(&background_sprites, scanline, &mut line_buffer);
         }
 
         /* solid background color everywhere we didn't render a sprite or background tile */
@@ -212,13 +212,8 @@ impl PPU {
         scanline_sprites: &Vec<SpriteInfo>,
         scanline: u8,
         line_buffer: &mut [u8],
-        is_foreground: bool,
     ) {
         for sprite in scanline_sprites {
-            if sprite.is_foreground() != is_foreground {
-                continue;
-            }
-
             let sprite_palette = sprite.get_palette(&self);
             for i in 0..min(8, (0xff - sprite.x).saturating_add(1)) {
                 let brightness =
@@ -276,21 +271,28 @@ impl PPU {
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
-    fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo> {
-        let mut scanline_sprites = Vec::new();
+    fn sprite_evaluation(&mut self, scanline_num: u8) -> (Vec<SpriteInfo>, Vec<SpriteInfo>) {
+        let mut foreground_sprites = Vec::new();
+        let mut background_sprites = Vec::new();
+        let mut sprites_found = 0;
         for i in 0..OAM_SIZE / 4 {
             let sprite_data = self.slice_as_sprite(i);
             if sprite_data.in_scanline(scanline_num, self.sprite_height()) {
                 /* already found eight sprites, set overflow */
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
-                if scanline_sprites.len() >= 8 {
+                if sprites_found >= 8 {
                     self.ppu_status = set_bit_on(self.ppu_status, 1);
                     break;
                 }
-                scanline_sprites.push(sprite_data);
+                if sprite_data.is_foreground() {
+                    foreground_sprites.push(sprite_data);
+                } else {
+                    background_sprites.push(sprite_data);
+                }
+                sprites_found += 1;
             }
         }
-        scanline_sprites
+        (foreground_sprites, background_sprites)
     }
 
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
