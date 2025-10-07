@@ -27,6 +27,7 @@ impl Pulse {
     /* initializes a pulse, links it up as a listener on CoreMemory, and
      * wraps it appropriately
      */
+    #[allow(dead_code)]
     pub fn initialize(
         first_addr: u16,
         is_first_channel: bool,

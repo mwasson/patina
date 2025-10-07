@@ -21,6 +21,7 @@ pub struct Noise {
 }
 
 impl Noise {
+    #[allow(dead_code)]
     pub fn initialize(memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<Noise>> {
         let noise_ref = Rc::new(RefCell::new(Noise::new()));
         memory.borrow_mut().register_listener(noise_ref.clone());

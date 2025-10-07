@@ -12,6 +12,7 @@ pub struct Triangle {
 }
 
 impl Triangle {
+    #[allow(dead_code)]
     pub fn initialize(memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<Triangle>> {
         let triangle_ref = Rc::new(RefCell::new(Triangle::new()));
         memory.borrow_mut().register_listener(triangle_ref.clone());

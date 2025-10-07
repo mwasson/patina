@@ -27,6 +27,7 @@ pub struct DMC {
 }
 
 impl DMC {
+    #[allow(dead_code)]
     pub fn initialize(memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<DMC>> {
         let dmc_ref = Rc::new(RefCell::new(DMC::new(memory)));
         memory.borrow_mut().register_listener(dmc_ref.clone());

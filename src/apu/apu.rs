@@ -96,12 +96,15 @@ impl Processor for APU {
 
 impl MemoryListener for APU {
     fn get_addresses(&self) -> Vec<u16> {
-        [0x4000, 0x4001, 0x4002, 0x4003, /* pulse 1 */
+        [
+            0x4000, 0x4001, 0x4002, 0x4003, /* pulse 1 */
             0x4004, 0x4005, 0x4006, 0x4007, /* pulse 2 */
-            0x4008,  0x4009, 0x400a, 0x400b, /* triangle */
+            0x4008, 0x4009, 0x400a, 0x400b, /* triangle */
             0x400c, 0x400d, 0x400e, 0x400f, /* noise */
             0x4010, 0x4011, 0x4012, 0x4013, /* dmc */
-            0x4015, 0x4017].to_vec() /* apu control regs */
+            0x4015, 0x4017,
+        ]
+        .to_vec() /* apu control regs */
     }
 
     fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
@@ -127,7 +130,7 @@ impl MemoryListener for APU {
                     self.triangle.set_enabled(value & 0x4 != 0);
                     self.noise.set_enabled(value & 0x8 != 0);
                     self.dmc.set_enabled(value & 0x10 != 0);
-                }       
+                }
             }
         }
     }
