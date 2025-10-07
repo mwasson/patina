@@ -12,7 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use winit::window::Window;
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Hash, Eq, PartialEq)]
 enum TaskType {
     CPU,
     PPUScreen,
@@ -47,7 +47,7 @@ pub(crate) fn simulate(
 
         match next_task {
             (CPU, time) => {
-                next_cpu_task = (CPU, cpu.transition(time));
+                next_cpu_task = (CPU, cpu.transition(*time));
             }
             (PPUScreen, time) => {
                 let mut borrowed_ppu = ppu.borrow_mut();
@@ -60,15 +60,15 @@ pub(crate) fn simulate(
                 let scanline_duration = borrowed_ppu.cycles_to_duration(341 + 1);
                 next_ppu_task = (PPUScanline(0, 0), time.add(scanline_duration))
             }
-            (PPUScanline(scanline, x), time) => {
+            (PPUScanline(scanline_ref, x_ref), time) => {
+                let scanline = *scanline_ref;
+                let x = *x_ref;
                 let mut borrowed_ppu = ppu.borrow_mut();
 
                 if x == 0 {
                     borrowed_ppu.render_scanline_begin(scanline);
                 }
 
-                /* TODO pixels */
-                /* TODO: scanline close down */
                 borrowed_ppu.render_pixel(scanline, x);
 
                 if x == 0xff {
@@ -108,11 +108,11 @@ pub(crate) fn simulate(
     }
 }
 
-fn next_task(
-    t1: &(TaskType, Instant),
-    t2: &(TaskType, Instant),
-    t3: &(TaskType, Instant),
-) -> (TaskType, Instant) {
+fn next_task<'a>(
+    t1: &'a (TaskType, Instant),
+    t2: &'a (TaskType, Instant),
+    t3: &'a (TaskType, Instant),
+) -> &'a (TaskType, Instant) {
     let mut best = t1;
 
     if best.1.gt(&t2.1) {
@@ -123,7 +123,7 @@ fn next_task(
         best = t3;
     }
 
-    best.clone()
+    best
 }
 
 pub struct RenderRequester {
