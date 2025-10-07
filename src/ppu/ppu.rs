@@ -165,7 +165,7 @@ impl PPU {
                 }
                 bg_color
             };
-            self.internal_buffer[index..index + 4].copy_from_slice(&pixel);
+            self.internal_buffer[index..index + 4].copy_from_slice(pixel);
             if x % 8 + self.internal_regs.get_fine_x() == 7 {
                 self.internal_regs.coarse_x_increment();
                 bg_tile = self.get_current_tile();
@@ -184,7 +184,7 @@ impl PPU {
         tile: &mut Tile,
         palette: &Palette,
         mapper: &Box<dyn Mapper>,
-    ) -> Option<[u8; 4]> {
+    ) -> Option<&'static [u8; 4]> {
         let brightness = tile.pixel_intensity(
             mapper,
             x - (self.internal_regs.get_coarse_x() * 8 - self.internal_regs.get_fine_x()),
@@ -203,7 +203,7 @@ impl PPU {
         scanline_sprites: &Vec<SpriteInfo>,
         scanline: u8,
         x: u8,
-    ) -> Option<[u8; 4]> {
+    ) -> Option<&'static [u8; 4]> {
         for sprite in scanline_sprites {
             let sprite_palette = sprite.get_palette(&self);
             if x < sprite.x || x > sprite.x + 7 {
