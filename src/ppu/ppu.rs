@@ -19,6 +19,7 @@ pub struct PPU {
     vram: [u8; VRAM_SIZE],
     palette_memory: [u8; PALETTE_MEMORY_SIZE],
     scanline_sprites: Option<(Vec<SpriteInfo>, Vec<SpriteInfo>)>,
+    sprite0_in_scanline: Option<SpriteInfo>,
     current_tile: Option<Tile>,
     current_palette: Option<Palette>,
     // tick_count: u16,
@@ -66,6 +67,7 @@ impl PPU {
             internal_regs: PPUInternalRegisters::default(),
             tall_sprites: false,
             scanline_sprites: None,
+            sprite0_in_scanline: None,
             current_tile: None,
             current_palette: None,
         }))
@@ -118,7 +120,9 @@ impl PPU {
     }
 
     pub fn render_scanline_begin(&mut self, scanline: u8) {
-        self.scanline_sprites = Some(self.sprite_evaluation(scanline));
+        let sprite_data = self.sprite_evaluation(scanline);
+        self.scanline_sprites = Some((sprite_data.0, sprite_data.1));
+        self.sprite0_in_scanline = sprite_data.2;
         self.current_tile = Some(self.get_current_tile());
         self.current_palette = Some(self.palette_for_current_bg_tile());
     }
@@ -138,18 +142,6 @@ impl PPU {
         let render_background = self.ppu_mask & (1 << 3) != 0;
         let render_sprites = self.ppu_mask & (1 << 4) != 0;
 
-        let bg_color = self.get_palette(0).brightness_to_pixels(0);
-
-        let mut sprite0 = 'sprite0: {
-            if self.ppu_status & (1 << 6) == 0 {
-                let found_sprite = self.slice_as_sprite(0);
-                if found_sprite.in_scanline(scanline, self.sprite_height()) {
-                    break 'sprite0 Some(found_sprite);
-                }
-            }
-            None
-        };
-
         let pixel = 'pixel: {
             if render_sprites {
                 if let Some(pixel) =
@@ -160,7 +152,7 @@ impl PPU {
             }
             if render_background {
                 if let Some(pixel) = self.render_background_tiles(x) {
-                    self.ppu_status |= self.sprite0_hit_detection(scanline, x, &mut sprite0);
+                    self.sprite0_hit_detection(scanline, x);
                     break 'pixel pixel;
                 }
             }
@@ -171,7 +163,8 @@ impl PPU {
                     break 'pixel pixel;
                 }
             }
-            bg_color
+            /* if no sprites or bg tile, render the global background color */
+            self.get_palette(0).brightness_to_pixels(0)
         };
         self.internal_buffer[index..index + 4].copy_from_slice(pixel);
         if x % 8 + self.internal_regs.get_fine_x() == 7 {
@@ -219,9 +212,13 @@ impl PPU {
         None
     }
 
-    fn sprite0_hit_detection(&self, scanline: u8, x: u8, sprite0: &mut Option<SpriteInfo>) -> u8 {
+    fn sprite0_hit_detection(&mut self, scanline: u8, x: u8) {
+        /* nothing to do if sprite zero has already been found */
+        if self.ppu_status & (1 << 6) != 0 {
+            return;
+        }
         /* sprite zero hit detection */
-        if let Some(sprite0_internal) = sprite0 {
+        if let Some(sprite0_internal) = self.sprite0_in_scanline {
             if x >= sprite0_internal.x
                 && x < sprite0_internal.x + 8
                 && sprite0_internal.get_brightness_localized(
@@ -230,11 +227,10 @@ impl PPU {
                     scanline - sprite0_internal.get_y(),
                 ) > 0
             {
-                *sprite0 = None;
-                return 1 << 6;
+                self.sprite0_in_scanline = None;
+                self.ppu_status |= 1 << 6;
             }
         }
-        0
     }
 
     fn sprite_height(&self) -> u8 {
@@ -284,9 +280,14 @@ impl PPU {
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
-    fn sprite_evaluation(&mut self, scanline_num: u8) -> (Vec<SpriteInfo>, Vec<SpriteInfo>) {
+    fn sprite_evaluation(
+        &mut self,
+        scanline_num: u8,
+    ) -> (Vec<SpriteInfo>, Vec<SpriteInfo>, Option<SpriteInfo>) {
         let mut foreground_sprites = Vec::new();
         let mut background_sprites = Vec::new();
+        let mut sprite0 = None;
+        let found_sprite0 = self.ppu_status & (1 << 6) != 0;
         let mut sprites_found = 0;
         for i in 0..OAM_SIZE / 4 {
             let sprite_data = self.slice_as_sprite(i);
@@ -303,9 +304,12 @@ impl PPU {
                     background_sprites.push(sprite_data);
                 }
                 sprites_found += 1;
+                if i == 0 && !found_sprite0 {
+                    sprite0 = Some(sprite_data);
+                }
             }
         }
-        (foreground_sprites, background_sprites)
+        (foreground_sprites, background_sprites, sprite0)
     }
 
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
