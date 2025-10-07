@@ -200,14 +200,13 @@ impl PPU {
         x: u8,
     ) -> Option<&'static [u8; 4]> {
         for sprite in scanline_sprites {
-            let sprite_palette = sprite.get_palette(&self);
             if x < sprite.x || x > sprite.x + 7 {
                 continue;
             }
             let brightness =
                 sprite.get_brightness_localized(self, x - sprite.x, scanline - sprite.get_y());
             if brightness > 0 {
-                return Some(sprite_palette.brightness_to_pixels(brightness));
+                return Some(sprite.get_palette(&self).brightness_to_pixels(brightness));
             }
         }
         None
