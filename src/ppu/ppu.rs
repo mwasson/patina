@@ -7,8 +7,6 @@ use crate::ppu::{
 };
 use crate::processor::Processor;
 use std::cell::RefCell;
-use std::cmp::min;
-use std::hash::Hash;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -29,7 +27,7 @@ pub struct PPU {
     pub(super) internal_regs: PPUInternalRegisters,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum NametableMirroring {
     Horizontal,       /* pages are mirrored horizontally (appropriate for vertical games) */
     Vertical,         /* pages are mirrored vertically (appropriate for horizontal games) */
@@ -110,7 +108,7 @@ impl PPU {
         self.write_buffer
             .lock()
             .unwrap()
-            .copy_from_slice(self.internal_buffer.as_slice());
+            .copy_from_slice(&self.internal_buffer);
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
@@ -129,48 +127,61 @@ impl PPU {
         let render_background = self.ppu_mask & (1 << 3) != 0;
         let render_sprites = self.ppu_mask & (1 << 4) != 0;
 
-        let mut tile = self.get_current_tile();
+        let mapper = self.mapper.borrow();
+        let mut tile = self.get_current_tile(&mapper);
         let mut palette = self.palette_for_current_bg_tile();
-        let mut index: usize = scanline as usize * 1024;
-        let sprite0_in_scanline = self
-            .slice_as_sprite(0)
-            .in_scanline(scanline, self.sprite_height());
-        let mut found_sprite0 = false;
+        let mut index: usize = (scanline as usize) << 10;
 
-        for x in 0..=255 {
-            'pixel: {
-                if render_sprites
-                    && self.render_sprites(&mut foreground_sprites, scanline, x, index)
-                {
-                    break 'pixel;
+        let fine_y = self.internal_regs.get_fine_y();
+
+
+
+        let mut sprite0 = Some(self.slice_as_sprite(0));
+        if !sprite0.as_ref().unwrap().in_scanline(scanline, self.sprite_height()) {
+            sprite0 = None;
+        }
+        let mut sprite0_found = false;
+
+        /* background color: grab the color directly without loading the full palette */
+        let bg_color = self.palette_memory[0];
+
+        /* this could be an inclusive range over all of the 8-bit address space, but inclusive ranges
+         * don't output efficiently, even under optimization
+         */
+        let mut x = 0;
+        loop {
+            let pixel = 'pixel: {
+                if let Some(pixel) = self.render_sprites(render_sprites, &mut foreground_sprites, scanline, x, &mapper) {
+                    pixel
+                } else if let Some(pixel) = self.render_background_tiles(render_background, scanline, x, fine_y,
+                                                                         &mut tile, &palette,
+                                                                         &mut sprite0, &mut sprite0_found,
+                                                                         &mapper) {
+                    pixel
+                } else if let Some(pixel) = self.render_sprites(render_sprites, &mut background_sprites, scanline, x, &mapper) {
+                    pixel
+                } else {
+                    bg_color
                 }
-                if render_background {
-                    let (drew, sprite0_hit) = self.render_background_tiles(
-                        scanline,
-                        x,
-                        index,
-                        &mut tile,
-                        &palette,
-                        sprite0_in_scanline & !found_sprite0,
-                    );
-                    found_sprite0 |= sprite0_hit;
-                    if drew {
-                        break 'pixel;
-                    }
-                }
-                if render_sprites
-                    && self.render_sprites(&mut background_sprites, scanline, x, index)
-                {
-                    break 'pixel;
-                }
-                self.render_solid_background_color(index);
-            }
+            };
+
+            PPU::render_pixel(&mut self.internal_buffer, index, Palette::load_color(pixel));
             index += 4;
             if x % 8 + self.internal_regs.get_fine_x() == 7 {
-                self.internal_regs.coarse_x_increment();
-                tile = self.get_current_tile();
-                palette = self.palette_for_current_bg_tile();
+                /* increment coarse x; every other tile, also update the palette */
+                if self.internal_regs.coarse_x_increment() % 2 == 0 {
+                    palette = self.palette_for_current_bg_tile();
+                }
+                tile = self.get_current_tile(&mapper);
             }
+            if x == 0xff {
+                break;
+            }
+            x += 1;
+        }
+
+        if sprite0_found {
+            self.ppu_status = set_bit_on(self.ppu_status, 6)
         }
 
         /* update scrolling */
@@ -179,46 +190,40 @@ impl PPU {
 
     #[cfg_attr(feature = "profiling", inline(never))]
     fn render_background_tiles(
-        &mut self,
+        &self,
+        render_background: bool,
         scanline: u8,
         x: u8,
-        index: usize,
+        fine_y: u8,
         tile: &mut Tile,
         palette: &Palette,
-        check_sprite0: bool,
-    ) -> (bool, bool) {
-        let brightness = tile.pixel_intensity(
-            &self,
-            (x - self.internal_regs.get_tile_left()) % 8,
-            self.internal_regs.get_fine_y(),
-        );
+        sprite0: &mut Option<SpriteInfo>,
+        sprite0_found: &mut bool,
+        mapper: &Box<dyn Mapper>,
+    ) -> Option<u8> {
+        if !render_background {
+            return None;
+        }
+        let relative_x = x.wrapping_sub(self.internal_regs.get_tile_left()) % 8;
 
-        let mut drew = false;
-        let mut sprite0_hit = false;
+        let brightness = tile.pixel_intensity(mapper, relative_x, fine_y);
 
         if brightness > 0 {
-            drew = true;
-            /* TODO doesn't handle 16 pixel tall sprites */
-            self.internal_buffer[index..(index + 4)]
-                .copy_from_slice(palette.brightness_to_pixels(brightness));
-
-            if check_sprite0 {
-                sprite0_hit = self.check_sprite0(scanline, x);
+            if !*sprite0_found && sprite0.is_some() && self.check_sprite0(scanline, x, sprite0.as_mut().unwrap(), mapper) {
+                *sprite0_found = true;
             }
+            Some(palette.data[brightness])
+        } else {
+            None
         }
-        (drew, sprite0_hit)
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn check_sprite0(&mut self, scanline: u8, x: u8) -> bool {
-        let mut sprite0 = self.slice_as_sprite(0);
-
+    fn check_sprite0(&self, scanline: u8, x: u8, sprite0: &mut SpriteInfo, mapper: &Box<dyn Mapper>) -> bool {
         /* sprite zero hit detection */
-        if x >= sprite0.x
-            && x < sprite0.x + 8
-            && sprite0.get_brightness_localized(self, x - sprite0.x, scanline - sprite0.get_y()) > 0
+        let x_offset = x.wrapping_sub(sprite0.x);
+        if x_offset < 8 && sprite0.get_brightness_localized(self, mapper, x_offset, scanline - sprite0.y) > 0
         {
-            self.ppu_status = set_bit_on(self.ppu_status, 6);
             true
         } else {
             false
@@ -226,40 +231,43 @@ impl PPU {
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn get_current_tile(&self) -> Tile {
-        self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize))
-    }
-
-    #[cfg_attr(feature = "profiling", inline(never))]
-    fn render_solid_background_color(&mut self, index: usize) {
-        /* background color */
-        let palette0 = self.get_palette(0);
-        let bg_pixels = palette0.brightness_to_pixels(0);
-        self.internal_buffer[index..index + 4].copy_from_slice(bg_pixels);
+    fn get_current_tile(&self, mapper: &Box<dyn Mapper>) -> Tile {
+        self.get_bg_tile(self.read_vram_with_mapper((0x2000 | (self.internal_regs.v & 0xfff)) as usize, mapper), mapper)
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
     fn render_sprites(
-        &mut self,
+        &self,
+        render_sprites: bool,
         scanline_sprites: &mut Vec<SpriteInfo>,
         scanline: u8,
         x: u8,
-        pixel_index: usize,
-    ) -> bool {
+        mapper: &Box<dyn Mapper>) -> Option<u8> {
+        if !render_sprites {
+            return None;
+        }
         for sprite in scanline_sprites {
             /* TODO doesn't render sprites on edges */
-            if sprite.x <= x && sprite.x + 8 > x {
+            let x_offset = x.wrapping_sub(sprite.x);
+            if x_offset < 8 {
                 let brightness =
-                    sprite.get_brightness_localized(self, x - sprite.x, scanline - sprite.get_y());
+                    sprite.get_brightness_localized(self, mapper, x_offset, scanline - sprite.y);
                 if brightness > 0 {
                     let sprite_palette = sprite.get_palette(&self);
-                    let pixels = sprite_palette.brightness_to_pixels(brightness);
-                    self.internal_buffer[pixel_index..pixel_index + 4].copy_from_slice(pixels);
-                    return true;
+                    return Some(sprite_palette.data[brightness])
                 };
             }
         }
-        false
+        None
+    }
+
+    #[cfg_attr(feature = "profiling", inline(never))]
+    fn render_pixel(buffer:&mut [u8], pixel_index: usize, pixel : &[u8;4]) {
+        /* seems more efficient to unroll this than create an index for small values */
+        buffer[pixel_index] = pixel[0];
+        buffer[pixel_index + 1] = pixel[1];
+        buffer[pixel_index + 2] = pixel[2];
+        buffer[pixel_index + 3] = pixel[3];
     }
 
     fn sprite_height(&self) -> u8 {
@@ -339,41 +347,42 @@ impl PPU {
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn get_sprite_tile(&self, tile_index: u8) -> Tile {
+    fn get_sprite_tile(&self, tile_index: u8, mapper: &Box<dyn Mapper>) -> Tile {
         let (tile_index, pattern_table) = if self.tall_sprites {
             (tile_index & !1, tile_index & 1)
         } else {
             (tile_index, (self.ppu_ctrl & 0x8) >> 3)
         };
-        self.get_tile(tile_index, pattern_table)
+        self.get_tile(tile_index, pattern_table, mapper)
     }
 
-    fn get_bg_tile(&self, tile_index: u8) -> Tile {
-        self.get_tile(tile_index, (self.ppu_ctrl & 0x10) >> 4)
+    #[cfg_attr(feature = "profiling", inline(never))]
+    fn get_bg_tile(&self, tile_index: u8, mapper: &Box<dyn Mapper>) -> Tile {
+        self.get_tile(tile_index, (self.ppu_ctrl & 0x10) >> 4, mapper)
     }
 
-    fn get_tile(&self, tile_index: u8, pattern_table_num: u8) -> Tile {
-        self.mapper
-            .borrow()
-            .read_tile(tile_index, pattern_table_num)
+    fn get_tile(&self, tile_index: u8, pattern_table_num: u8, mapper: &Box<dyn Mapper>) -> Tile {
+        mapper.read_tile(tile_index, pattern_table_num)
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
     fn get_palette(&self, palette_index: u8) -> Palette {
         let palette_mem_loc: usize = (palette_index as usize) * 4;
-        let mut palette_data = [0u8; 4];
-        palette_data.copy_from_slice(&self.palette_memory[palette_mem_loc..palette_mem_loc + 4]);
 
-        Palette::new(palette_data)
+        Palette::new(&self.palette_memory[palette_mem_loc..palette_mem_loc + 4])
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
     pub fn read_vram(&self, addr: usize) -> u8 {
-        let mapped_address = self.vram_address_mirror(addr);
+        self.read_vram_with_mapper(addr, &self.mapper.borrow())
+    }
+
+    pub fn read_vram_with_mapper(&self, addr: usize, mapper: &Box<dyn Mapper>) -> u8 {
+        let mapped_address = self.vram_address_mirror(addr, mapper);
 
         /* pattern tables (CHR data) */
         if mapped_address < 0x2000 {
-            self.mapper.borrow().read_chr(mapped_address as u16)
+            mapper.read_chr(mapped_address as u16)
         /* nametables and attribute tables */
         } else if mapped_address < 0x3000 {
             self.vram[mapped_address - 0x2000]
@@ -385,7 +394,7 @@ impl PPU {
 
     #[cfg_attr(feature = "profiling", inline(never))]
     pub fn write_vram(&mut self, addr: usize, val: u8) {
-        let mapped_address = self.vram_address_mirror(addr);
+        let mapped_address = self.vram_address_mirror(addr, &self.mapper.borrow());
 
         /* pattern tables (CHR data) */
         if mapped_address < 0x2000 {
@@ -402,7 +411,7 @@ impl PPU {
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    pub fn vram_address_mirror(&self, addr: usize) -> usize {
+    pub fn vram_address_mirror(&self, addr: usize, mapper: &Box<dyn Mapper>) -> usize {
         let mut result = addr;
 
         if result < 0x2000 {
@@ -412,8 +421,10 @@ impl PPU {
                 result -= 0x1000;
             }
 
+            let foo = Some(NametableMirroring::Horizontal);
+
             /* TODO document */
-            match self.mapper.borrow().get_nametable_mirroring() {
+            match mapper.get_nametable_mirroring() {
                 NametableMirroring::Horizontal => result & !0x0800,
                 NametableMirroring::Vertical => (result & !0x0C00) | ((result & 0x0800) >> 1),
                 NametableMirroring::SingleNametable0 => result & !0x0c00,
@@ -425,11 +436,12 @@ impl PPU {
             result = 0x3f00 | (result & 0xff);
 
             /* the first color of corresponding background and sprite palettes are shared;
-             * this doesn't have any real effect, except if the true background color is
-             * written to 0x3f10
+             * this matters especially for 0x3f10, the first sprite palette's background color,
+             * which some games write the overall background color to
              */
-            if result == 0x3f10 {
-                result -= 0x10;
+            /* 10 => 00; 14 => 04; 18 -> 08 */
+            if result & 0x3 == 0 {
+                result &= !0xf0;
             }
 
             result
@@ -437,7 +449,7 @@ impl PPU {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 struct SpriteInfo {
     /* NB: this is one less than the top of the sprite! you'll have to add 1 whenever you use it (see get_y) */
     y: u8,
@@ -445,23 +457,20 @@ struct SpriteInfo {
     attrs: u8,
     x: u8,
     cached_tile: Option<Tile>,
+    cached_palette: Option<Palette>,
 }
 
 impl SpriteInfo {
     fn in_scanline(&self, scanline: u8, sprite_height: u8) -> bool {
-        self.get_y() <= scanline && scanline - self.get_y() < sprite_height
-    }
-
-    fn get_y(&self) -> u8 {
-        self.y + 1
+        self.y <= scanline && scanline - self.y < sprite_height
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn get_brightness_localized(&mut self, ppu: &PPU, x: u8, y: u8) -> u8 {
+    fn get_brightness_localized(&mut self, ppu: &PPU, mapper: &Box<dyn Mapper>, x: u8, y: u8) -> usize {
         if self.cached_tile.is_none() {
-            self.cached_tile = Some(ppu.get_sprite_tile(self.tile_index));
+            self.cached_tile = Some(ppu.get_sprite_tile(self.tile_index, mapper));
         }
-        let mut tile = self.cached_tile.unwrap(); /* TODO is this right? */
+        let tile: &mut Tile = self.cached_tile.as_mut().unwrap();
         let mut x_to_use = x;
         if self.attrs & 0x40 != 0 {
             /* flipped horizontally */
@@ -472,12 +481,15 @@ impl SpriteInfo {
             /* flipped vertically */
             y_to_use = (ppu.sprite_height() - 1) - y_to_use;
         }
-        tile.pixel_intensity(ppu, x_to_use, y_to_use)
+        tile.pixel_intensity(mapper, x_to_use, y_to_use)
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    fn get_palette(&self, ppu: &PPU) -> Palette {
-        ppu.get_palette((self.attrs & 0x3) + 4)
+    fn get_palette(&mut self, ppu: &PPU) -> &Palette {
+        if self.cached_palette.is_none() {
+            self.cached_palette = Some(ppu.get_palette((self.attrs & 0x3) + 4));
+        }
+        self.cached_palette.as_ref().unwrap()
     }
 
     pub fn is_foreground(&self) -> bool {
@@ -487,11 +499,12 @@ impl SpriteInfo {
     /* create a SpriteInfo from memory */
     fn from_memory(src_slice: &[u8]) -> SpriteInfo {
         SpriteInfo {
-            y: src_slice[0],
+            y: src_slice[0]+1,
             tile_index: src_slice[1],
             attrs: src_slice[2],
             x: src_slice[3],
             cached_tile: None,
+            cached_palette: None,
         }
     }
 }

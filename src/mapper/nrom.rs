@@ -63,7 +63,7 @@ impl Mapper for NROM {
         panic!("NROM: ATTEMPTED TO WRITE TO CHR-ROM ADDRESS 0x{address:x} VALUE 0x{value:x}");
     }
 
-    fn get_nametable_mirroring(&self) -> NametableMirroring {
-        self.nametable_mirroring.clone()
+    fn get_nametable_mirroring(&self) -> &NametableMirroring {
+        &self.nametable_mirroring
     }
 }

@@ -121,14 +121,16 @@ impl PPUInternalRegisters {
         }
     }
 
-    pub fn coarse_x_increment(&mut self) {
+    pub fn coarse_x_increment(&mut self) -> u8 {
         let coarse_x = self.get_coarse_x();
+        let mut new_coarse_x = 0;
         if coarse_x == 31 {
-            self.set_coarse_x(0);
             self.set_nametable(self.get_nametable() ^ 0x1); /* switch horizontal nametable */
         } else {
-            self.set_coarse_x(coarse_x + 1);
+            new_coarse_x = coarse_x + 1;
         }
+        self.set_coarse_x(new_coarse_x);
+        new_coarse_x
     }
 
     pub fn copy_x_bits(&mut self) {

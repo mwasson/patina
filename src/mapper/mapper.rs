@@ -18,5 +18,5 @@ pub trait Mapper {
 
     fn write_chr(&mut self, address: u16, value: u8);
 
-    fn get_nametable_mirroring(&self) -> NametableMirroring;
+    fn get_nametable_mirroring(&self) -> &NametableMirroring;
 }

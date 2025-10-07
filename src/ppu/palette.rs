@@ -67,23 +67,32 @@ const HUE_DATA: [[u8; 4]; 64] = [
 
 #[derive(Debug)]
 pub struct Palette {
-    data: [u8; 4],
+    pub(crate) data: [u8;4]
 }
 
 impl Palette {
-    pub fn new(data: [u8; 4]) -> Palette {
-        Palette { data }
+    #[cfg_attr(feature = "profiling", inline(never))]
+    pub fn new(data: &[u8]) -> Palette
+    {
+        let mut data_copy = [0; 4];
+        data_copy.copy_from_slice(data);
+        Palette {
+            data: data_copy
+        }
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    pub fn brightness_to_pixels(&self, brightness: u8) -> &[u8; 4] {
-        let color_info = self.data[brightness as usize];
+    pub fn brightness_to_pixel(&self, brightness: usize) -> &[u8; 4] {
+        Palette::hue_lookup(self.data[brightness] as usize)
+    }
 
+    #[cfg_attr(feature = "profiling", inline(never))]
+    pub fn load_color(color_info: u8) -> &'static [u8; 4] {
         let hue = color_info & 0x3f;
         // let value = color_info & 0xc0;
 
         // Palette::apply_value(value, Palette::hue_lookup(hue))
-        Palette::hue_lookup(hue)
+        Palette::hue_lookup(hue as usize)
     }
 
     /* TODO buggy; messes up Bubble Bobble's colors */
@@ -103,7 +112,7 @@ impl Palette {
 
     #[cfg_attr(feature = "profiling", inline(never))]
     /* based on Wiki values */
-    fn hue_lookup(hue: u8) -> &'static [u8; 4] {
-        &HUE_DATA[hue as usize]
+    fn hue_lookup(hue: usize) -> &'static [u8; 4] {
+        &HUE_DATA[hue]
     }
 }

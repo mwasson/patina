@@ -89,16 +89,16 @@ impl DMC {
             }
             /* TODO clock shift register */
             self.shift_register >>= 1;
-            self.bits_remaining -= 1;
-            if self.bits_remaining == 0 {
-                if self.sample_buffer.is_none() {
-                    self.silence_flag = true;
-                } else {
-                    self.silence_flag = false;
-                    self.shift_register = self.sample_buffer.unwrap();
-                    self.sample_buffer = None;
-                }
-            }
+            // self.bits_remaining -= 1;
+            // if self.bits_remaining == 0 {
+            //     if self.sample_buffer.is_none() {
+            //         self.silence_flag = true;
+            //     } else {
+            //         self.silence_flag = false;
+            //         self.shift_register = self.sample_buffer.unwrap();
+            //         self.sample_buffer = None;
+            //     }
+            // }
         }
     }
 

@@ -1,7 +1,7 @@
 use crate::mapper::Mapper;
 use crate::ppu::PPU;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct Tile {
     tile_addr: u16,
     cached_row: u8,
@@ -21,12 +21,12 @@ impl Tile {
 
     /* TODO serious comments required */
     #[allow(dead_code)]
-    pub fn render(&mut self, ppu: &PPU) -> [u8; 4 * 8 * 8] {
+    pub fn render(&mut self, mapper: &Box<dyn Mapper>) -> [u8; 4 * 8 * 8] {
         let mut out = [0; 4 * 8 * 8];
 
         for row in 0..8 {
             for col in 0..8 {
-                let val = self.pixel_intensity(ppu, col, row);
+                let val = self.pixel_intensity(mapper, col, row);
                 let result: u8 = (val as u16 * 256 / 4) as u8;
                 let out_index = pixel_to_index(8, col as usize, row as usize);
                 out[out_index..(out_index + 4)].copy_from_slice(&[result, result, result, 0xff]);
@@ -37,9 +37,9 @@ impl Tile {
     }
 
     #[allow(dead_code)]
-    pub fn stamp(&mut self, ppu: &PPU, write_buffer: &mut [u8], width: usize, x: usize, y: usize) {
+    pub fn stamp(&mut self, mapper: &Box<dyn Mapper>, write_buffer: &mut [u8], width: usize, x: usize, y: usize) {
         let mut tile_index = 0;
-        for chunk in self.render(ppu).chunks_exact(4) {
+        for chunk in self.render(mapper).chunks_exact(4) {
             let tile_xy = index_to_pixel(8, tile_index);
             let index = pixel_to_index(width, x + tile_xy.0, y + tile_xy.1);
             write_buffer[index..index + 4].copy_from_slice(chunk);
@@ -48,19 +48,38 @@ impl Tile {
     }
 
     #[cfg_attr(feature = "profiling", inline(never))]
-    pub fn pixel_intensity(&mut self, ppu: &PPU, x: u8, y: u8) -> u8 {
-        let rev_x = 7 - x;
+    pub fn pixel_intensity(&mut self, mapper: &Box<dyn Mapper>, x: u8, y: u8) -> usize {
         /* double tall sprites are actually two regular 8x8 tiles glued together,
          * so for the second half we need to increment values by 8 to index it correctly
          */
+        self.populate_cache(mapper, y);
+        let x_mask = 1 << x;
+        let big = (self.cached_big & x_mask) != 0;
+        let small = (self.cached_small & x_mask) != 0;
+        ((big as usize) << 1) | (small as usize)
+        // ((self.cached_big >> rev_x & 1) << 1) | (self.cached_small >> rev_x & 1)
+    }
+
+    #[cfg_attr(feature = "profiling", inline(never))]
+    fn populate_cache(&mut self, mapper: &Box<dyn Mapper>, y: u8) {
         if self.cached_row != y {
             self.cached_row = y;
-            let y_row = if y > 7 { y + 8 } else { y } as u16;
-            let mapper = ppu.mapper.borrow();
-            self.cached_big = mapper.read_chr(self.tile_addr + y_row + 8);
-            self.cached_small = mapper.read_chr(self.tile_addr + y_row);
+            let y_row = self.tile_addr + (if y > 7 { y + 8 } else { y } as u16);
+            self.cached_big = Tile::rev_bits(mapper.read_chr(y_row + 8));
+            self.cached_small = Tile::rev_bits(mapper.read_chr(y_row));
         }
-        ((self.cached_big >> rev_x & 1) << 1) | (self.cached_small >> rev_x & 1)
+    }
+
+    #[cfg_attr(feature = "profiling", inline(never))]
+    fn rev_bits(mut x: u8) -> u8 {
+        /* from code on stack overflow */
+        // swap nibbles
+        x = x >> 4 | x << 4;
+        // swap groups of 2
+        x = (x >> 2) & 0x33 | (x & 0x33) << 2;
+        // swap groups of 1
+        x = (x >> 1) & 0x55 | (x & 0x55) << 1;
+        x
     }
 }
 

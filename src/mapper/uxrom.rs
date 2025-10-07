@@ -5,14 +5,14 @@ use crate::rom::Rom;
 
 pub struct UxROM {
     prg_banks: BankArray,
-    chr_bank: BankArray,
+    chr_bank: Box<[u8;1 << SIZE_8_KB]>,
     nametable_mirroring: NametableMirroring,
 }
 
 impl UxROM {
     pub fn new(rom: &Rom) -> Self {
-        let mut chr_bank = BankArray::new(SIZE_8_KB, 0, rom.chr_data.clone());
-        chr_bank.set_bank(0, 0);
+        let mut chr_bank = Box::new([0; 1 << SIZE_8_KB]);
+        chr_bank[0..rom.chr_data.len()].copy_from_slice(rom.chr_data.as_slice());
 
         let mut prg_banks = BankArray::new(SIZE_16_KB, 0x8000, rom.prg_data.clone());
         prg_banks.set_bank(0, 0);
@@ -45,14 +45,14 @@ impl Mapper for UxROM {
     }
 
     fn read_chr(&self, address: u16) -> u8 {
-        self.chr_bank.read(address)
+        self.chr_bank[address as usize]
     }
 
     fn write_chr(&mut self, address: u16, value: u8) {
-        self.chr_bank.write(address, value);
+        self.chr_bank[address as usize] = value;
     }
 
-    fn get_nametable_mirroring(&self) -> NametableMirroring {
-        self.nametable_mirroring.clone()
+    fn get_nametable_mirroring(&self) -> &NametableMirroring {
+        &self.nametable_mirroring
     }
 }

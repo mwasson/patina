@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 pub struct Timer {
     pub period: u16,
     pub count: u16,

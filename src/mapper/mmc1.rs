@@ -181,7 +181,7 @@ impl Mapper for MMC1 {
         self.chr_banks.write(address, value);
     }
 
-    fn get_nametable_mirroring(&self) -> NametableMirroring {
-        self.nametable_mirroring.clone()
+    fn get_nametable_mirroring(&self) -> &NametableMirroring {
+        &self.nametable_mirroring
     }
 }
