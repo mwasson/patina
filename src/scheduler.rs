@@ -16,7 +16,7 @@ use winit::window::Window;
 enum TaskType {
     CPU,
     PPUScreen,
-    PPUScanline(u8),
+    PPUScanline(u8, u8),
     PPUVBlank,
     APU,
 }
@@ -57,20 +57,30 @@ pub(crate) fn simulate(
 
                 borrowed_ppu.beginning_of_screen_render();
 
-                let scanline_duration = borrowed_ppu.cycles_to_duration(341);
-                next_ppu_task = (PPUScanline(0), time.add(scanline_duration))
+                let scanline_duration = borrowed_ppu.cycles_to_duration(341 + 1);
+                next_ppu_task = (PPUScanline(0, 0), time.add(scanline_duration))
             }
-            (PPUScanline(scanline), time) => {
+            (PPUScanline(scanline, x), time) => {
                 let mut borrowed_ppu = ppu.borrow_mut();
-                borrowed_ppu.render_scanline(scanline);
 
-                let scanline_duration = borrowed_ppu.cycles_to_duration(341);
-                let next_task_type = if scanline == 239 {
-                    PPUVBlank
+                /* TODO pixels */
+                /* TODO: scanline close down */
+                borrowed_ppu.render_pixel(scanline, x);
+
+                if x == 0xff {
+                    borrowed_ppu.render_scanline_end();
+                }
+
+                let (next_task_type, cycles_to_wait) = if x == 0xff {
+                    if scanline == 239 {
+                        (PPUVBlank, 84)
+                    } else {
+                        (PPUScanline(scanline + 1, 0), 84 + 1)
+                    }
                 } else {
-                    PPUScanline(scanline + 1)
+                    (PPUScanline(scanline, x + 1), 1)
                 };
-                let next_time = time.add(scanline_duration);
+                let next_time = time.add(borrowed_ppu.cycles_to_duration(cycles_to_wait));
                 next_ppu_task = (next_task_type, next_time)
             }
             (PPUVBlank, time) => {

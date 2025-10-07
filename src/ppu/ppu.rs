@@ -110,26 +110,25 @@ impl PPU {
             .unwrap()
             .copy_from_slice(&self.internal_buffer);
     }
+    
+    pub fn render_scanline_end(&mut self) {
+        self.internal_regs.copy_x_bits();
+        self.internal_regs.y_increment();
+    }
 
-    pub fn render_scanline(&mut self, scanline: u8) {
+    pub fn render_pixel(&mut self, scanline: u8, x: u8) {
         if scanline < OVERSCAN || scanline > 240 - OVERSCAN {
-            self.internal_regs.y_increment();
             return;
         }
         let (foreground_sprites, background_sprites) = self.sprite_evaluation(scanline);
 
-        let mut index = scanline as usize * 1024;
-
-        /* technically should occur at end of previous scanline, but if the entire scanline occurs
-         * at once, this guarantees the CPU has updated its side of things
-         */
-        self.internal_regs.copy_x_bits();
+        let index = scanline as usize * 1024 + x as usize * 4;
 
         let render_background = self.ppu_mask & (1 << 3) != 0;
         let render_sprites = self.ppu_mask & (1 << 4) != 0;
 
         let mut bg_tile = self.get_current_tile();
-        let mut palette = self.palette_for_current_bg_tile();
+        let palette = self.palette_for_current_bg_tile();
         let mapper = &self.mapper.borrow();
         let bg_color = self.get_palette(0).brightness_to_pixels(0);
 
@@ -143,39 +142,30 @@ impl PPU {
             None
         };
 
-        for x in 0..=0xff {
-            let pixel = 'pixel: {
-                if render_sprites {
-                    if let Some(pixel) = self.render_sprites(&foreground_sprites, scanline, x) {
-                        break 'pixel pixel;
-                    }
+        let pixel = 'pixel: {
+            if render_sprites {
+                if let Some(pixel) = self.render_sprites(&foreground_sprites, scanline, x) {
+                    break 'pixel pixel;
                 }
-                if render_background {
-                    if let Some(pixel) =
-                        self.render_background_tiles(x, &mut bg_tile, &palette, mapper)
-                    {
-                        self.ppu_status |= self.sprite0_hit_detection(scanline, x, &mut sprite0);
-                        break 'pixel pixel;
-                    }
-                }
-                if render_sprites {
-                    if let Some(pixel) = self.render_sprites(&background_sprites, scanline, x) {
-                        break 'pixel pixel;
-                    }
-                }
-                bg_color
-            };
-            self.internal_buffer[index..index + 4].copy_from_slice(pixel);
-            if x % 8 + self.internal_regs.get_fine_x() == 7 {
-                self.internal_regs.coarse_x_increment();
-                bg_tile = self.get_current_tile();
-                palette = self.palette_for_current_bg_tile();
             }
-            index += 4;
+            if render_background {
+                if let Some(pixel) = self.render_background_tiles(x, &mut bg_tile, &palette, mapper)
+                {
+                    self.ppu_status |= self.sprite0_hit_detection(scanline, x, &mut sprite0);
+                    break 'pixel pixel;
+                }
+            }
+            if render_sprites {
+                if let Some(pixel) = self.render_sprites(&background_sprites, scanline, x) {
+                    break 'pixel pixel;
+                }
+            }
+            bg_color
+        };
+        self.internal_buffer[index..index + 4].copy_from_slice(pixel);
+        if x % 8 + self.internal_regs.get_fine_x() == 7 {
+            self.internal_regs.coarse_x_increment();
         }
-
-        /* update scrolling */
-        self.internal_regs.y_increment();
     }
 
     fn render_background_tiles(
