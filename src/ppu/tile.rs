@@ -63,7 +63,7 @@ impl Tile {
             /* double tall sprites are actually two regular 8x8 tiles glued together,
              * so for the second half we need to increment values by 8 to index it correctly
              */
-            let y_row = self.tile_addr + (if y > 8 { y + 8 } else { y } as u16);
+            let y_row = self.tile_addr + (if y > 7 { y + 8 } else { y } as u16);
             /* memory stores bits in the opposite order of x indexing; reversing them here
              * to avoid a subtraction later */
             let mapper = self.mapper.borrow();
