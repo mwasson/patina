@@ -137,8 +137,6 @@ impl PPU {
             return;
         }
 
-        let index = scanline as usize * 1024 + x as usize * 4;
-
         let render_background = self.ppu_mask & (1 << 3) != 0;
         let render_sprites = self.ppu_mask & (1 << 4) != 0;
 
@@ -166,11 +164,12 @@ impl PPU {
             /* if no sprites or bg tile, render the global background color */
             self.get_palette(0).brightness_to_pixels(0)
         };
+        let index = scanline as usize * 1024 + x as usize * 4;
         self.internal_buffer[index..index + 4].copy_from_slice(pixel);
         if x % 8 + self.internal_regs.get_fine_x() == 7 {
+            self.internal_regs.coarse_x_increment();
             self.current_tile = Some(self.get_current_tile());
             self.current_palette = Some(self.palette_for_current_bg_tile());
-            self.internal_regs.coarse_x_increment();
         }
     }
 
