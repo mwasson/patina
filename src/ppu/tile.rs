@@ -44,7 +44,6 @@ impl Tile {
         }
     }
 
-    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn pixel_intensity(&self, mapper: &Box<dyn Mapper>, x: u8, y: u8) -> u8 {
         let rev_x = 7 - x;
         /* double tall sprites are actually two regular 8x8 tiles glued together,

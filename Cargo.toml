@@ -3,8 +3,18 @@ name = "patina"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-profiling = []
+[profile.dev]
+opt-level = 0
+debug = true
+split-debuginfo = '...'  # Platform-specific.
+strip = "none"
+debug-assertions = false
+overflow-checks = false
+lto = false
+panic = 'unwind'
+incremental = true
+codegen-units = 256
+rpath = false
 
 [dependencies]
 fnv = "1.0.7"

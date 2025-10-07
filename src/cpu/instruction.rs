@@ -334,7 +334,6 @@ pub struct RealizedInstruction {
 }
 
 impl RealizedInstruction {
-    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn apply(&self, cpu: &mut CPU, b1: u8, b2: u8) {
         self.instruction.apply(cpu, &self.addr_mode, b1, b2);
         /* note that this holds even for branching instructions (but not jump instructions): program counter needs to be
@@ -353,7 +352,6 @@ impl RealizedInstruction {
     }
 }
 
-#[cfg_attr(feature = "profiling", inline(never))]
 pub fn from_opcode(opcode: u8) -> RealizedInstruction {
     let (instruction, addr_mode, cycles, bytes) = match opcode {
         /* TODO: instructions marked 'boundary' take longer if crossing

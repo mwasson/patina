@@ -55,7 +55,6 @@ impl CPU {
     }
 
     /* performs one operation, and then returns when the next operation should run */
-    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn transition(&mut self, start_time: Instant) -> Instant {
         if self.memory.borrow().nmi_set() {
             self.trigger_nmi();

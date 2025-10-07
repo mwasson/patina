@@ -8,7 +8,6 @@ impl Palette {
         Palette { data }
     }
 
-    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn brightness_to_pixels(&self, brightness: u8) -> [u8; 4] {
         let color_info = self.data[brightness as usize];
 
@@ -34,7 +33,6 @@ impl Palette {
         output
     }
 
-    #[cfg_attr(debug_assertions, inline(never))]
     /* based on Wiki values */
     fn hue_lookup(hue: u8) -> [u8; 4] {
         match hue {

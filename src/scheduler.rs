@@ -21,7 +21,6 @@ enum TaskType {
     APU,
 }
 
-#[cfg_attr(feature = "profiling", inline(never))]
 pub(crate) fn simulate(
     cpu: &mut CPU,
     ppu: Rc<RefCell<PPU>>,
@@ -95,7 +94,6 @@ pub(crate) fn simulate(
     }
 }
 
-#[cfg_attr(feature = "profiling", inline(never))]
 fn next_task(
     t1: &(TaskType, Instant),
     t2: &(TaskType, Instant),

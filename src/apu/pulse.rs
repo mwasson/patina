@@ -49,8 +49,7 @@ impl Pulse {
             enabled: false,
         }
     }
-
-    #[cfg_attr(feature = "profiling", inline(never))]
+    
     pub(crate) fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
@@ -115,8 +114,7 @@ impl PulseSequencer {
             duty_index: 0,
         }
     }
-
-    #[cfg_attr(feature = "profiling", inline(never))]
+    
     fn clock(&mut self) {
         if self.timer.clock() {
             self.duty_index = (self.duty_index + 1) % 8

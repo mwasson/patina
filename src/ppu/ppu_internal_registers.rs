@@ -99,7 +99,6 @@ impl PPUInternalRegisters {
         !self.w
     }
 
-    #[cfg_attr(feature = "profiling", inline(never))]
     pub fn y_increment(&mut self) {
         let fine_y = self.get_fine_y();
         let coarse_y = self.get_coarse_y();

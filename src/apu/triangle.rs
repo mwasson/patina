@@ -27,8 +27,7 @@ impl Triangle {
             enabled: false,
         }
     }
-
-    #[cfg_attr(feature = "profiling", inline(never))]
+    
     pub fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;
