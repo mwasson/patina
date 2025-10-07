@@ -19,6 +19,8 @@ pub struct PPU {
     vram: [u8; VRAM_SIZE],
     palette_memory: [u8; PALETTE_MEMORY_SIZE],
     scanline_sprites: Option<(Vec<SpriteInfo>, Vec<SpriteInfo>)>,
+    current_tile: Option<Tile>,
+    current_palette: Option<Palette>,
     // tick_count: u16,
     /* shared registers */
     pub(super) ppu_ctrl: u8,
@@ -64,6 +66,8 @@ impl PPU {
             internal_regs: PPUInternalRegisters::default(),
             tall_sprites: false,
             scanline_sprites: None,
+            current_tile: None,
+            current_palette: None,
         }))
     }
 
@@ -113,6 +117,12 @@ impl PPU {
             .copy_from_slice(&self.internal_buffer);
     }
 
+    pub fn render_scanline_begin(&mut self, scanline: u8) {
+        self.scanline_sprites = Some(self.sprite_evaluation(scanline));
+        self.current_tile = Some(self.get_current_tile());
+        self.current_palette = Some(self.palette_for_current_bg_tile());
+    }
+
     pub fn render_scanline_end(&mut self) {
         self.internal_regs.copy_x_bits();
         self.internal_regs.y_increment();
@@ -122,16 +132,12 @@ impl PPU {
         if scanline < OVERSCAN || scanline > 240 - OVERSCAN {
             return;
         }
-        let (foreground_sprites, background_sprites) = &self.scanline_sprites.as_ref().unwrap();
 
         let index = scanline as usize * 1024 + x as usize * 4;
 
         let render_background = self.ppu_mask & (1 << 3) != 0;
         let render_sprites = self.ppu_mask & (1 << 4) != 0;
 
-        let mut bg_tile = self.get_current_tile();
-        let palette = self.palette_for_current_bg_tile();
-        let mapper = &self.mapper.borrow();
         let bg_color = self.get_palette(0).brightness_to_pixels(0);
 
         let mut sprite0 = 'sprite0: {
@@ -146,19 +152,22 @@ impl PPU {
 
         let pixel = 'pixel: {
             if render_sprites {
-                if let Some(pixel) = self.render_sprites(foreground_sprites, scanline, x) {
+                if let Some(pixel) =
+                    self.render_sprites(&self.scanline_sprites.as_ref().unwrap().0, scanline, x)
+                {
                     break 'pixel pixel;
                 }
             }
             if render_background {
-                if let Some(pixel) = self.render_background_tiles(x, &mut bg_tile, &palette, mapper)
-                {
+                if let Some(pixel) = self.render_background_tiles(x) {
                     self.ppu_status |= self.sprite0_hit_detection(scanline, x, &mut sprite0);
                     break 'pixel pixel;
                 }
             }
             if render_sprites {
-                if let Some(pixel) = self.render_sprites(background_sprites, scanline, x) {
+                if let Some(pixel) =
+                    self.render_sprites(&self.scanline_sprites.as_ref().unwrap().1, scanline, x)
+                {
                     break 'pixel pixel;
                 }
             }
@@ -166,25 +175,25 @@ impl PPU {
         };
         self.internal_buffer[index..index + 4].copy_from_slice(pixel);
         if x % 8 + self.internal_regs.get_fine_x() == 7 {
+            self.current_tile = Some(self.get_current_tile());
+            self.current_palette = Some(self.palette_for_current_bg_tile());
             self.internal_regs.coarse_x_increment();
         }
     }
 
-    fn render_background_tiles(
-        &self,
-        x: u8,
-        tile: &mut Tile,
-        palette: &Palette,
-        mapper: &Box<dyn Mapper>,
-    ) -> Option<&'static [u8; 4]> {
-        let brightness = tile.pixel_intensity(
-            mapper,
+    fn render_background_tiles(&mut self, x: u8) -> Option<&'static [u8; 4]> {
+        let brightness = self.current_tile.as_mut().unwrap().pixel_intensity(
             x - (self.internal_regs.get_coarse_x() * 8 - self.internal_regs.get_fine_x()),
             self.internal_regs.get_fine_y(),
         );
 
         if brightness > 0 {
-            Some(palette.brightness_to_pixels(brightness))
+            Some(
+                self.current_palette
+                    .as_ref()
+                    .unwrap()
+                    .brightness_to_pixels(brightness),
+            )
         } else {
             None
         }
@@ -270,10 +279,6 @@ impl PPU {
         self.get_palette((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
     }
 
-    pub fn render_scanline_begin(&mut self, scanline: u8) {
-        self.scanline_sprites = Some(self.sprite_evaluation(scanline));
-    }
-
     /* Finds the first eight sprites on the given scanline, determined
      * by position in the OAM. Takes into account whether sprites are 8 or 16
      * pixels tall. It then copies these into secondary OAM. Also sets the
@@ -323,9 +328,9 @@ impl PPU {
     }
 
     fn get_tile(&self, tile_index: u8, pattern_table_num: u8) -> Tile {
-        self.mapper
-            .borrow()
-            .read_tile(tile_index, pattern_table_num)
+        let pattern_table_base = 0x1000u16 * pattern_table_num as u16;
+        let tile_start = pattern_table_base + (tile_index as u16 * 16);
+        Tile::new(tile_start, self.mapper.clone())
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
@@ -433,7 +438,7 @@ impl SpriteInfo {
             /* flipped vertically */
             y_to_use = (ppu.sprite_height() - 1) - y_to_use;
         }
-        tile.pixel_intensity(&ppu.mapper.borrow(), x_to_use, y_to_use)
+        tile.pixel_intensity(x_to_use, y_to_use)
     }
 
     fn get_palette(&self, ppu: &PPU) -> Palette {
