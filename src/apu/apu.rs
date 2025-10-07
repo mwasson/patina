@@ -67,9 +67,8 @@ impl APU {
         self.dmc.borrow_mut().tick(self.apu_counter);
 
         /* TODO find a better way to sync this up */
-        let mut queue = self.queue.write().unwrap();
-        if self.apu_counter % 20 == 0 /* TODO */ && queue.len() < 50000 {
-            queue.push_back(self.mix());
+        if self.apu_counter % 20 == 0 /* TODO */ && self.queue.read().unwrap().len() < 50000 {
+            self.queue.write().unwrap().push_back(self.mix());
         }
     }
 
