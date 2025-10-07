@@ -161,8 +161,11 @@ impl PPU {
             let tile_offset = x as i16 - self.internal_regs.get_fine_x() as i16;
             for pixel_offset in 0..8 {
                 let pixel_loc = tile_offset + pixel_offset as i16;
+                if pixel_loc < 0 {
+                    continue;
+                }
                 let index = pixel_loc as usize * 4;
-                if pixel_loc < 0 || pixel_loc > 0xff || line_buffer[index + 3] != 0 {
+                if pixel_loc > 0xff || line_buffer[index + 3] != 0 {
                     continue;
                 }
                 let brightness = tile.pixel_intensity(
@@ -179,7 +182,7 @@ impl PPU {
                     /* sprite zero hit detection */
                     if sprite_zero_in_scanline_not_yet_found
                         && pixel_loc as u8 >= sprite0.x
-                        && pixel_loc as u8 <= sprite0.x + 8
+                        && (pixel_loc as u8) < sprite0.x + 8
                         && sprite0.get_brightness_localized(
                             self,
                             pixel_loc as u8 - sprite0.x,
