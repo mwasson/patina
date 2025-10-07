@@ -9,13 +9,6 @@ use std::rc::Rc;
 pub struct PPUListener {
     ppu: Rc<RefCell<PPU>>,
     read_buffer: u8,
-
-    /* while we're prefer for this to not exist and just live in the PPU's t and v registers,
-     * this won't work if the scanline all occurs at once; otherwise, the CPU might try to read an
-     * address while the PPU is using it for rendering. This separates things out so that can work
-     * until PPU::render_scanline() is split up.
-     */
-    vram_address: u16,
 }
 
 impl PPUListener {
@@ -23,7 +16,6 @@ impl PPUListener {
         PPUListener {
             ppu,
             read_buffer: 0,
-            vram_address: 0,
         }
     }
 }
@@ -60,13 +52,13 @@ impl MemoryListener for PPUListener {
                 }
                 PPUADDR => {
                     /* seems like it wouldn't be right? */
-                    self.vram_address as u8
+                    ppu.internal_regs.v as u8
                 }
                 PPUDATA => {
                     let result = self.read_buffer;
-                    self.read_buffer = ppu.read_vram(self.vram_address as usize);
+                    self.read_buffer = ppu.read_vram(ppu.internal_regs.v as usize);
 
-                    self.vram_address += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
+                    ppu.internal_regs.v += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
 
                     result
                 }
@@ -121,22 +113,18 @@ impl MemoryListener for PPUListener {
                 }
                 PPUADDR => {
                     if ppu.internal_regs.is_first_write() {
-                        self.vram_address =
-                            (self.vram_address & 0xff) | (((value & 0x3f) as u16) << 8);
+                        ppu.internal_regs.t =
+                            (ppu.internal_regs.t & 0xff) | (((value & 0x3f) as u16) << 8);
                     } else {
-                        self.vram_address = (self.vram_address & 0xff00) | (value as u16);
-                        /* separately, this could affect the PPU's registers--even just clearing
-                         * out invalid data, or it could be used to actively update the PPU,
-                         * so we also need to send it over there, too
-                         */
-                        ppu.internal_regs.t = self.vram_address;
-                        ppu.internal_regs.v = self.vram_address;
+                        ppu.internal_regs.t = (ppu.internal_regs.t & 0xff00) | (value as u16);
+                        ppu.internal_regs.v = ppu.internal_regs.t;
                     }
                     ppu.internal_regs.w = !ppu.internal_regs.w
                 }
                 PPUDATA => {
-                    ppu.write_vram(self.vram_address as usize, value);
-                    self.vram_address += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
+                    let addr = ppu.internal_regs.v as usize;
+                    ppu.write_vram(addr, value);
+                    ppu.internal_regs.v += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
                 }
                 OAMDMA => {
                     let base_addr = (value as u16) << 8;

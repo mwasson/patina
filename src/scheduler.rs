@@ -52,7 +52,7 @@ pub(crate) fn simulate(
 
                 borrowed_ppu.beginning_of_screen_render();
 
-                let scanline_duration = borrowed_ppu.cycles_to_duration(341 + 1);
+                let scanline_duration = borrowed_ppu.cycles_to_duration(341 - 340 + 1);
                 next_ppu_task = (PPUScanline(0, 0), time.add(scanline_duration))
             }
             (PPUScanline(scanline_ref, x_ref), time) => {
@@ -91,7 +91,7 @@ pub(crate) fn simulate(
 
                 next_ppu_task = (
                     PPUScreen,
-                    time.add(borrowed_ppu.cycles_to_duration(21 * 341)),
+                    time.add(borrowed_ppu.cycles_to_duration(21 * 341 + 304)),
                 );
             }
             (APU, time) => {

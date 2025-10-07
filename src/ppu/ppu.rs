@@ -101,7 +101,9 @@ impl PPU {
         /* clear overflow flag */
         self.ppu_status = set_bit_off(self.ppu_status, 5);
 
-        self.internal_regs.copy_y_bits();
+        if self.ppu_mask & 0x18 != 0 {
+            self.internal_regs.copy_y_bits();
+        }
     }
 
     pub fn end_of_screen_render(&mut self) {
@@ -128,8 +130,10 @@ impl PPU {
     }
 
     pub fn render_scanline_end(&mut self) {
-        self.internal_regs.copy_x_bits();
-        self.internal_regs.y_increment();
+        if self.ppu_mask & 0x18 != 0 {
+            self.internal_regs.copy_x_bits();
+            self.internal_regs.y_increment();
+        }
     }
 
     pub fn render_pixel(&mut self, scanline: u8, x: u8) {
@@ -168,7 +172,11 @@ impl PPU {
         let index = scanline as usize * 1024 + x as usize * 4;
         self.internal_buffer[index..index + 4].copy_from_slice(pixel);
         if x % 8 + self.internal_regs.get_fine_x() == 7 {
-            let coarse_x = self.internal_regs.coarse_x_increment();
+            let coarse_x = if render_sprites || render_background {
+                self.internal_regs.coarse_x_increment()
+            } else {
+                self.internal_regs.get_coarse_x()
+            };
             self.current_tile = Some(self.get_current_tile());
             if coarse_x % 2 == 0 {
                 self.current_palette = Some(self.palette_for_current_bg_tile());
