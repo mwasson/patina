@@ -392,7 +392,7 @@ impl PPU {
             }
         } else {
             /* palettes are repeated above 0x3f1f */
-            result = 0x3f00 | (result & 0xff);
+            result = 0x3f00 | (result & 0x1f);
 
             /* the first color of corresponding background and sprite palettes are shared;
              * this doesn't have any real effect, except if the true background color is
