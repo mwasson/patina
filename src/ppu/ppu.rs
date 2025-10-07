@@ -112,9 +112,13 @@ impl PPU {
     }
 
     pub fn render_scanline(&mut self, scanline: u8) {
+        if scanline < OVERSCAN || scanline > 240 - OVERSCAN {
+            self.internal_regs.y_increment();
+            return;
+        }
         let (foreground_sprites, background_sprites) = self.sprite_evaluation(scanline);
 
-        let mut line_buffer = [0; 256 * 4];
+        let mut index = scanline as usize * 1024;
 
         /* technically should occur at end of previous scanline, but if the entire scanline occurs
          * at once, this guarantees the CPU has updated its side of things
@@ -129,58 +133,43 @@ impl PPU {
 
         for x in 0..=0xff {
             'pixel: {
-                if render_sprites
-                    && self.render_sprites(&foreground_sprites, scanline, x, &mut line_buffer)
-                {
+                if render_sprites && self.render_sprites(&foreground_sprites, scanline, x, index) {
                     break 'pixel;
                 }
                 if render_background
-                    && self.render_background_tiles(
-                        scanline,
-                        x,
-                        &mut bg_tile,
-                        &palette,
-                        &mut line_buffer,
-                    )
+                    && self.render_background_tiles(scanline, x, index, &mut bg_tile, &palette)
                 {
                     break 'pixel;
                 }
-                if render_sprites
-                    && self.render_sprites(&background_sprites, scanline, x, &mut line_buffer)
-                {
+                if render_sprites && self.render_sprites(&background_sprites, scanline, x, index) {
                     break 'pixel;
                 }
-                self.render_solid_background_color(x, &mut line_buffer);
+                self.render_solid_background_color(index);
             }
             if x % 8 + self.internal_regs.get_fine_x() == 7 {
                 self.internal_regs.coarse_x_increment();
                 bg_tile = self.get_current_tile();
                 palette = self.palette_for_current_bg_tile();
             }
+            index += 4;
         }
 
         /* update scrolling */
         self.internal_regs.y_increment();
-
-        if scanline >= OVERSCAN && scanline <= 240 - OVERSCAN {
-            self.internal_buffer[Self::pixel_range_for_line(scanline)]
-                .copy_from_slice(&line_buffer);
-        }
     }
 
     fn render_background_tiles(
         &mut self,
         scanline: u8,
         x: u8,
+        index: usize,
         tile: &mut Tile,
         palette: &Palette,
-        line_buffer: &mut [u8; 1024],
     ) -> bool {
         let sprite0 = self.slice_as_sprite(0);
         let sprite_zero_in_scanline_not_yet_found =
             self.ppu_status & (1 << 6) == 0 && sprite0.in_scanline(scanline, self.sprite_height());
 
-        let index = x as usize * 4;
         let brightness = tile.pixel_intensity(
             &self.mapper.borrow(),
             x - (self.internal_regs.get_coarse_x() * 8 - self.internal_regs.get_fine_x()),
@@ -188,7 +177,7 @@ impl PPU {
         );
 
         if brightness > 0 {
-            line_buffer[index..(index + 4)]
+            self.internal_buffer[index..(index + 4)]
                 .copy_from_slice(&palette.brightness_to_pixels(brightness));
 
             /* sprite zero hit detection */
@@ -206,19 +195,18 @@ impl PPU {
         }
     }
 
-    fn render_solid_background_color(&mut self, x: u8, line_buffer: &mut [u8; 1024]) {
+    fn render_solid_background_color(&mut self, index: usize) {
         /* background color */
         let bg_pixels = self.get_palette(0).brightness_to_pixels(0);
-        let index = x as usize * 4;
-        line_buffer[index..index + 4].copy_from_slice(&bg_pixels);
+        self.internal_buffer[index..index + 4].copy_from_slice(&bg_pixels);
     }
 
     fn render_sprites(
-        &self,
+        &mut self,
         scanline_sprites: &Vec<SpriteInfo>,
         scanline: u8,
         x: u8,
-        line_buffer: &mut [u8],
+        index: usize,
     ) -> bool {
         for sprite in scanline_sprites {
             let sprite_palette = sprite.get_palette(&self);
@@ -228,9 +216,8 @@ impl PPU {
             let brightness =
                 sprite.get_brightness_localized(self, x - sprite.x, scanline - sprite.get_y());
             if brightness > 0 {
-                let pixel_index = x as usize * 4;
                 let pixels = sprite_palette.brightness_to_pixels(brightness);
-                line_buffer[pixel_index..pixel_index + 4].copy_from_slice(&pixels);
+                self.internal_buffer[index..index + 4].copy_from_slice(&pixels);
                 return true;
             }
         }
@@ -339,12 +326,6 @@ impl PPU {
         palette_data.copy_from_slice(&self.palette_memory[palette_mem_loc..palette_mem_loc + 4]);
 
         Palette::new(palette_data)
-    }
-
-    fn pixel_range_for_line(y: u8) -> core::ops::Range<usize> {
-        let start = (y - OVERSCAN) as usize; /* don't show the first few lines */
-        let range_width = 4 * 256; /* 4 bytes per pixel, 256 pixels per line */
-        start * range_width..(start + 1) * range_width
     }
 
     pub fn read_vram(&self, addr: usize) -> u8 {

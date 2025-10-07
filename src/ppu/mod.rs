@@ -21,7 +21,7 @@ const PALETTE_MEMORY_SIZE: usize = 32;
 const OVERSCAN: u8 = 10;
 
 pub const DISPLAY_WIDTH: u32 = 256;
-pub const DISPLAY_HEIGHT: u32 = 240 - OVERSCAN as u32;
+pub const DISPLAY_HEIGHT: u32 = 240;
 pub const WRITE_BUFFER_SIZE: usize = (DISPLAY_WIDTH as usize) * (DISPLAY_HEIGHT as usize) * 4;
 
 type OAM = [u8; OAM_SIZE];
