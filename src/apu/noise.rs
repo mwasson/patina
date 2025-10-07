@@ -28,7 +28,7 @@ impl Noise {
         noise_ref
     }
 
-    fn new() -> Noise {
+    pub fn new() -> Noise {
         Noise {
             envelope: Envelope::new(),
             length_counter: LengthCounter::new(),

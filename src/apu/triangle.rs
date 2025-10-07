@@ -19,7 +19,7 @@ impl Triangle {
         triangle_ref
     }
 
-    fn new() -> Triangle {
+    pub fn new() -> Triangle {
         Triangle {
             sequencer: TriangleSequencer::new(),
             length_counter: LengthCounter::new(),
