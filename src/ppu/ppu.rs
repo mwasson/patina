@@ -7,7 +7,6 @@ use crate::ppu::{
 };
 use crate::processor::Processor;
 use std::cell::RefCell;
-use std::cmp::min;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -125,18 +124,40 @@ impl PPU {
         let render_background = self.ppu_mask & (1 << 3) != 0;
         let render_sprites = self.ppu_mask & (1 << 4) != 0;
 
-        if render_sprites {
-            self.render_sprites(&foreground_sprites, scanline, &mut line_buffer);
-        }
-        if render_background {
-            self.render_background_tiles(scanline, &mut line_buffer);
-        }
-        if render_sprites {
-            self.render_sprites(&background_sprites, scanline, &mut line_buffer);
-        }
+        let mut bg_tile = self.get_current_tile();
+        let mut palette = self.palette_for_current_bg_tile();
 
-        /* solid background color everywhere we didn't render a sprite or background tile */
-        self.render_solid_background_color(&mut line_buffer);
+        for x in 0..=0xff {
+            'pixel: {
+                if render_sprites
+                    && self.render_sprites(&foreground_sprites, scanline, x, &mut line_buffer)
+                {
+                    break 'pixel;
+                }
+                if render_background
+                    && self.render_background_tiles(
+                        scanline,
+                        x,
+                        &mut bg_tile,
+                        &palette,
+                        &mut line_buffer,
+                    )
+                {
+                    break 'pixel;
+                }
+                if render_sprites
+                    && self.render_sprites(&background_sprites, scanline, x, &mut line_buffer)
+                {
+                    break 'pixel;
+                }
+                self.render_solid_background_color(x, &mut line_buffer);
+            }
+            if x % 8 + self.internal_regs.get_fine_x() == 7 {
+                self.internal_regs.coarse_x_increment();
+                bg_tile = self.get_current_tile();
+                palette = self.palette_for_current_bg_tile();
+            }
+        }
 
         /* update scrolling */
         self.internal_regs.y_increment();
@@ -147,85 +168,73 @@ impl PPU {
         }
     }
 
-    fn render_background_tiles(&mut self, scanline: u8, line_buffer: &mut [u8; 1024]) {
+    fn render_background_tiles(
+        &mut self,
+        scanline: u8,
+        x: u8,
+        tile: &mut Tile,
+        palette: &Palette,
+        line_buffer: &mut [u8; 1024],
+    ) -> bool {
         let sprite0 = self.slice_as_sprite(0);
-        let mut sprite_zero_in_scanline_not_yet_found =
+        let sprite_zero_in_scanline_not_yet_found =
             self.ppu_status & (1 << 6) == 0 && sprite0.in_scanline(scanline, self.sprite_height());
 
-        for x in (0..0x101).step_by(8) {
-            let mut tile = self
-                .get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize));
-            let palette = self.palette_for_current_bg_tile();
-            let tile_offset = x as i16 - self.internal_regs.get_fine_x() as i16;
-            for pixel_offset in 0..8 {
-                let pixel_loc = tile_offset + pixel_offset as i16;
-                if pixel_loc < 0 {
-                    continue;
-                }
-                let index = pixel_loc as usize * 4;
-                if pixel_loc > 0xff || line_buffer[index + 3] != 0 {
-                    continue;
-                }
-                let brightness = tile.pixel_intensity(
-                    &self.mapper.borrow(),
-                    pixel_offset,
-                    self.internal_regs.get_fine_y(),
-                );
+        let index = x as usize * 4;
+        let brightness = tile.pixel_intensity(
+            &self.mapper.borrow(),
+            x - (self.internal_regs.get_coarse_x() * 8 - self.internal_regs.get_fine_x()),
+            self.internal_regs.get_fine_y(),
+        );
 
-                if brightness > 0 {
-                    /* TODO doesn't handle 16 pixel tall sprites */
-                    line_buffer[index..(index + 4)]
-                        .copy_from_slice(&palette.brightness_to_pixels(brightness));
+        if brightness > 0 {
+            line_buffer[index..(index + 4)]
+                .copy_from_slice(&palette.brightness_to_pixels(brightness));
 
-                    /* sprite zero hit detection */
-                    if sprite_zero_in_scanline_not_yet_found
-                        && pixel_loc as u8 >= sprite0.x
-                        && (pixel_loc as u8) < sprite0.x + 8
-                        && sprite0.get_brightness_localized(
-                            self,
-                            pixel_loc as u8 - sprite0.x,
-                            scanline - sprite0.get_y(),
-                        ) > 0
-                    {
-                        sprite_zero_in_scanline_not_yet_found = false;
-                        self.ppu_status = set_bit_on(self.ppu_status, 6);
-                    }
-                }
+            /* sprite zero hit detection */
+            if sprite_zero_in_scanline_not_yet_found
+                && x >= sprite0.x
+                && x < sprite0.x + 8
+                && sprite0.get_brightness_localized(self, x - sprite0.x, scanline - sprite0.get_y())
+                    > 0
+            {
+                self.ppu_status = set_bit_on(self.ppu_status, 6);
             }
-
-            self.internal_regs.coarse_x_increment();
+            true
+        } else {
+            false
         }
     }
 
-    fn render_solid_background_color(&mut self, line_buffer: &mut [u8; 1024]) {
+    fn render_solid_background_color(&mut self, x: u8, line_buffer: &mut [u8; 1024]) {
         /* background color */
         let bg_pixels = self.get_palette(0).brightness_to_pixels(0);
-        for x in 0..0x100 {
-            if line_buffer[x * 4 + 3] == 0 {
-                line_buffer[(x * 4)..(x * 4 + 4)].copy_from_slice(&bg_pixels);
-            }
-        }
+        let index = x as usize * 4;
+        line_buffer[index..index + 4].copy_from_slice(&bg_pixels);
     }
 
     fn render_sprites(
         &self,
         scanline_sprites: &Vec<SpriteInfo>,
         scanline: u8,
+        x: u8,
         line_buffer: &mut [u8],
-    ) {
+    ) -> bool {
         for sprite in scanline_sprites {
             let sprite_palette = sprite.get_palette(&self);
-            for i in 0..min(8, (0xff - sprite.x).saturating_add(1)) {
-                let brightness =
-                    sprite.get_brightness_localized(self, i, scanline - sprite.get_y());
-                /* TODO: bug here where sprite can wrap around the screen */
-                let pixel_index = sprite.x.wrapping_add(i) as usize * 4;
+            if x < sprite.x || x > sprite.x + 7 {
+                continue;
+            }
+            let brightness =
+                sprite.get_brightness_localized(self, x - sprite.x, scanline - sprite.get_y());
+            if brightness > 0 {
+                let pixel_index = x as usize * 4;
                 let pixels = sprite_palette.brightness_to_pixels(brightness);
-                if brightness > 0 && line_buffer[pixel_index + 3] == 0 {
-                    line_buffer[pixel_index..pixel_index + 4].copy_from_slice(&pixels);
-                }
+                line_buffer[pixel_index..pixel_index + 4].copy_from_slice(&pixels);
+                return true;
             }
         }
+        false
     }
 
     fn sprite_height(&self) -> u8 {
@@ -234,6 +243,10 @@ impl PPU {
         } else {
             8
         }
+    }
+
+    fn get_current_tile(&self) -> Tile {
+        self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize))
     }
 
     fn palette_for_current_bg_tile(&self) -> Palette {
@@ -420,7 +433,7 @@ impl SpriteInfo {
     }
 
     fn get_brightness_localized(&self, ppu: &PPU, x: u8, y: u8) -> u8 {
-        let mut tile = ppu.get_sprite_tile(self.tile_index); /* TODO is this right? */
+        let mut tile = ppu.get_sprite_tile(self.tile_index);
         let mut x_to_use = x;
         if self.attrs & 0x40 != 0 {
             /* flipped horizontally */
