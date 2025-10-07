@@ -18,6 +18,7 @@ pub struct PPU {
     internal_buffer: WriteBuffer,
     vram: [u8; VRAM_SIZE],
     palette_memory: [u8; PALETTE_MEMORY_SIZE],
+    scanline_sprites: Option<(Vec<SpriteInfo>, Vec<SpriteInfo>)>,
     // tick_count: u16,
     /* shared registers */
     pub(super) ppu_ctrl: u8,
@@ -62,6 +63,7 @@ impl PPU {
             ppu_mask: 0,
             internal_regs: PPUInternalRegisters::default(),
             tall_sprites: false,
+            scanline_sprites: None,
         }))
     }
 
@@ -110,7 +112,7 @@ impl PPU {
             .unwrap()
             .copy_from_slice(&self.internal_buffer);
     }
-    
+
     pub fn render_scanline_end(&mut self) {
         self.internal_regs.copy_x_bits();
         self.internal_regs.y_increment();
@@ -120,7 +122,7 @@ impl PPU {
         if scanline < OVERSCAN || scanline > 240 - OVERSCAN {
             return;
         }
-        let (foreground_sprites, background_sprites) = self.sprite_evaluation(scanline);
+        let (foreground_sprites, background_sprites) = &self.scanline_sprites.as_ref().unwrap();
 
         let index = scanline as usize * 1024 + x as usize * 4;
 
@@ -144,7 +146,7 @@ impl PPU {
 
         let pixel = 'pixel: {
             if render_sprites {
-                if let Some(pixel) = self.render_sprites(&foreground_sprites, scanline, x) {
+                if let Some(pixel) = self.render_sprites(foreground_sprites, scanline, x) {
                     break 'pixel pixel;
                 }
             }
@@ -156,7 +158,7 @@ impl PPU {
                 }
             }
             if render_sprites {
-                if let Some(pixel) = self.render_sprites(&background_sprites, scanline, x) {
+                if let Some(pixel) = self.render_sprites(background_sprites, scanline, x) {
                     break 'pixel pixel;
                 }
             }
@@ -266,6 +268,10 @@ impl PPU {
             }
         };
         self.get_palette((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
+    }
+
+    pub fn render_scanline_begin(&mut self, scanline: u8) {
+        self.scanline_sprites = Some(self.sprite_evaluation(scanline));
     }
 
     /* Finds the first eight sprites on the given scanline, determined

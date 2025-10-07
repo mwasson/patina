@@ -63,6 +63,10 @@ pub(crate) fn simulate(
             (PPUScanline(scanline, x), time) => {
                 let mut borrowed_ppu = ppu.borrow_mut();
 
+                if x == 0 {
+                    borrowed_ppu.render_scanline_begin(scanline);
+                }
+
                 /* TODO pixels */
                 /* TODO: scanline close down */
                 borrowed_ppu.render_pixel(scanline, x);
