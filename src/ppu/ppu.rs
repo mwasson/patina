@@ -240,7 +240,7 @@ impl PPU {
             8
         }
     }
-    
+
     fn palette_for_current_bg_tile(&self) -> Palette {
         /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */

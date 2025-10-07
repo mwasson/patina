@@ -100,7 +100,7 @@ impl MMC1 {
                     self.update_chr_banks();
                 /* PRG bank */
                 } else {
-                    self.prg_bank_index = (self.shift_register & 0xf);
+                    self.prg_bank_index = self.shift_register & 0xf;
                     self.update_prg_banks();
                     /* TODO: bit 4 disables the PRG-RAM chip. In practice, what does that mean? */
                 }

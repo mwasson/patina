@@ -57,7 +57,7 @@ impl BankArray {
             self.banks[index] = val;
         }
     }
-    
+
     pub fn read(&self, address: u16) -> u8 {
         let usize_addr = address as usize;
         if usize_addr >= self.base_address {

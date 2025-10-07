@@ -27,7 +27,7 @@ impl Triangle {
             enabled: false,
         }
     }
-    
+
     pub fn tick(&mut self, apu_counter: u16) {
         if !self.enabled {
             return;

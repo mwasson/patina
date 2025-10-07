@@ -55,7 +55,7 @@ impl DMC {
             enabled: false,
         }
     }
-    
+
     pub fn tick(&mut self, _apu_counter: u16) {
         if !self.enabled {
             return;
