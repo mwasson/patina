@@ -31,7 +31,7 @@ const PULSE_1_FIRST_ADDR: u16 = 0x4000;
 const PULSE_2_FIRST_ADDR: u16 = 0x4004;
 
 impl APU {
-    pub fn new(memory: Rc<RefCell<CoreMemory>>) -> Rc<RefCell<APU>> {
+    pub fn new() -> Rc<RefCell<APU>> {
         let stream_handle =
             rodio::OutputStreamBuilder::open_default_stream().expect("open default audio stream");
         let sink = Sink::connect_new(&stream_handle.mixer());
@@ -42,7 +42,7 @@ impl APU {
         let pulse2 = Pulse::new(PULSE_2_FIRST_ADDR, false);
         let triangle = Triangle::new();
         let noise = Noise::new();
-        let dmc = DMC::new(&memory);
+        let dmc = DMC::new();
 
         Rc::new(RefCell::new(APU {
             apu_counter: 0,

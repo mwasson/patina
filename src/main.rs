@@ -46,18 +46,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let render_listener_clone = render_listener.clone();
 
     thread::spawn(move || {
-        let memory = Rc::new(RefCell::new(CoreMemory::new(&rom)));
-        let ppu = PPU::new(write_buffer_clone, memory.clone());
-        let mut cpu = CPU::new(memory.clone());
+        let mut memory = Box::new(CoreMemory::new(&rom));
+        let ppu = PPU::new(write_buffer_clone, memory.mapper.clone());
 
-        let apu = APU::new(memory.clone());
-        memory.borrow_mut().register_listener(apu.clone());
+        let apu = APU::new();
+        memory.register_listener(apu.clone());
 
         let ppu_listener = PPUListener::new(ppu.clone());
-        memory
-            .borrow_mut()
-            .register_listener(Rc::new(RefCell::new(ppu_listener)));
+        memory.register_listener(Rc::new(RefCell::new(ppu_listener)));
 
+        let mut cpu = CPU::new(memory);
         cpu.set_key_source(keys_clone);
         scheduler::simulate(&mut cpu, ppu, apu, render_listener_clone);
     });

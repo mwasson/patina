@@ -84,7 +84,7 @@ pub(crate) fn simulate(
             }
             (PPUVBlank, time) => {
                 let mut borrowed_ppu = ppu.borrow_mut();
-                borrowed_ppu.end_of_screen_render();
+                borrowed_ppu.end_of_screen_render(cpu);
 
                 /* send window message to redraw */
                 requester.lock().unwrap().request_redraw();

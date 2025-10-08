@@ -113,14 +113,6 @@ impl CoreMemory {
         ppu_reg || apu_io
     }
 
-    pub fn set_nmi(&mut self, nmi_set: bool) {
-        self.nmi_flag = nmi_set;
-    }
-
-    pub fn nmi_set(&self) -> bool {
-        self.nmi_flag
-    }
-
     pub fn register_listener(&mut self, listener: Rc<RefCell<dyn MemoryListener>>) {
         for addr in listener.borrow().get_addresses() {
             if self.listeners.get(&addr).is_some() {

@@ -19,7 +19,8 @@ pub struct CPU {
     pub s_register: u8,
     pub program_counter: u16,
     pub status: u8,
-    memory: Rc<RefCell<CoreMemory>>,
+    nmi_flag: bool,
+    memory: Box<CoreMemory>,
     controller: Rc<RefCell<Controller>>,
 }
 
@@ -31,10 +32,10 @@ impl Processor for CPU {
 
 impl CPU {
     /* TODO comment */
-    pub fn new(memory: Rc<RefCell<CoreMemory>>) -> Box<Self> {
+    pub fn new(mut memory: Box<CoreMemory>) -> Box<Self> {
         let controller = Rc::new(RefCell::new(Controller::new()));
 
-        memory.borrow_mut().register_listener(controller.clone());
+        memory.register_listener(controller.clone());
 
         /* set program counter to value in memory at this location */
         let mut result = Self {
@@ -44,6 +45,7 @@ impl CPU {
             s_register: 0xff,
             program_counter: 0x00,
             status: (0x11) << 4,
+            nmi_flag: false,
             memory,
             controller,
         };
@@ -56,7 +58,7 @@ impl CPU {
 
     /* performs one operation, and then returns when the next operation should run */
     pub fn transition(&mut self, start_time: Instant) -> Instant {
-        if self.memory.borrow().nmi_set() {
+        if self.nmi_set() {
             self.trigger_nmi();
         }
 
@@ -71,6 +73,14 @@ impl CPU {
         operation.apply(self);
 
         start_time.add(self.cycles_to_duration(operation.realized_instruction.cycles))
+    }
+
+    pub fn set_nmi(&mut self, nmi_set: bool) {
+        self.nmi_flag = nmi_set;
+    }
+
+    pub fn nmi_set(&self) -> bool {
+        self.nmi_flag
     }
 
     pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {
@@ -116,7 +126,7 @@ impl CPU {
     }
 
     fn trigger_nmi(&mut self) {
-        self.memory.borrow_mut().set_nmi(false);
+        self.set_nmi(false);
         /* push PC onto stack */
         self.push_memory_loc(self.program_counter);
         /* push processor status register on stack */
@@ -127,15 +137,15 @@ impl CPU {
     }
 
     pub fn write_mem(&mut self, addr: u16, data: u8) {
-        self.memory.borrow_mut().write(addr, data);
+        self.memory.write(addr, data);
     }
 
     pub fn read_mem(&self, addr: u16) -> u8 {
-        self.memory.borrow().read(addr)
+        self.memory.read(addr)
     }
 
     pub fn read_mem16(&mut self, addr: u16) -> u16 {
-        self.memory.borrow().read16(addr)
+        self.memory.read16(addr)
     }
 
     pub fn set_key_source(&mut self, keys: Arc<Mutex<HashSet<Key>>>) {

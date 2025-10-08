@@ -1,4 +1,4 @@
-use crate::cpu::CoreMemory;
+use crate::cpu::CPU;
 use crate::mapper::Mapper;
 use crate::ppu::palette::Palette;
 use crate::ppu::{
@@ -11,7 +11,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 pub struct PPU {
-    memory: Rc<RefCell<CoreMemory>>,
     mapper: Rc<RefCell<Box<dyn Mapper>>>,
     pub(super) oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
@@ -50,11 +49,9 @@ impl Processor for PPU {
 impl PPU {
     pub fn new(
         write_buffer: Arc<Mutex<WriteBuffer>>,
-        memory: Rc<RefCell<CoreMemory>>,
+        mapper: Rc<RefCell<Box<dyn Mapper>>>,
     ) -> Rc<RefCell<PPU>> {
-        let mapper = memory.clone().borrow().mapper.clone();
         Rc::new(RefCell::new(PPU {
-            memory,
             mapper,
             write_buffer,
             oam: [0; OAM_SIZE],
@@ -106,12 +103,12 @@ impl PPU {
         }
     }
 
-    pub fn end_of_screen_render(&mut self) {
+    pub fn end_of_screen_render(&mut self, cpu: &mut CPU) {
         /* set vblank flag */
         self.ppu_status = set_bit_on(self.ppu_status, 7);
         /* vblank NMI */
         if self.ppu_ctrl & (1 << 7) != 0 {
-            self.memory.borrow_mut().set_nmi(true);
+            cpu.set_nmi(true);
         }
 
         /* write new pixels so UI can see them */

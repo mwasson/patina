@@ -10,7 +10,6 @@ const NTSC_RATE_MAP: [u16; 16] = [
 
 pub struct DMC {
     timer: Timer,
-    memory: Rc<RefCell<CoreMemory>>,
     bits_remaining: u8,
     sample_buffer: Option<u8>,
     sample_address: u16,
@@ -29,18 +28,17 @@ pub struct DMC {
 impl DMC {
     #[allow(dead_code)]
     pub fn initialize(memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<DMC>> {
-        let dmc_ref = Rc::new(RefCell::new(DMC::new(memory)));
+        let dmc_ref = Rc::new(RefCell::new(DMC::new()));
         memory.borrow_mut().register_listener(dmc_ref.clone());
 
         dmc_ref
     }
 
-    pub fn new(memory: &Rc<RefCell<CoreMemory>>) -> DMC {
+    pub fn new() -> DMC {
         let timer = Timer::new();
 
         DMC {
             timer,
-            memory: memory.clone(),
             bits_remaining: 0,
             sample_buffer: None,
             sample_address: 0,
@@ -63,7 +61,8 @@ impl DMC {
         }
 
         if self.sample_buffer.is_none() && self.sample_bytes_remaining > 0 {
-            self.sample_buffer = Some(self.memory.borrow_mut().read(self.current_address));
+            /* TODO fix */
+            // self.sample_buffer = Some(self.memory.borrow_mut().read(self.current_address));
             if self.current_address == 0xffff {
                 self.current_address = 0x8000;
             } else {
