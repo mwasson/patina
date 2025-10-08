@@ -7,8 +7,10 @@ use crate::ppu::{
 };
 use crate::processor::Processor;
 use std::cell::RefCell;
+use std::mem::replace;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use crate::scheduler::RenderRequester;
 
 pub struct PPU {
     memory: Rc<RefCell<CoreMemory>>,
@@ -22,6 +24,8 @@ pub struct PPU {
     sprite0_in_scanline: Option<SpriteInfo>,
     current_tile: Option<Tile>,
     current_palette: Option<Palette>,
+    next_tile: Option<Tile>,
+    next_palette: Option<Palette>,
     // tick_count: u16,
     /* shared registers */
     pub(super) ppu_ctrl: u8,
@@ -29,6 +33,8 @@ pub struct PPU {
     pub(super) ppu_status: u8,
     pub(super) tall_sprites: bool, /* if true, sprites are 16 pixels tall instead of 8 */
     pub(super) internal_regs: PPUInternalRegisters,
+    pub(super) tick_count: u32,
+    requester: Arc<Mutex<RenderRequester>>,
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +57,7 @@ impl PPU {
     pub fn new(
         write_buffer: Arc<Mutex<WriteBuffer>>,
         memory: Rc<RefCell<CoreMemory>>,
+        requester: Arc<Mutex<RenderRequester>>,
     ) -> Rc<RefCell<PPU>> {
         let mapper = memory.clone().borrow().mapper.clone();
         Rc::new(RefCell::new(PPU {
@@ -70,39 +77,88 @@ impl PPU {
             sprite0_in_scanline: None,
             current_tile: None,
             current_palette: None,
+            next_tile: None,
+            next_palette: None,
+            tick_count: 0,
+            requester,
         }))
     }
 
-    // pub fn tick(&mut self) {
-    //     let scanline = self.tick_count / 340;
-    //     let dot = self.tick_count % 340;
-    //
-    //     if scanline <= 239 {
-    //         self.render_scanline(scanline, dot);
-    //     } else if scanline == 240 && dot == 0 {
-    //
-    //     } else if scanline == 241 && dot == 1 {
-    //         /* set vblank flag */
-    //         self.ppu_status = set_bit_on(self.ppu_status, 7);
-    //     } else if scanline == 261 {
-    //
-    //     }
-    //
-    //
-    //     self.tick_count += 1;
-    // }
+    pub fn tick(&mut self) {
+        /* TODO handle skipping (0,0) */
+        let scanline = self.tick_count / 341;
+        let dot = (self.tick_count % 341) as u16;
+        let rendering_on = self.ppu_mask & 0x18 != 0;
 
-    pub fn beginning_of_screen_render(&mut self) {
-        /* dummy scanline */
-        /* clear VBlank */
-        self.ppu_status = set_bit_off(self.ppu_status, 7);
-        /* clear sprite 0 hit flag */
-        self.ppu_status = set_bit_off(self.ppu_status, 6);
-        /* clear overflow flag */
-        self.ppu_status = set_bit_off(self.ppu_status, 5);
+        if scanline < 240 {
+            self.render_scanline(scanline as u8, dot, rendering_on);
+        } else if scanline == 240 {
+            if dot == 1 {
+                // todo!()
+            }
+        } else if scanline == 241 && dot == 1 {
+            self.end_of_screen_render();
+        } else if scanline == 261 {
+           self.prerender_scanline(dot, rendering_on);
+        }
 
-        if self.ppu_mask & 0x18 != 0 {
-            self.internal_regs.copy_y_bits();
+        self.tick_count = (self.tick_count + 1) % (341*262);
+    }
+
+    fn render_scanline(&mut self, scanline: u8, dot: u16, rendering_on: bool) {
+        if dot == 0 {
+            self.render_scanline_begin(scanline);
+        } else if dot < 257 {
+            self.render_block(scanline, (dot - 1) as u8, rendering_on);
+            if dot == 256 && rendering_on {
+                self.internal_regs.y_increment();
+            }
+        } else if dot == 257 && rendering_on {
+            self.internal_regs.copy_x_bits();
+        } else if dot > 320 && dot < 329 {//337 TODO fix {
+            self.render_block( (scanline + 1) % 240, (dot - 1 - 320) as u8, rendering_on);
+        }
+    }
+
+    fn prerender_scanline(&mut self, dot: u16, rendering_on: bool) {
+        if dot == 1 {
+            /* clear overflow flag */
+            self.ppu_status = set_bit_off(self.ppu_status, 5);
+            /* clear sprite 0 hit flag */
+            self.ppu_status = set_bit_off(self.ppu_status, 6);
+            /* clear vblack flag */
+            self.ppu_status = set_bit_off(self.ppu_status, 7);
+            /* TODO also ends PPU init period on startup/reset */
+        } else if dot > 279 && dot < 305 {
+            if rendering_on {
+                self.internal_regs.copy_y_bits();
+            }
+        }
+        self.render_scanline(0xff, dot, rendering_on);
+    }
+
+    fn render_block(&mut self, scanline: u8, dot: u8, rendering_on: bool) {
+        let mod8 = dot % 8;
+        let tile_base = dot - mod8; /* TODO fix lol */
+        match mod8 {
+            2 => { self.load_palette(); /* TODO only half the time? */ }
+            4 => { self.load_tile() }
+            7 => { // 4 -> 0 and 1, 5 -> 2 and 3, 6 -> 4 and 5, 7 -> 6 and 7
+                if rendering_on {
+                    self.render_pixel(scanline, dot - 7);
+                    self.render_pixel(scanline, dot - 6);
+                    self.render_pixel(scanline, dot - 5);
+                    self.render_pixel(scanline, dot - 4);
+                    self.render_pixel(scanline, dot - 3);
+                    self.render_pixel(scanline, dot - 2);
+                    self.render_pixel(scanline, dot - 1);
+                    self.render_pixel(scanline, dot);
+                    // self.render_pixel(scanline, tile_base + 2 * mod8 - 8);
+                    // self.render_pixel(scanline, tile_base + 2 * mod8 - 7);
+                    self.internal_regs.coarse_x_increment();
+                }
+            }
+            _ => {}
         }
     }
 
@@ -119,21 +175,15 @@ impl PPU {
             .lock()
             .unwrap()
             .copy_from_slice(&self.internal_buffer);
+
+        self.requester.lock().unwrap().request_redraw();
     }
 
     pub fn render_scanline_begin(&mut self, scanline: u8) {
         let sprite_data = self.sprite_evaluation(scanline);
         self.scanline_sprites = Some(sprite_data.0);
         self.sprite0_in_scanline = sprite_data.1;
-        self.current_tile = Some(self.get_current_tile());
-        self.current_palette = Some(self.palette_for_current_bg_tile());
-    }
-
-    pub fn render_scanline_end(&mut self) {
-        if self.ppu_mask & 0x18 != 0 {
-            self.internal_regs.copy_x_bits();
-            self.internal_regs.y_increment();
-        }
+        // self.load_tile(); /* TODO TEMP */
     }
 
     pub fn render_pixel(&mut self, scanline: u8, x: u8) {
@@ -158,7 +208,7 @@ impl PPU {
                 }
             }
             if render_background {
-                if let Some(pixel) = self.render_background_tiles(x) {
+                if let Some(pixel) = self.render_background_tiles(x % 8) {
                     self.sprite0_hit_detection(scanline, x);
                     break 'pixel pixel;
                 }
@@ -171,28 +221,20 @@ impl PPU {
         };
         let index = scanline as usize * 1024 + x as usize * 4;
         self.internal_buffer[index..index + 4].copy_from_slice(pixel);
-        if x % 8 + self.internal_regs.get_fine_x() == 7 {
-            let coarse_x = if render_sprites || render_background {
-                self.internal_regs.coarse_x_increment()
-            } else {
-                self.internal_regs.get_coarse_x()
-            };
-            self.current_tile = Some(self.get_current_tile());
-            if coarse_x % 2 == 0 {
-                self.current_palette = Some(self.palette_for_current_bg_tile());
-            }
-        }
     }
 
     fn render_background_tiles(&mut self, x: u8) -> Option<&'static [u8; 4]> {
-        let brightness = self.current_tile.as_mut().unwrap().pixel_intensity(
-            x - (self.internal_regs.get_coarse_x() * 8 - self.internal_regs.get_fine_x()),
+        let lol = x + self.internal_regs.get_fine_x();
+        let tile = if lol > 7 { &mut self.next_tile } else { &mut self.current_tile };
+        let palette = if lol > 7 { &mut self.next_palette } else { &mut self.current_palette };
+        let brightness = tile.as_mut().unwrap().pixel_intensity(
+            lol % 8,
             self.internal_regs.get_fine_y(),
         );
 
         if brightness > 0 {
             Some(
-                self.current_palette
+                palette
                     .as_ref()
                     .unwrap()
                     .brightness_to_pixels(brightness),
@@ -253,11 +295,17 @@ impl PPU {
         }
     }
 
-    fn get_current_tile(&self) -> Tile {
-        self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize))
+    fn load_tile(&mut self) {
+        let new_tile = Some(self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize)));
+        self.current_tile = replace(&mut self.next_tile, new_tile);
     }
 
-    fn palette_for_current_bg_tile(&self) -> Palette {
+    fn load_palette(&mut self) {
+        let new_palette = Some(self.get_bg_palette());
+        self.current_palette = replace(&mut self.next_palette, new_palette);
+    }
+
+    fn get_bg_palette(&self) -> Palette {
         /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
         let addr = 0x23c0

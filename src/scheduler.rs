@@ -6,16 +6,14 @@ use crate::scheduler::TaskType::*;
 use std::cell::RefCell;
 use std::ops::Add;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::window::Window;
 
 enum TaskType {
     CPU,
-    PPUScreen,
-    PPUScanline(u8, u8),
-    PPUVBlank,
+    PPU,
     APU,
 }
 
@@ -23,11 +21,10 @@ pub(crate) fn simulate(
     cpu: &mut CPU,
     ppu: Rc<RefCell<PPU>>,
     apu: Rc<RefCell<APU>>,
-    requester: Arc<Mutex<RenderRequester>>,
 ) {
     let start_time = Instant::now();
     let mut next_cpu_task = (CPU, start_time);
-    let mut next_ppu_task = (PPUScreen, start_time);
+    let mut next_ppu_task = (PPU, start_time);
     let mut next_apu_task = (APU, start_time);
 
     let quantum = Duration::from_millis(10);
@@ -47,52 +44,10 @@ pub(crate) fn simulate(
             (CPU, time) => {
                 next_cpu_task = (CPU, cpu.transition(*time));
             }
-            (PPUScreen, time) => {
-                let mut borrowed_ppu = ppu.borrow_mut();
-
-                borrowed_ppu.beginning_of_screen_render();
-
-                let scanline_duration = borrowed_ppu.cycles_to_duration(341 - 340 + 1);
-                next_ppu_task = (PPUScanline(0, 0), time.add(scanline_duration))
-            }
-            (PPUScanline(scanline_ref, x_ref), time) => {
-                let scanline = *scanline_ref;
-                let x = *x_ref;
-                let mut borrowed_ppu = ppu.borrow_mut();
-
-                if x == 0 {
-                    borrowed_ppu.render_scanline_begin(scanline);
-                }
-
-                borrowed_ppu.render_pixel(scanline, x);
-
-                if x == 0xff {
-                    borrowed_ppu.render_scanline_end();
-                }
-
-                let (next_task_type, cycles_to_wait) = if x == 0xff {
-                    if scanline == 239 {
-                        (PPUVBlank, 84)
-                    } else {
-                        (PPUScanline(scanline + 1, 0), 84 + 1)
-                    }
-                } else {
-                    (PPUScanline(scanline, x + 1), 1)
-                };
-                let next_time = time.add(borrowed_ppu.cycles_to_duration(cycles_to_wait));
-                next_ppu_task = (next_task_type, next_time)
-            }
-            (PPUVBlank, time) => {
-                let mut borrowed_ppu = ppu.borrow_mut();
-                borrowed_ppu.end_of_screen_render();
-
-                /* send window message to redraw */
-                requester.lock().unwrap().request_redraw();
-
-                next_ppu_task = (
-                    PPUScreen,
-                    time.add(borrowed_ppu.cycles_to_duration(21 * 341 + 304)),
-                );
+            (PPU, time) => {
+                let mut ppu = ppu.borrow_mut();
+                ppu.tick();
+                next_ppu_task = (PPU, time.add(ppu.cycles_to_duration(1)))
             }
             (APU, time) => {
                 let mut apu = apu.borrow_mut();

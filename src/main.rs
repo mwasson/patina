@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     thread::spawn(move || {
         let memory = Rc::new(RefCell::new(CoreMemory::new(&rom)));
-        let ppu = PPU::new(write_buffer_clone, memory.clone());
+        let ppu = PPU::new(write_buffer_clone, memory.clone(), render_listener_clone);
         let mut cpu = CPU::new(memory.clone());
 
         let apu = APU::new(memory.clone());
@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .register_listener(Rc::new(RefCell::new(ppu_listener)));
 
         cpu.set_key_source(keys_clone);
-        scheduler::simulate(&mut cpu, ppu, apu, render_listener_clone);
+        scheduler::simulate(&mut cpu, ppu, apu);
     });
 
     match window::initialize_ui(write_buffer, keys, render_listener) {
