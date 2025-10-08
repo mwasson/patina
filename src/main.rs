@@ -9,7 +9,7 @@ use std::{env, thread};
 mod cpu;
 
 mod rom;
-use crate::apu::APU;
+use crate::apu::{APUMemoryListener, APU};
 use crate::cpu::{CoreMemory, CPU};
 use crate::ppu::ppu_listener::PPUListener;
 use crate::ppu::{PPU, WRITE_BUFFER_SIZE};
@@ -46,18 +46,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     let render_listener_clone = render_listener.clone();
 
     thread::spawn(move || {
+        let mut mapper = rom.initialize_mapper();
         let mut memory = Box::new(CoreMemory::new(&rom));
-        let ppu = PPU::new(write_buffer_clone, memory.mapper.clone());
+        let mut ppu = PPU::new(write_buffer_clone);
 
-        let apu = APU::new();
-        memory.register_listener(apu.clone());
+        let mut apu = APU::new();
+        memory.register_listener(Rc::new(APUMemoryListener::new()));
 
-        let ppu_listener = PPUListener::new(ppu.clone());
-        memory.register_listener(Rc::new(RefCell::new(ppu_listener)));
+        let ppu_listener = PPUListener::new();
+        memory.register_listener(Rc::new(ppu_listener));
 
-        let mut cpu = CPU::new(memory);
+        let mut cpu = CPU::new(memory, &*mapper);
         cpu.set_key_source(keys_clone);
-        scheduler::simulate(&mut cpu, ppu, apu, render_listener_clone);
+        scheduler::simulate(&mut cpu, &mut ppu, &mut apu, &mut *mapper, render_listener_clone);
     });
 
     match window::initialize_ui(write_buffer, keys, render_listener) {

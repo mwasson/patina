@@ -8,8 +8,10 @@ mod status_flag;
 pub use crate::cpu::instruction::from_opcode;
 pub use addressing_mode::AddressingMode;
 pub use controller::Controller;
+pub use controller::ControllerMemoryListener;
 pub use core_memory::CoreMemory;
 pub use core_memory::MemoryListener;
+pub use core_memory::SharedItems;
 pub use cpu::CPU;
 pub use instruction::RealizedInstruction;
 pub use status_flag::StatusFlag;
@@ -27,8 +29,8 @@ pub struct Operation {
 }
 
 impl Operation {
-    fn apply(&self, cpu: &mut CPU) {
-        self.realized_instruction.apply(cpu, self.byte1, self.byte2);
+    fn apply(&self, cpu: &mut CPU, shared_items: &mut SharedItems) {
+        self.realized_instruction.apply(cpu, shared_items, self.byte1, self.byte2);
     }
 }
 

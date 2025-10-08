@@ -1,7 +1,8 @@
-use crate::cpu::{AddressingMode, StatusFlag};
+use crate::cpu::{AddressingMode, SharedItems, StatusFlag};
 
 use crate::cpu::cpu::CPU;
 use AddressingMode::*;
+use crate::mapper::Mapper;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {
@@ -87,42 +88,42 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn apply(&self, cpu: &mut CPU, addr_mode: &AddressingMode, b1: u8, b2: u8) {
+    pub fn apply(&self, cpu: &mut CPU, shared_items: &mut SharedItems, addr_mode: &AddressingMode, b1: u8, b2: u8) {
         match self {
             Instruction::ADC => {
-                let val = addr_mode.deref(cpu, b1, b2);
+                let val = addr_mode.deref(cpu, shared_items, b1, b2);
                 add_with_carry_and_update(cpu, val, StatusFlag::Carry.as_num(cpu));
             }
             Instruction::AND => {
-                let mem_val = addr_mode.deref(cpu, b1, b2);
+                let mem_val = addr_mode.deref(cpu, shared_items, b1, b2);
                 cpu.accumulator = cpu.accumulator & mem_val;
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
             Instruction::ASL => {
-                let old_val: u8 = addr_mode.deref(cpu, b1, b2);
+                let old_val: u8 = addr_mode.deref(cpu, shared_items, b1, b2);
                 let result = old_val << 1;
                 cpu.update_flag(StatusFlag::Carry, old_val & 0x80 != 0);
                 cpu.update_zero_neg_flags(result);
-                addr_mode.write(cpu, b1, b2, result);
+                addr_mode.write(cpu, shared_items, b1, b2, result);
             }
-            Instruction::BCC => Self::branch_instr(cpu, StatusFlag::Carry, false, b1),
-            Instruction::BCS => Self::branch_instr(cpu, StatusFlag::Carry, true, b1),
-            Instruction::BEQ => Self::branch_instr(cpu, StatusFlag::Zero, true, b1),
+            Instruction::BCC => Self::branch_instr(cpu, shared_items.mapper, StatusFlag::Carry, false, b1),
+            Instruction::BCS => Self::branch_instr(cpu, shared_items.mapper, StatusFlag::Carry, true, b1),
+            Instruction::BEQ => Self::branch_instr(cpu, shared_items.mapper, StatusFlag::Zero, true, b1),
             Instruction::BIT => {
-                let mem = addr_mode.deref(cpu, b1, b2);
+                let mem = addr_mode.deref(cpu, shared_items, b1, b2);
                 let val = cpu.accumulator & mem;
                 cpu.update_flag(StatusFlag::Zero, val == 0);
                 cpu.update_flag(StatusFlag::Overflow, mem & 0x40 != 0);
                 cpu.update_flag(StatusFlag::Negative, mem & 0x80 != 0);
             }
-            Instruction::BMI => Self::branch_instr(cpu, StatusFlag::Negative, true, b1),
-            Instruction::BNE => Self::branch_instr(cpu, StatusFlag::Zero, false, b1),
-            Instruction::BPL => Self::branch_instr(cpu, StatusFlag::Negative, false, b1),
+            Instruction::BMI => Self::branch_instr(cpu, shared_items.mapper, StatusFlag::Negative, true, b1),
+            Instruction::BNE => Self::branch_instr(cpu, shared_items.mapper, StatusFlag::Zero, false, b1),
+            Instruction::BPL => Self::branch_instr(cpu, shared_items.mapper, StatusFlag::Negative, false, b1),
             Instruction::BRK => {
-                cpu.irq_with_offset(2);
+                cpu.irq_with_offset(shared_items,2);
             }
-            Instruction::BVC => Self::branch_instr(cpu, StatusFlag::Overflow, false, b1),
-            Instruction::BVS => Self::branch_instr(cpu, StatusFlag::Overflow, true, b1),
+            Instruction::BVC => Self::branch_instr(cpu, shared_items.mapper, StatusFlag::Overflow, false, b1),
+            Instruction::BVS => Self::branch_instr(cpu, shared_items.mapper, StatusFlag::Overflow, true, b1),
             Instruction::CLC => {
                 cpu.update_flag(StatusFlag::Carry, false);
             }
@@ -140,17 +141,17 @@ impl Instruction {
                 cpu.update_flag(StatusFlag::Overflow, false);
             }
             Instruction::CMP => {
-                Self::compare(cpu, addr_mode, b1, b2, cpu.accumulator);
+                Self::compare(cpu, shared_items, addr_mode, b1, b2, cpu.accumulator);
             }
             Instruction::CPX => {
-                Self::compare(cpu, addr_mode, b1, b2, cpu.index_x);
+                Self::compare(cpu, shared_items, addr_mode, b1, b2, cpu.index_x);
             }
             Instruction::CPY => {
-                Self::compare(cpu, addr_mode, b1, b2, cpu.index_y);
+                Self::compare(cpu, shared_items, addr_mode, b1, b2, cpu.index_y);
             }
             Instruction::DEC => {
-                let new_val = addr_mode.deref(cpu, b1, b2).wrapping_sub(1);
-                addr_mode.write(cpu, b1, b2, new_val);
+                let new_val = addr_mode.deref(cpu, shared_items, b1, b2).wrapping_sub(1);
+                addr_mode.write(cpu, shared_items, b1, b2, new_val);
                 cpu.update_zero_neg_flags(new_val);
             }
             Instruction::DEX => {
@@ -162,13 +163,13 @@ impl Instruction {
                 cpu.update_zero_neg_flags(cpu.index_y);
             }
             Instruction::EOR => {
-                let mem_val = addr_mode.deref(cpu, b1, b2);
+                let mem_val = addr_mode.deref(cpu, shared_items, b1, b2);
                 cpu.accumulator = cpu.accumulator ^ mem_val;
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
             Instruction::INC => {
-                let new_val = addr_mode.deref(cpu, b1, b2).wrapping_add(1);
-                addr_mode.write(cpu, b1, b2, new_val);
+                let new_val = addr_mode.deref(cpu, shared_items, b1, b2).wrapping_add(1);
+                addr_mode.write(cpu, shared_items, b1, b2, new_val);
                 cpu.update_zero_neg_flags(new_val);
             }
             Instruction::INX => {
@@ -180,82 +181,82 @@ impl Instruction {
                 cpu.update_zero_neg_flags(cpu.index_y);
             }
             Instruction::JMP => {
-                cpu.program_counter = addr_mode.resolve_address(cpu, b1, b2);
+                cpu.program_counter = addr_mode.resolve_address(cpu, shared_items.mapper, b1, b2);
             }
             Instruction::JSR => {
-                cpu.push_memory_loc(cpu.program_counter + 2);
-                cpu.program_counter = addr_mode.resolve_address(cpu, b1, b2);
+                cpu.push_memory_loc(shared_items,cpu.program_counter + 2);
+                cpu.program_counter = addr_mode.resolve_address(cpu, shared_items.mapper, b1, b2);
             }
             Instruction::LDA => {
-                cpu.accumulator = addr_mode.deref(cpu, b1, b2);
+                cpu.accumulator = addr_mode.deref(cpu, shared_items, b1, b2);
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
             Instruction::LDX => {
-                cpu.index_x = addr_mode.deref(cpu, b1, b2);
+                cpu.index_x = addr_mode.deref(cpu, shared_items, b1, b2);
                 cpu.update_zero_neg_flags(cpu.index_x);
             }
             Instruction::LDY => {
-                cpu.index_y = addr_mode.deref(cpu, b1, b2);
+                cpu.index_y = addr_mode.deref(cpu, shared_items, b1, b2);
                 cpu.update_zero_neg_flags(cpu.index_y);
             }
             Instruction::LSR => {
-                let val = addr_mode.deref(cpu, b1, b2);
+                let val = addr_mode.deref(cpu, shared_items, b1, b2);
                 let new_val = val >> 1;
-                addr_mode.write(cpu, b1, b2, new_val);
+                addr_mode.write(cpu, shared_items, b1, b2, new_val);
                 cpu.update_flag(StatusFlag::Carry, (val & 0x1) != 0);
                 cpu.update_flag(StatusFlag::Zero, new_val == 0);
                 cpu.update_flag(StatusFlag::Negative, false);
             }
             Instruction::NOP => { /* nothing */ }
             Instruction::ORA => {
-                cpu.accumulator |= addr_mode.deref(cpu, b1, b2);
+                cpu.accumulator |= addr_mode.deref(cpu, shared_items, b1, b2);
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
             Instruction::PHA => {
-                cpu.write_mem(0x100 + cpu.s_register as u16, cpu.accumulator);
+                cpu.write_mem(shared_items, 0x100 + cpu.s_register as u16, cpu.accumulator);
                 cpu.s_register -= 1;
             }
             Instruction::PHP => {
                 /* pushes status onto the stack, with the 'B' flag (bit 4) on */
-                cpu.write_mem(0x100 + cpu.s_register as u16, cpu.status | (1 << 4));
+                cpu.write_mem(shared_items, 0x100 + cpu.s_register as u16, cpu.status | (1 << 4));
                 cpu.s_register -= 1;
             }
             Instruction::PLA => {
                 cpu.s_register += 1;
-                cpu.accumulator = cpu.read_mem(0x100 + cpu.s_register as u16);
+                cpu.accumulator = cpu.read_mem(shared_items, 0x100 + cpu.s_register as u16);
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
             Instruction::PLP => {
                 /* reads status from the stack, except for bits 4 and 5 */
                 cpu.s_register += 1;
-                let val = cpu.read_mem(0x100 + cpu.s_register as u16);
+                let val = cpu.read_mem(shared_items, 0x100 + cpu.s_register as u16);
                 cpu.status = (cpu.status & 0x30) | (val & !0x30);
             }
             Instruction::ROL => {
-                let val = addr_mode.deref(cpu, b1, b2);
+                let val = addr_mode.deref(cpu, shared_items, b1, b2);
                 let mut result = StatusFlag::Carry.as_num(cpu);
                 result = result | (val << 1);
-                addr_mode.write(cpu, b1, b2, result);
+                addr_mode.write(cpu, shared_items, b1, b2, result);
                 cpu.update_flag(StatusFlag::Carry, val & 0x80 != 0);
                 cpu.update_zero_neg_flags(result);
             }
             Instruction::ROR => {
-                let val = addr_mode.deref(cpu, b1, b2);
+                let val = addr_mode.deref(cpu, shared_items, b1, b2);
                 let mut result = StatusFlag::Carry.as_num(cpu) << 7;
                 result = result | (val >> 1);
-                addr_mode.write(cpu, b1, b2, result);
+                addr_mode.write(cpu, shared_items, b1, b2, result);
                 cpu.update_flag(StatusFlag::Carry, val & 0x1 != 0);
                 cpu.update_zero_neg_flags(result);
             }
             Instruction::RTI => {
-                cpu.status = cpu.pop();
-                cpu.program_counter = cpu.pop_memory_loc();
+                cpu.status = cpu.pop(shared_items);
+                cpu.program_counter = cpu.pop_memory_loc(shared_items);
             }
             Instruction::RTS => {
-                cpu.program_counter = cpu.pop_memory_loc() + 1;
+                cpu.program_counter = cpu.pop_memory_loc(shared_items) + 1;
             }
             Instruction::SBC => {
-                let val = addr_mode.deref(cpu, b1, b2);
+                let val = addr_mode.deref(cpu, shared_items, b1, b2);
                 add_with_carry_and_update(cpu, !val, StatusFlag::Carry.as_num(cpu));
             }
             Instruction::SEC => {
@@ -272,13 +273,13 @@ impl Instruction {
                 cpu.update_flag(StatusFlag::InterruptDisable, true);
             }
             Instruction::STA => {
-                addr_mode.write(cpu, b1, b2, cpu.accumulator);
+                addr_mode.write(cpu, shared_items, b1, b2, cpu.accumulator);
             }
             Instruction::STX => {
-                addr_mode.write(cpu, b1, b2, cpu.index_x);
+                addr_mode.write(cpu, shared_items, b1, b2, cpu.index_x);
             }
             Instruction::STY => {
-                addr_mode.write(cpu, b1, b2, cpu.index_y);
+                addr_mode.write(cpu, shared_items, b1, b2, cpu.index_y);
             }
             Instruction::TAX => {
                 cpu.index_x = cpu.accumulator;
@@ -307,14 +308,14 @@ impl Instruction {
         }
     }
 
-    fn branch_instr(cpu: &mut CPU, flag: StatusFlag, is_positive: bool, offset: u8) {
+    fn branch_instr(cpu: &mut CPU, mapper: &dyn Mapper, flag: StatusFlag, is_positive: bool, offset: u8) {
         if is_positive == flag.is_set(cpu) {
-            cpu.program_counter = Relative.resolve_address(cpu, offset, 0);
+            cpu.program_counter = Relative.resolve_address(cpu, mapper, offset, 0);
         }
     }
 
-    fn compare(cpu: &mut CPU, addr_mode: &AddressingMode, b1: u8, b2: u8, compare_val: u8) {
-        let mem_val = addr_mode.deref(cpu, b1, b2);
+    fn compare(cpu: &mut CPU, shared_items: &mut SharedItems, addr_mode: &AddressingMode, b1: u8, b2: u8, compare_val: u8) {
+        let mem_val = addr_mode.deref(cpu, shared_items, b1, b2);
 
         cpu.update_flag(StatusFlag::Carry, compare_val >= mem_val);
         cpu.update_flag(StatusFlag::Zero, compare_val == mem_val);
@@ -334,8 +335,8 @@ pub struct RealizedInstruction {
 }
 
 impl RealizedInstruction {
-    pub fn apply(&self, cpu: &mut CPU, b1: u8, b2: u8) {
-        self.instruction.apply(cpu, &self.addr_mode, b1, b2);
+    pub fn apply(&self, cpu: &mut CPU, shared_items: &mut SharedItems, b1: u8, b2: u8) {
+        self.instruction.apply(cpu, shared_items, &self.addr_mode, b1, b2);
         /* note that this holds even for branching instructions (but not jump instructions): program counter needs to be
          * incremented by the number of bytes for instruction, arguments
          */

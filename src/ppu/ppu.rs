@@ -1,4 +1,4 @@
-use crate::cpu::CPU;
+use crate::cpu::{SharedItems, CPU};
 use crate::mapper::Mapper;
 use crate::ppu::palette::Palette;
 use crate::ppu::{
@@ -11,7 +11,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 pub struct PPU {
-    mapper: Rc<RefCell<Box<dyn Mapper>>>,
     pub(super) oam: OAM,
     write_buffer: Arc<Mutex<WriteBuffer>>,
     internal_buffer: WriteBuffer,
@@ -49,10 +48,8 @@ impl Processor for PPU {
 impl PPU {
     pub fn new(
         write_buffer: Arc<Mutex<WriteBuffer>>,
-        mapper: Rc<RefCell<Box<dyn Mapper>>>,
-    ) -> Rc<RefCell<PPU>> {
-        Rc::new(RefCell::new(PPU {
-            mapper,
+    ) -> PPU {
+        PPU {
             write_buffer,
             oam: [0; OAM_SIZE],
             vram: [0; VRAM_SIZE],
@@ -67,7 +64,7 @@ impl PPU {
             sprite0_in_scanline: None,
             current_tile: None,
             current_palette: None,
-        }))
+        }
     }
 
     // pub fn tick(&mut self) {
@@ -118,12 +115,12 @@ impl PPU {
             .copy_from_slice(&self.internal_buffer);
     }
 
-    pub fn render_scanline_begin(&mut self, scanline: u8) {
+    pub fn render_scanline_begin(&mut self, mapper: &dyn Mapper, scanline: u8) {
         let sprite_data = self.sprite_evaluation(scanline);
         self.scanline_sprites = Some(sprite_data.0);
         self.sprite0_in_scanline = sprite_data.1;
-        self.current_tile = Some(self.get_current_tile());
-        self.current_palette = Some(self.palette_for_current_bg_tile());
+        self.current_tile = Some(self.get_current_tile(mapper));
+        self.current_palette = Some(self.palette_for_current_bg_tile(mapper));
     }
 
     pub fn render_scanline_end(&mut self) {
@@ -133,7 +130,7 @@ impl PPU {
         }
     }
 
-    pub fn render_pixel(&mut self, scanline: u8, x: u8) {
+    pub fn render_pixel(&mut self, mapper: &dyn Mapper, scanline: u8, x: u8) {
         if scanline < OVERSCAN || scanline > 240 - OVERSCAN {
             return;
         }
@@ -145,7 +142,7 @@ impl PPU {
             let mut background_sprite_pixel = None;
             if render_sprites {
                 if let Some(pixel_data) =
-                    self.render_sprites(&self.scanline_sprites.as_ref().unwrap(), scanline, x)
+                    self.render_sprites(mapper, &self.scanline_sprites.as_ref().unwrap(), scanline, x)
                 {
                     if pixel_data.0.is_foreground() {
                         break 'pixel pixel_data.1;
@@ -155,8 +152,8 @@ impl PPU {
                 }
             }
             if render_background {
-                if let Some(pixel) = self.render_background_tiles(x) {
-                    self.sprite0_hit_detection(scanline, x);
+                if let Some(pixel) = self.render_background_tiles(mapper, x) {
+                    self.sprite0_hit_detection(mapper, scanline, x);
                     break 'pixel pixel;
                 }
             }
@@ -174,15 +171,16 @@ impl PPU {
             } else {
                 self.internal_regs.get_coarse_x()
             };
-            self.current_tile = Some(self.get_current_tile());
+            self.current_tile = Some(self.get_current_tile(mapper));
             if coarse_x % 2 == 0 {
-                self.current_palette = Some(self.palette_for_current_bg_tile());
+                self.current_palette = Some(self.palette_for_current_bg_tile(mapper));
             }
         }
     }
 
-    fn render_background_tiles(&mut self, x: u8) -> Option<&'static [u8; 4]> {
+    fn render_background_tiles(&mut self, mapper: &dyn Mapper, x: u8) -> Option<&'static [u8; 4]> {
         let brightness = self.current_tile.as_mut().unwrap().pixel_intensity(
+            mapper,
             x - (self.internal_regs.get_coarse_x() * 8 - self.internal_regs.get_fine_x()),
             self.internal_regs.get_fine_y(),
         );
@@ -201,6 +199,7 @@ impl PPU {
 
     fn render_sprites<'a>(
         &self,
+        mapper: &dyn Mapper,
         scanline_sprites: &'a Vec<SpriteInfo>,
         scanline: u8,
         x: u8,
@@ -210,7 +209,7 @@ impl PPU {
                 continue;
             }
             let brightness =
-                sprite.get_brightness_localized(self, x - sprite.x, scanline - sprite.get_y());
+                sprite.get_brightness_localized(self, mapper,x - sprite.x, scanline - sprite.get_y());
             if brightness > 0 {
                 return Some((
                     sprite,
@@ -221,7 +220,7 @@ impl PPU {
         None
     }
 
-    fn sprite0_hit_detection(&mut self, scanline: u8, x: u8) {
+    fn sprite0_hit_detection(&mut self, mapper: &dyn Mapper, scanline: u8, x: u8) {
         /* nothing to do if sprite zero has already been found */
         if self.ppu_status & (1 << 6) != 0 {
             return;
@@ -232,6 +231,7 @@ impl PPU {
                 && x < sprite0_internal.x + 8
                 && sprite0_internal.get_brightness_localized(
                     self,
+                    mapper,
                     x - sprite0_internal.x,
                     scanline - sprite0_internal.get_y(),
                 ) > 0
@@ -250,11 +250,11 @@ impl PPU {
         }
     }
 
-    fn get_current_tile(&self) -> Tile {
-        self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize))
+    fn get_current_tile(&self, mapper: &dyn Mapper) -> Tile {
+        self.get_bg_tile(self.read_vram(mapper,(0x2000 | (self.internal_regs.v & 0xfff)) as usize))
     }
 
-    fn palette_for_current_bg_tile(&self) -> Palette {
+    fn palette_for_current_bg_tile(&self, mapper: &dyn Mapper) -> Palette {
         /* TODO comment */
         /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
         let addr = 0x23c0
@@ -262,7 +262,7 @@ impl PPU {
             | (((self.internal_regs.get_coarse_y() as u16) & 0x1c) << 1)
             | ((self.internal_regs.get_coarse_x() as u16) >> 2);
         /* each address controls a 32x32 pixel block; 8 blocks per row */
-        let attr_table_value = self.read_vram(addr as usize);
+        let attr_table_value = self.read_vram(mapper, addr as usize);
         /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
          * in order from the lowest bits they are: upper left, upper right, bottom left, bottom right
          */
@@ -336,7 +336,7 @@ impl PPU {
     fn get_tile(&self, tile_index: u8, pattern_table_num: u8) -> Tile {
         let pattern_table_base = 0x1000u16 * pattern_table_num as u16;
         let tile_start = pattern_table_base + (tile_index as u16 * 16);
-        Tile::new(tile_start, self.mapper.clone())
+        Tile::new(tile_start)
     }
 
     fn get_palette(&self, palette_index: u8) -> Palette {
@@ -347,12 +347,12 @@ impl PPU {
         Palette::new(palette_data)
     }
 
-    pub fn read_vram(&self, addr: usize) -> u8 {
-        let mapped_address = self.vram_address_mirror(addr);
+    pub fn read_vram(&self, mapper: &dyn Mapper, addr: usize) -> u8 {
+        let mapped_address = self.vram_address_mirror(mapper, addr);
 
         /* pattern tables (CHR data) */
         if mapped_address < 0x2000 {
-            self.mapper.borrow().read_chr(mapped_address as u16)
+            mapper.read_chr(mapped_address as u16)
         /* nametables and attribute tables */
         } else if mapped_address < 0x3000 {
             self.vram[mapped_address - 0x2000]
@@ -362,14 +362,12 @@ impl PPU {
         }
     }
 
-    pub fn write_vram(&mut self, addr: usize, val: u8) {
-        let mapped_address = self.vram_address_mirror(addr);
+    pub fn write_vram(&mut self, mapper: &mut dyn Mapper, addr: usize, val: u8) {
+        let mapped_address = self.vram_address_mirror(mapper, addr);
 
         /* pattern tables (CHR data) */
         if mapped_address < 0x2000 {
-            self.mapper
-                .borrow_mut()
-                .write_chr(mapped_address as u16, val);
+            mapper.write_chr(mapped_address as u16, val);
         /* nametables and attribute tables */
         } else if mapped_address < 0x3f00 {
             self.vram[mapped_address - 0x2000] = val;
@@ -379,7 +377,7 @@ impl PPU {
         }
     }
 
-    pub fn vram_address_mirror(&self, addr: usize) -> usize {
+    pub fn vram_address_mirror(&self, mapper: &dyn Mapper, addr: usize) -> usize {
         let mut result = addr;
 
         if result < 0x2000 {
@@ -390,7 +388,7 @@ impl PPU {
             }
 
             /* TODO document */
-            match self.mapper.borrow().get_nametable_mirroring() {
+            match mapper.get_nametable_mirroring() {
                 NametableMirroring::Horizontal => result & !0x0800,
                 NametableMirroring::Vertical => (result & !0x0C00) | ((result & 0x0800) >> 1),
                 NametableMirroring::SingleNametable0 => result & !0x0c00,
@@ -432,7 +430,7 @@ impl SpriteInfo {
         self.y + 1
     }
 
-    fn get_brightness_localized(&self, ppu: &PPU, x: u8, y: u8) -> u8 {
+    fn get_brightness_localized(&self, ppu: &PPU, mapper: &dyn Mapper, x: u8, y: u8) -> u8 {
         let mut tile = ppu.get_sprite_tile(self.tile_index);
         let mut x_to_use = x;
         if self.attrs & 0x40 != 0 {
@@ -444,7 +442,7 @@ impl SpriteInfo {
             /* flipped vertically */
             y_to_use = (ppu.sprite_height() - 1) - y_to_use;
         }
-        tile.pixel_intensity(x_to_use, y_to_use)
+        tile.pixel_intensity(mapper, x_to_use, y_to_use)
     }
 
     fn get_palette(&self, ppu: &PPU) -> Palette {

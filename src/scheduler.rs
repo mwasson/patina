@@ -1,5 +1,5 @@
 use crate::apu::APU;
-use crate::cpu::CPU;
+use crate::cpu::{SharedItems, CPU};
 use crate::ppu::PPU;
 use crate::processor::Processor;
 use crate::scheduler::TaskType::*;
@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::window::Window;
+use crate::mapper::Mapper;
 
 enum TaskType {
     CPU,
@@ -21,8 +22,9 @@ enum TaskType {
 
 pub(crate) fn simulate(
     cpu: &mut CPU,
-    ppu: Rc<RefCell<PPU>>,
-    apu: Rc<RefCell<APU>>,
+    ppu: &mut PPU,
+    apu: &mut APU,
+    mapper: &mut dyn Mapper,
     requester: Arc<Mutex<RenderRequester>>,
 ) {
     let start_time = Instant::now();
@@ -42,32 +44,36 @@ pub(crate) fn simulate(
             most_recent_now = Instant::now();
             check_time = most_recent_now.add(quantum);
         }
+        
+        let mut shared_items = SharedItems {
+            apu,
+            ppu,
+            mapper,
+        };
 
         match next_task {
             (CPU, time) => {
-                next_cpu_task = (CPU, cpu.transition(*time));
+                let next_time = cpu.transition(&mut shared_items, *time);
+                next_cpu_task = (CPU, next_time);
             }
             (PPUScreen, time) => {
-                let mut borrowed_ppu = ppu.borrow_mut();
+                ppu.beginning_of_screen_render();
 
-                borrowed_ppu.beginning_of_screen_render();
-
-                let scanline_duration = borrowed_ppu.cycles_to_duration(341 - 340 + 1);
+                let scanline_duration = ppu.cycles_to_duration(341 - 340 + 1);
                 next_ppu_task = (PPUScanline(0, 0), time.add(scanline_duration))
             }
             (PPUScanline(scanline_ref, x_ref), time) => {
                 let scanline = *scanline_ref;
                 let x = *x_ref;
-                let mut borrowed_ppu = ppu.borrow_mut();
 
                 if x == 0 {
-                    borrowed_ppu.render_scanline_begin(scanline);
+                    ppu.render_scanline_begin(mapper, scanline);
                 }
 
-                borrowed_ppu.render_pixel(scanline, x);
+                ppu.render_pixel(mapper, scanline, x);
 
                 if x == 0xff {
-                    borrowed_ppu.render_scanline_end();
+                    ppu.render_scanline_end();
                 }
 
                 let (next_task_type, cycles_to_wait) = if x == 0xff {
@@ -79,23 +85,21 @@ pub(crate) fn simulate(
                 } else {
                     (PPUScanline(scanline, x + 1), 1)
                 };
-                let next_time = time.add(borrowed_ppu.cycles_to_duration(cycles_to_wait));
+                let next_time = time.add(ppu.cycles_to_duration(cycles_to_wait));
                 next_ppu_task = (next_task_type, next_time)
             }
             (PPUVBlank, time) => {
-                let mut borrowed_ppu = ppu.borrow_mut();
-                borrowed_ppu.end_of_screen_render(cpu);
+                ppu.end_of_screen_render(cpu);
 
                 /* send window message to redraw */
                 requester.lock().unwrap().request_redraw();
 
                 next_ppu_task = (
                     PPUScreen,
-                    time.add(borrowed_ppu.cycles_to_duration(21 * 341 + 304)),
+                    time.add(ppu.cycles_to_duration(21 * 341 + 304)),
                 );
             }
             (APU, time) => {
-                let mut apu = apu.borrow_mut();
                 apu.apu_tick();
                 next_apu_task = (APU, time.add(apu.cycles_to_duration(1)));
             }

@@ -1,4 +1,4 @@
-use crate::cpu::CoreMemory;
+use crate::cpu::{CoreMemory, SharedItems};
 use crate::cpu::MemoryListener;
 use crate::ppu::PPURegister::*;
 use crate::ppu::{PPURegister, OAM_SIZE, PPU};
@@ -6,17 +6,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub struct PPUListener {
-    ppu: Rc<RefCell<PPU>>,
-    read_buffer: u8,
-}
+pub struct PPUListener {}
 
 impl PPUListener {
-    pub fn new(ppu: Rc<RefCell<PPU>>) -> PPUListener {
-        PPUListener {
-            ppu,
-            read_buffer: 0,
-        }
+    pub fn new() -> PPUListener {
+        PPUListener {}
     }
 }
 
@@ -37,9 +31,9 @@ impl MemoryListener for PPUListener {
         addrs
     }
 
-    fn read(&mut self, _memory: &CoreMemory, address: u16) -> u8 {
+    fn read(&self, _memory: &CoreMemory, shared_items: &mut SharedItems, address: u16) -> u8 {
         if let Some(updated_register) = PPURegister::from_addr(address) {
-            let mut ppu = self.ppu.borrow_mut();
+            let ppu = &mut*shared_items.ppu;
             match updated_register {
                 PPUCTRL => ppu.ppu_ctrl,
                 PPUMASK => ppu.ppu_mask,
@@ -55,8 +49,8 @@ impl MemoryListener for PPUListener {
                     ppu.internal_regs.v as u8
                 }
                 PPUDATA => {
-                    let result = self.read_buffer;
-                    self.read_buffer = ppu.read_vram(ppu.internal_regs.v as usize);
+                    let result = ppu.internal_regs.read_buffer;
+                    ppu.internal_regs.read_buffer = ppu.read_vram(shared_items.mapper, ppu.internal_regs.v as usize);
 
                     ppu.internal_regs.v += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
 
@@ -74,9 +68,9 @@ impl MemoryListener for PPUListener {
         }
     }
 
-    fn write(&mut self, memory: &CoreMemory, address: u16, value: u8) {
+    fn write(&self, memory: &CoreMemory, shared_items: &mut SharedItems, address: u16, value: u8) {
         if let Some(updated_register) = PPURegister::from_addr(address) {
-            let mut ppu = self.ppu.borrow_mut();
+            let ppu = &mut*shared_items.ppu;
             match updated_register {
                 PPUCTRL => {
                     ppu.tall_sprites = value & 0x20 != 0;
@@ -123,12 +117,12 @@ impl MemoryListener for PPUListener {
                 }
                 PPUDATA => {
                     let addr = ppu.internal_regs.v as usize;
-                    ppu.write_vram(addr, value);
+                    ppu.write_vram(shared_items.mapper, addr, value);
                     ppu.internal_regs.v += if ppu.ppu_ctrl & 0x4 != 0 { 32 } else { 1 };
                 }
                 OAMDMA => {
                     let base_addr = (value as u16) << 8;
-                    memory.copy_slice(base_addr, OAM_SIZE, &mut ppu.oam);
+                    memory.copy_slice(shared_items.mapper, base_addr, OAM_SIZE, &mut ppu.oam);
                 }
                 _ => {
                     panic!("unimplemented ppu listener write for {updated_register:?}")

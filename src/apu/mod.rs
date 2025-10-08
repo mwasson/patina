@@ -9,3 +9,4 @@ mod timer;
 mod triangle;
 
 pub use apu::APU;
+pub use apu::APUMemoryListener;

@@ -24,21 +24,6 @@ pub struct Pulse {
 }
 
 impl Pulse {
-    /* initializes a pulse, links it up as a listener on CoreMemory, and
-     * wraps it appropriately
-     */
-    #[allow(dead_code)]
-    pub fn initialize(
-        first_addr: u16,
-        is_first_channel: bool,
-        memory: &Rc<RefCell<CoreMemory>>,
-    ) -> Rc<RefCell<Pulse>> {
-        let pulse_ref = Rc::new(RefCell::new(Pulse::new(first_addr, is_first_channel)));
-        memory.borrow_mut().register_listener(pulse_ref.clone());
-
-        pulse_ref
-    }
-
     /* private constructor */
     pub fn new(first_address: u16, is_second_channel: bool) -> Pulse {
         Pulse {
@@ -99,6 +84,29 @@ impl Pulse {
             * self.sequencer.amplitude()
             * self.sweep.amplitude()
     }
+
+    pub fn write(&mut self, address: u16, value: u8) {
+        match address - self.first_address {
+            0 => {
+                self.set_duty_envelope(value);
+            }
+            1 => {
+                self.sweep.set_sweep(value);
+            }
+            2 => {
+                self.sequencer.timer.set_timer_lo(value);
+            }
+            3 => {
+                self.set_lc_timer_hi(value);
+            }
+            _ => {
+                panic!(
+                    "APU instrument passed invalid memory address 0x{:x}",
+                    address
+                );
+            }
+        }
+    }
 }
 
 struct PulseSequencer {
@@ -124,40 +132,5 @@ impl PulseSequencer {
 
     pub fn amplitude(&self) -> f32 {
         (self.timer.period >= 8 && PULSE_DUTIES[self.duty][self.duty_index]) as u8 as f32
-    }
-}
-
-impl MemoryListener for Pulse {
-    fn get_addresses(&self) -> Vec<u16> {
-        let a = self.first_address;
-        [a, a + 1, a + 2, a + 3].to_vec()
-    }
-
-    fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
-        /* open bus, this shouldn't be done */
-        memory.open_bus()
-    }
-
-    fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
-        match address - self.first_address {
-            0 => {
-                self.set_duty_envelope(value);
-            }
-            1 => {
-                self.sweep.set_sweep(value);
-            }
-            2 => {
-                self.sequencer.timer.set_timer_lo(value);
-            }
-            3 => {
-                self.set_lc_timer_hi(value);
-            }
-            _ => {
-                panic!(
-                    "APU instrument passed invalid memory address 0x{:x}",
-                    address
-                );
-            }
-        }
     }
 }

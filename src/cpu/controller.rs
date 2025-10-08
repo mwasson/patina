@@ -1,6 +1,8 @@
+use std::cell::RefCell;
 use crate::cpu::core_memory::MemoryListener;
-use crate::cpu::CoreMemory;
+use crate::cpu::{CoreMemory, SharedItems};
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use winit::keyboard::{Key, NamedKey};
 
@@ -52,7 +54,19 @@ impl Controller {
     }
 }
 
-impl MemoryListener for Controller {
+pub struct ControllerMemoryListener {
+    controller: Rc<RefCell<Controller>>,
+}
+
+impl ControllerMemoryListener {
+    pub(crate) fn new(controller: Rc<RefCell<Controller>>) -> ControllerMemoryListener {
+        ControllerMemoryListener {
+            controller
+        }
+    }
+}
+
+impl MemoryListener for ControllerMemoryListener {
     fn get_addresses(&self) -> Vec<u16> {
         let mut addrs = Vec::new();
 
@@ -61,14 +75,15 @@ impl MemoryListener for Controller {
         addrs
     }
 
-    fn read(&mut self, _memory: &CoreMemory, _address: u16) -> u8 {
-        self.get_next_byte()
+    fn read(&self, _memory: &CoreMemory, _shared_items: &mut SharedItems, _address: u16) -> u8 {
+        self.controller.borrow_mut().get_next_byte()
     }
 
-    fn write(&mut self, _memory: &CoreMemory, _address: u16, value: u8) {
-        if self.old_value & 1 == 1 && value & 1 == 0 {
-            self.record_data();
+    fn write(&self, _memory: &CoreMemory, _shared_items: &mut SharedItems, _address: u16, value: u8) {
+        let mut controller = self.controller.borrow_mut();
+        if controller.old_value & 1 == 1 && value & 1 == 0 {
+            controller.record_data();
         }
-        self.old_value = value;
+        controller.old_value = value;
     }
 }

@@ -26,14 +26,6 @@ pub struct DMC {
 }
 
 impl DMC {
-    #[allow(dead_code)]
-    pub fn initialize(memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<DMC>> {
-        let dmc_ref = Rc::new(RefCell::new(DMC::new()));
-        memory.borrow_mut().register_listener(dmc_ref.clone());
-
-        dmc_ref
-    }
-
     pub fn new() -> DMC {
         let timer = Timer::new();
 
@@ -109,18 +101,8 @@ impl DMC {
         /* TODO: DMC behavior for being disabled is more complex than others */
         self.enabled = enabled;
     }
-}
 
-impl MemoryListener for DMC {
-    fn get_addresses(&self) -> Vec<u16> {
-        [0x4010, 0x4011, 0x4012, 0x4013].to_vec()
-    }
-
-    fn read(&mut self, memory: &CoreMemory, address: u16) -> u8 {
-        memory.read(address)
-    }
-
-    fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
+    pub fn write(&mut self, address: u16, value: u8) {
         match address {
             0x4010 => {
                 self.irq_enabled = value & 0x80 != 0; /* TODO: clear interrupt flag when cleared */

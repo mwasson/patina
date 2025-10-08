@@ -21,14 +21,6 @@ pub struct Noise {
 }
 
 impl Noise {
-    #[allow(dead_code)]
-    pub fn initialize(memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<Noise>> {
-        let noise_ref = Rc::new(RefCell::new(Noise::new()));
-        memory.borrow_mut().register_listener(noise_ref.clone());
-
-        noise_ref
-    }
-
     pub fn new() -> Noise {
         Noise {
             envelope: Envelope::new(),
@@ -75,18 +67,8 @@ impl Noise {
         }
         self.enabled = enabled;
     }
-}
 
-impl MemoryListener for Noise {
-    fn get_addresses(&self) -> Vec<u16> {
-        [0x400c, 0x400d, 0x400e, 0x400f].to_vec()
-    }
-
-    fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
-        memory.open_bus()
-    }
-
-    fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
+    pub fn write(&mut self, address: u16, value: u8) {
         match address {
             0x400c => {
                 // println!("400c {:x}", value);

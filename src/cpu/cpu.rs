@@ -1,8 +1,5 @@
 use crate::cpu;
-use crate::cpu::{
-    operation_from_memory, AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION,
-    IRQ_HANDLER_LOCATION, NMI_HANDLER_LOCATION,
-};
+use crate::cpu::{operation_from_memory, AddressingMode, Controller, ControllerMemoryListener, CoreMemory, SharedItems, StatusFlag, INITIAL_PC_LOCATION, IRQ_HANDLER_LOCATION, NMI_HANDLER_LOCATION};
 use crate::processor::Processor;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -11,6 +8,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use winit::keyboard::Key;
+use crate::mapper::Mapper;
 
 pub struct CPU {
     pub accumulator: u8,
@@ -21,7 +19,7 @@ pub struct CPU {
     pub status: u8,
     nmi_flag: bool,
     memory: Box<CoreMemory>,
-    controller: Rc<RefCell<Controller>>,
+    pub(crate) controller: Rc<RefCell<Controller>>,
 }
 
 impl Processor for CPU {
@@ -32,10 +30,9 @@ impl Processor for CPU {
 
 impl CPU {
     /* TODO comment */
-    pub fn new(mut memory: Box<CoreMemory>) -> Box<Self> {
+    pub fn new(mut memory: Box<CoreMemory>, mapper: &dyn Mapper) -> Box<Self> {
         let controller = Rc::new(RefCell::new(Controller::new()));
-
-        memory.register_listener(controller.clone());
+        memory.register_listener(Rc::new(ControllerMemoryListener::new(controller.clone())));
 
         /* set program counter to value in memory at this location */
         let mut result = Self {
@@ -51,26 +48,26 @@ impl CPU {
         };
 
         result.program_counter =
-            AddressingMode::Indirect.resolve_address_u16(&mut result, INITIAL_PC_LOCATION);
+            AddressingMode::Indirect.resolve_address_u16(&mut result, mapper, INITIAL_PC_LOCATION);
 
         Box::new(result)
     }
 
     /* performs one operation, and then returns when the next operation should run */
-    pub fn transition(&mut self, start_time: Instant) -> Instant {
+    pub fn transition(&mut self, shared_items: &mut SharedItems, start_time: Instant) -> Instant {
         if self.nmi_set() {
-            self.trigger_nmi();
+            self.trigger_nmi(shared_items);
         }
 
         let operation_loc = self.program_counter;
         /* TODO: what if this hits the top of program memory */
         let operation = operation_from_memory(
-            self.read_mem(operation_loc),
-            self.read_mem(operation_loc.wrapping_add(1)),
-            self.read_mem(operation_loc.wrapping_add(2)),
+            self.read_mem(shared_items, operation_loc),
+            self.read_mem(shared_items, operation_loc.wrapping_add(1)),
+            self.read_mem(shared_items, operation_loc.wrapping_add(2)),
         );
 
-        operation.apply(self);
+        operation.apply(self, shared_items);
 
         start_time.add(self.cycles_to_duration(operation.realized_instruction.cycles))
     }
@@ -92,60 +89,60 @@ impl CPU {
         self.update_flag(StatusFlag::Negative, new_val & 0x80 != 0);
     }
 
-    pub fn push(&mut self, data: u8) {
-        self.write_mem(cpu::addr(self.s_register, 0x01), data);
+    pub fn push(&mut self, shared_items: &mut SharedItems, data: u8) {
+        self.write_mem(shared_items, cpu::addr(self.s_register, 0x01), data);
         self.s_register = self.s_register.wrapping_sub(1);
     }
 
-    pub fn push_memory_loc(&mut self, mem_loc: u16) {
-        self.push((mem_loc >> 8) as u8);
-        self.push((mem_loc & 0xff) as u8);
+    pub fn push_memory_loc(&mut self, shared_items: &mut SharedItems, mem_loc: u16) {
+        self.push(shared_items, (mem_loc >> 8) as u8);
+        self.push(shared_items,(mem_loc & 0xff) as u8);
     }
 
-    pub fn pop_memory_loc(&mut self) -> u16 {
-        let lower = self.pop();
-        let upper = self.pop();
+    pub fn pop_memory_loc(&mut self, shared_items: &mut SharedItems) -> u16 {
+        let lower = self.pop(shared_items);
+        let upper = self.pop(shared_items);
 
         cpu::addr(lower, upper)
     }
 
-    pub fn pop(&mut self) -> u8 {
+    pub fn pop(&mut self, shared_items: &mut SharedItems) -> u8 {
         self.s_register += 1;
-        let value = self.read_mem(0x0100 + self.s_register as u16);
+        let value = self.read_mem(shared_items,0x0100 + self.s_register as u16);
         value
     }
 
-    pub fn irq_with_offset(&mut self, offset: u8) {
-        self.push_memory_loc(self.program_counter.wrapping_add(offset as u16));
-        self.push((self.status & !(1 << 4)) | (1 << 5));
+    pub fn irq_with_offset(&mut self, shared_items: &mut SharedItems, offset: u8) {
+        self.push_memory_loc(shared_items, self.program_counter.wrapping_add(offset as u16));
+        self.push(shared_items, (self.status & !(1 << 4)) | (1 << 5));
         self.update_flag(StatusFlag::InterruptDisable, false);
-        self.program_counter = self.read_mem16(IRQ_HANDLER_LOCATION);
+        self.program_counter = self.read_mem16(shared_items.mapper, IRQ_HANDLER_LOCATION);
     }
-    pub fn addr_from_mem16(&mut self, lo_byte_addr: u16) -> u16 {
-        self.read_mem16(lo_byte_addr)
+    pub fn addr_from_mem16(&mut self, mapper: &dyn Mapper, lo_byte_addr: u16) -> u16 {
+        self.read_mem16(mapper, lo_byte_addr)
     }
 
-    fn trigger_nmi(&mut self) {
+    fn trigger_nmi(&mut self, shared_items: &mut SharedItems) {
         self.set_nmi(false);
         /* push PC onto stack */
-        self.push_memory_loc(self.program_counter);
+        self.push_memory_loc(shared_items, self.program_counter);
         /* push processor status register on stack */
-        self.push((self.status & !(1 << 4)) | (1 << 5));
+        self.push(shared_items, (self.status & !(1 << 4)) | (1 << 5));
         /* read NMI handler address from 0xFFFA/0xFFFB and jump to that address*/
         self.program_counter =
-            AddressingMode::Indirect.resolve_address_u16(self, NMI_HANDLER_LOCATION);
+            AddressingMode::Indirect.resolve_address_u16(self, shared_items.mapper, NMI_HANDLER_LOCATION);
     }
 
-    pub fn write_mem(&mut self, addr: u16, data: u8) {
-        self.memory.write(addr, data);
+    pub fn write_mem(&mut self, shared_items: &mut SharedItems, addr: u16, data: u8) {
+        self.memory.write(shared_items, addr, data);
     }
 
-    pub fn read_mem(&self, addr: u16) -> u8 {
-        self.memory.read(addr)
+    pub fn read_mem(&self, shared_items: &mut SharedItems, addr: u16) -> u8 {
+        self.memory.read(shared_items, addr)
     }
 
-    pub fn read_mem16(&mut self, addr: u16) -> u16 {
-        self.memory.read16(addr)
+    pub fn read_mem16(&mut self, mapper: &dyn Mapper, addr: u16) -> u16 {
+        self.memory.read16(mapper, addr)
     }
 
     pub fn set_key_source(&mut self, keys: Arc<Mutex<HashSet<Key>>>) {

@@ -1,8 +1,5 @@
 use crate::apu::length_counter::LengthCounter;
 use crate::apu::timer::Timer;
-use crate::cpu::{CoreMemory, MemoryListener};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct Triangle {
     sequencer: TriangleSequencer,
@@ -12,14 +9,6 @@ pub struct Triangle {
 }
 
 impl Triangle {
-    #[allow(dead_code)]
-    pub fn initialize(memory: &Rc<RefCell<CoreMemory>>) -> Rc<RefCell<Triangle>> {
-        let triangle_ref = Rc::new(RefCell::new(Triangle::new()));
-        memory.borrow_mut().register_listener(triangle_ref.clone());
-
-        triangle_ref
-    }
-
     pub fn new() -> Triangle {
         Triangle {
             sequencer: TriangleSequencer::new(),
@@ -61,18 +50,8 @@ impl Triangle {
         }
         self.enabled = enabled;
     }
-}
 
-impl MemoryListener for Triangle {
-    fn get_addresses(&self) -> Vec<u16> {
-        [0x4008, 0x4009, 0x400a, 0x400b].to_vec()
-    }
-
-    fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
-        memory.open_bus()
-    }
-
-    fn write(&mut self, _memory: &CoreMemory, address: u16, value: u8) {
+    pub fn write(&mut self, address: u16, value: u8) {
         match address {
             0x4008 => {
                 self.length_counter.set_halt(value & 0x80 != 0);

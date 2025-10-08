@@ -1,4 +1,5 @@
-use crate::cpu::{addr, zero_page_addr, CPU};
+use crate::cpu::{addr, zero_page_addr, SharedItems, CPU};
+use crate::mapper::Mapper;
 
 #[derive(Debug)]
 pub enum AddressingMode {
@@ -19,7 +20,7 @@ pub enum AddressingMode {
 
 impl AddressingMode {
     /* behavior based on: https://www.nesdev.org/obelisk-6502-guide/addressing.html */
-    pub fn resolve_address(self: &AddressingMode, cpu: &mut CPU, byte1: u8, byte2: u8) -> u16 {
+    pub fn resolve_address(self: &AddressingMode, cpu: &mut CPU, mapper: &dyn Mapper, byte1: u8, byte2: u8) -> u16 {
         let result = match self {
             AddressingMode::Implicit => panic!("Should never be explicitly referenced--remove?"),
             AddressingMode::Accumulator => panic!("Should never be explicitly referenced--remove?"),
@@ -41,39 +42,39 @@ impl AddressingMode {
              * correctly handle crossing page boundaries
              */
             {
-                cpu.addr_from_mem16(addr(byte1, byte2))
+                cpu.addr_from_mem16(mapper, addr(byte1, byte2))
             }
             AddressingMode::IndirectX => {
-                cpu.read_mem16(zero_page_addr(byte1.wrapping_add(cpu.index_x)))
+                cpu.read_mem16(mapper, zero_page_addr(byte1.wrapping_add(cpu.index_x)))
             }
-            AddressingMode::IndirectY => cpu.read_mem16(zero_page_addr(byte1)) + cpu.index_y as u16,
+            AddressingMode::IndirectY => cpu.read_mem16(mapper, zero_page_addr(byte1)) + cpu.index_y as u16,
         };
 
         result
     }
 
     /* convenience method for when you have a u16 representing an entire memory address */
-    pub fn resolve_address_u16(&self, cpu: &mut CPU, addr: u16) -> u16 {
-        self.resolve_address(cpu, (addr & 0xff) as u8, (addr >> 8) as u8)
+    pub fn resolve_address_u16(&self, cpu: &mut CPU, mapper: &dyn Mapper, addr: u16) -> u16 {
+        self.resolve_address(cpu, mapper, (addr & 0xff) as u8, (addr >> 8) as u8)
     }
 
-    pub fn deref(self: &AddressingMode, cpu: &mut CPU, byte1: u8, byte2: u8) -> u8 {
+    pub fn deref(self: &AddressingMode, cpu: &mut CPU, shared_items: &mut SharedItems, byte1: u8, byte2: u8) -> u8 {
         match self {
             AddressingMode::Immediate => byte1,
             AddressingMode::Accumulator => cpu.accumulator,
             _ => {
-                let address = self.resolve_address(cpu, byte1, byte2);
-                cpu.read_mem(address)
+                let address = self.resolve_address(cpu, shared_items.mapper, byte1, byte2);
+                cpu.read_mem(shared_items, address)
             }
         }
     }
 
-    pub fn write(self: &AddressingMode, cpu: &mut CPU, byte1: u8, byte2: u8, new_val: u8) {
+    pub fn write(self: &AddressingMode, cpu: &mut CPU, shared_items: &mut SharedItems, byte1: u8, byte2: u8, new_val: u8) {
         match self {
             AddressingMode::Accumulator => cpu.accumulator = new_val,
             _ => {
-                let resolved_addr = self.resolve_address(cpu, byte1, byte2);
-                cpu.write_mem(resolved_addr, new_val)
+                let resolved_addr = self.resolve_address(cpu, shared_items.mapper, byte1, byte2);
+                cpu.write_mem(shared_items, resolved_addr, new_val)
             }
         }
     }

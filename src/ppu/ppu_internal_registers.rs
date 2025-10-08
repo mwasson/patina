@@ -4,6 +4,7 @@ pub struct PPUInternalRegisters {
     pub t: u16,
     pub x: u8,
     pub w: bool,
+    pub read_buffer: u8,
 }
 
 impl PPUInternalRegisters {

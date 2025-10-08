@@ -2,7 +2,7 @@ use crate::apu::dmc::DMC;
 use crate::apu::noise::Noise;
 use crate::apu::pulse::Pulse;
 use crate::apu::triangle::Triangle;
-use crate::cpu::{CoreMemory, MemoryListener};
+use crate::cpu::{CoreMemory, MemoryListener, SharedItems};
 use crate::processor::Processor;
 use rodio::{ChannelCount, OutputStream, SampleRate, Sink, Source};
 use std::cell::RefCell;
@@ -31,7 +31,7 @@ const PULSE_1_FIRST_ADDR: u16 = 0x4000;
 const PULSE_2_FIRST_ADDR: u16 = 0x4004;
 
 impl APU {
-    pub fn new() -> Rc<RefCell<APU>> {
+    pub fn new() -> APU {
         let stream_handle =
             rodio::OutputStreamBuilder::open_default_stream().expect("open default audio stream");
         let sink = Sink::connect_new(&stream_handle.mixer());
@@ -44,7 +44,7 @@ impl APU {
         let noise = Noise::new();
         let dmc = DMC::new();
 
-        Rc::new(RefCell::new(APU {
+        APU {
             apu_counter: 0,
             _output_stream: stream_handle,
             pulse1,
@@ -54,7 +54,7 @@ impl APU {
             dmc,
             queue,
             _sink: sink,
-        }))
+        }
     }
 
     pub fn apu_tick(&mut self) {
@@ -94,7 +94,17 @@ impl Processor for APU {
     }
 }
 
-impl MemoryListener for APU {
+pub struct APUMemoryListener {
+    
+}
+
+impl APUMemoryListener {
+    pub fn new() -> APUMemoryListener {
+        APUMemoryListener {}
+    }
+}
+
+impl MemoryListener for APUMemoryListener {
     fn get_addresses(&self) -> Vec<u16> {
         [
             0x4000, 0x4001, 0x4002, 0x4003, /* pulse 1 */
@@ -107,29 +117,29 @@ impl MemoryListener for APU {
         .to_vec() /* apu control regs */
     }
 
-    fn read(&mut self, memory: &CoreMemory, _address: u16) -> u8 {
+    fn read(&self, memory: &CoreMemory, _shared_items: &mut SharedItems, _address: u16) -> u8 {
         memory.open_bus()
     }
 
-    fn write(&mut self, memory: &CoreMemory, address: u16, value: u8) {
+    fn write(&self, _memory: &CoreMemory, shared_items: &mut SharedItems, address: u16, value: u8) {
         match address & 0x001c {
             /* pulse 1:  xxx0 00xx */
-            0x00 => self.pulse1.write(memory, address, value),
+            0x00 => shared_items.apu.pulse1.write(address, value),
             /* pulse 2:  xxx0 01xx */
-            0x04 => self.pulse2.write(memory, address, value),
+            0x04 => shared_items.apu.pulse2.write(address, value),
             /* triangle: xxx0 10xx */
-            0x08 => self.triangle.write(memory, address, value),
+            0x08 => shared_items.apu.triangle.write(address, value),
             /* noise:    xxx0 11xx */
-            0x0c => self.noise.write(memory, address, value),
+            0x0c => shared_items.apu.noise.write(address, value),
             /* dmc:      xxx1 00xx */
-            0x10 => self.dmc.write(memory, address, value),
+            0x10 => shared_items.apu.dmc.write(address, value),
             _ => {
                 if address == 0x4015 {
-                    self.pulse1.set_enabled(value & 0x1 != 0);
-                    self.pulse2.set_enabled(value & 0x2 != 0);
-                    self.triangle.set_enabled(value & 0x4 != 0);
-                    self.noise.set_enabled(value & 0x8 != 0);
-                    self.dmc.set_enabled(value & 0x10 != 0);
+                    shared_items.apu.pulse1.set_enabled(value & 0x1 != 0);
+                    shared_items.apu.pulse2.set_enabled(value & 0x2 != 0);
+                    shared_items.apu.triangle.set_enabled(value & 0x4 != 0);
+                    shared_items.apu.noise.set_enabled(value & 0x8 != 0);
+                    shared_items.apu.dmc.set_enabled(value & 0x10 != 0);
                 }
             }
         }
