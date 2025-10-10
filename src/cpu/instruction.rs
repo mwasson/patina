@@ -344,6 +344,7 @@ impl RealizedInstruction {
             Instruction::JSR => {}
             Instruction::RTS => {}
             Instruction::RTI => {}
+            Instruction::BRK => {} // acts like a JMP
             _ => {
                 cpu.program_counter = cpu.program_counter.wrapping_add(self.bytes as u16);
             }

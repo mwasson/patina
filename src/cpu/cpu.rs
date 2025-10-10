@@ -118,8 +118,9 @@ impl CPU {
     pub fn irq_with_offset(&mut self, offset: u8) {
         self.push_memory_loc(self.program_counter.wrapping_add(offset as u16));
         self.push((self.status & !(1 << 4)) | (1 << 5));
-        self.update_flag(StatusFlag::InterruptDisable, false);
-        self.program_counter = self.read_mem16(IRQ_HANDLER_LOCATION);
+        self.update_flag(StatusFlag::InterruptDisable, true);
+        self.program_counter =
+            AddressingMode::Indirect.resolve_address_u16(self, IRQ_HANDLER_LOCATION);
     }
     pub fn addr_from_mem16(&mut self, lo_byte_addr: u16) -> u16 {
         self.read_mem16(lo_byte_addr)
