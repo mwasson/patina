@@ -94,7 +94,7 @@ impl CPU {
 
     pub fn push(&mut self, data: u8) {
         self.write_mem(cpu::addr(self.s_register, 0x01), data);
-        self.s_register = self.s_register.wrapping_sub(1);
+        self.s_register -= 1;
     }
 
     pub fn push_memory_loc(&mut self, mem_loc: u16) {

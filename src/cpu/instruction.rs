@@ -212,24 +212,21 @@ impl Instruction {
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
             Instruction::PHA => {
-                cpu.write_mem(0x100 + cpu.s_register as u16, cpu.accumulator);
-                cpu.s_register -= 1;
+                cpu.push(cpu.accumulator);
             }
             Instruction::PHP => {
                 /* pushes status onto the stack, with the 'B' flag (bit 4) on */
-                cpu.write_mem(0x100 + cpu.s_register as u16, cpu.status | (1 << 4));
-                cpu.s_register -= 1;
+                cpu.push(cpu.status | (1 << 4));
             }
             Instruction::PLA => {
-                cpu.s_register += 1;
-                cpu.accumulator = cpu.read_mem(0x100 + cpu.s_register as u16);
+                cpu.accumulator = cpu.pop();
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
             Instruction::PLP => {
                 /* reads status from the stack, except for bits 4 and 5 */
-                cpu.s_register += 1;
-                let val = cpu.read_mem(0x100 + cpu.s_register as u16);
+                let val = cpu.pop();
                 cpu.status = (cpu.status & 0x30) | (val & !0x30);
+                /* TODO: update to interrupt disable should be delayed one instruction */
             }
             Instruction::ROL => {
                 let val = addr_mode.deref(cpu, b1, b2);
@@ -248,7 +245,9 @@ impl Instruction {
                 cpu.update_zero_neg_flags(result);
             }
             Instruction::RTI => {
+                /* TODO: this works as is, but should it be loading flags 4 and 5? */
                 cpu.status = cpu.pop();
+
                 cpu.program_counter = cpu.pop_memory_loc();
             }
             Instruction::RTS => {
