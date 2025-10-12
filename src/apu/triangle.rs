@@ -48,6 +48,7 @@ impl Triangle {
         /* only clock sequence timer if both counters are non-zero */
         if self.linear_counter.is_active() && self.length_counter.is_active() {
             self.sequencer.clock();
+            self.sequencer.clock();
         }
     }
 
