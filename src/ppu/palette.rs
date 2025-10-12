@@ -76,32 +76,11 @@ impl Palette {
     }
 
     pub fn brightness_to_pixels(&self, brightness: u8) -> &'static [u8; 4] {
-        let color_info = self.data[brightness as usize];
-
-        let hue = color_info & 0x3f;
-        // let value = color_info & 0xc0;
-
-        // Palette::apply_value(value, Palette::hue_lookup(hue))
-        Palette::hue_lookup(hue as usize)
-    }
-
-    /* TODO buggy; messes up Bubble Bobble's colors */
-    #[allow(dead_code)]
-    fn apply_value(value: u8, pixels: [u8; 4]) -> [u8; 4] {
-        /* reverse engineered from https://www.nesdev.org/wiki/NTSC_video#Converting_YUV_to_signal_RGB,
-         * assuming we already have RGB values where Y = 0 and treating 'value' as the same as luma
-         */
-        let mut output = pixels;
-
-        output[0] = output[0].saturating_add(((value as u16) * 255 / 4) as u8); /* R */
-        output[1] = output[1].saturating_add((((value as f64) * 255.0 / 4.0) / 0.587) as u8); /* G */
-        output[2] = output[2].saturating_add(((value as u16) * 255 / 4) as u8); /* B */
-
-        output
+        Palette::hue_lookup(self.data[brightness as usize] as usize)
     }
 
     /* based on Wiki values */
-    fn hue_lookup(hue: usize) -> &'static [u8; 4] {
+    pub fn hue_lookup(hue: usize) -> &'static [u8; 4] {
         &HUE_LOOKUP[hue]
     }
 }

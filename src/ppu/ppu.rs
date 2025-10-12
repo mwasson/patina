@@ -161,7 +161,7 @@ impl PPU {
                 break 'pixel background_sprite_pixel.unwrap();
             }
             /* if no sprites or bg tile, render the global background color */
-            self.get_palette(0).brightness_to_pixels(0)
+            self.render_background_color()
         };
         let index = scanline as usize * 1024 + x as usize * 4;
         self.internal_buffer[index..index + 4].copy_from_slice(pixel);
@@ -273,6 +273,14 @@ impl PPU {
             }
         };
         self.get_palette((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
+    }
+
+
+    /* optimized version of looking up the global background color that skips
+     * constructing a palette
+     */
+    fn render_background_color(&self) -> &'static [u8;4] {
+        Palette::hue_lookup(self.palette_memory[0] as usize)
     }
 
     /* Finds the first eight sprites on the given scanline, determined
