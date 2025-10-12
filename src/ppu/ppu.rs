@@ -18,7 +18,6 @@ pub struct PPU {
     vram: [u8; VRAM_SIZE],
     palette_memory: [u8; PALETTE_MEMORY_SIZE],
     scanline_sprites: Option<Vec<SpriteInfo>>,
-    sprite0_in_scanline: Option<SpriteInfo>,
     current_tile: Option<Tile>,
     current_palette: Option<Palette>,
     // tick_count: u16,
@@ -64,7 +63,6 @@ impl PPU {
             internal_regs: PPUInternalRegisters::default(),
             tall_sprites: false,
             scanline_sprites: None,
-            sprite0_in_scanline: None,
             current_tile: None,
             current_palette: None,
         }))
@@ -121,7 +119,6 @@ impl PPU {
     pub fn render_scanline_begin(&mut self, scanline: u8) {
         let sprite_data = self.sprite_evaluation(scanline);
         self.scanline_sprites = Some(sprite_data.0);
-        self.sprite0_in_scanline = sprite_data.1;
         self.current_tile = Some(self.get_current_tile());
         self.current_palette = Some(self.palette_for_current_bg_tile());
     }
@@ -147,6 +144,7 @@ impl PPU {
                 if let Some(pixel_data) =
                     self.render_sprites(&self.scanline_sprites.as_ref().unwrap(), scanline, x)
                 {
+                    self.sprite0_hit_detection(scanline, x, &pixel_data.0);
                     if pixel_data.0.is_foreground() {
                         break 'pixel pixel_data.1;
                     } else {
@@ -156,7 +154,6 @@ impl PPU {
             }
             if render_background {
                 if let Some(pixel) = self.render_background_tiles(x) {
-                    self.sprite0_hit_detection(scanline, x);
                     break 'pixel pixel;
                 }
             }
@@ -199,12 +196,12 @@ impl PPU {
         }
     }
 
-    fn render_sprites<'a>(
+    fn render_sprites(
         &self,
-        scanline_sprites: &'a Vec<SpriteInfo>,
+        scanline_sprites: &Vec<SpriteInfo>,
         scanline: u8,
         x: u8,
-    ) -> Option<(&'a SpriteInfo, &'static [u8; 4])> {
+    ) -> Option<(SpriteInfo, &'static [u8; 4])> {
         for sprite in scanline_sprites {
             if x < sprite.x || x > sprite.x + 7 {
                 continue;
@@ -213,7 +210,7 @@ impl PPU {
                 sprite.get_brightness_localized(self, x - sprite.x, scanline - sprite.get_y());
             if brightness > 0 {
                 return Some((
-                    sprite,
+                    sprite.clone(),
                     sprite.get_palette(&self).brightness_to_pixels(brightness),
                 ));
             }
@@ -221,24 +218,18 @@ impl PPU {
         None
     }
 
-    fn sprite0_hit_detection(&mut self, scanline: u8, x: u8) {
-        /* nothing to do if sprite zero has already been found */
-        if self.ppu_status & (1 << 6) != 0 {
+    fn sprite0_hit_detection(&mut self, scanline: u8, x: u8, sprite_rendered: &SpriteInfo) {
+        /* nothing to do if sprite 0 wasn't hit, or sprite zero has already been found */
+        if sprite_rendered.sprite_index != 0 || self.ppu_status & (1 << 6) != 0 {
             return;
         }
-        /* sprite zero hit detection */
-        if let Some(sprite0_internal) = self.sprite0_in_scanline {
-            if x >= sprite0_internal.x
-                && x < sprite0_internal.x + 8
-                && sprite0_internal.get_brightness_localized(
-                    self,
-                    x - sprite0_internal.x,
-                    scanline - sprite0_internal.get_y(),
-                ) > 0
-            {
-                self.sprite0_in_scanline = None;
-                self.ppu_status |= 1 << 6;
-            }
+        /* check to see if we're already rendering a background pixel; if so, it's a hit */
+        if self.current_tile.as_mut().unwrap().pixel_intensity(
+            x - (self.internal_regs.get_coarse_x() * 8 - self.internal_regs.get_fine_x()),
+            self.internal_regs.get_fine_y(),
+        ) > 0
+        {
+            self.ppu_status |= 1 << 6;
         }
     }
 
@@ -317,7 +308,7 @@ impl PPU {
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
         let mut sprite_data = [0u8; 4];
         sprite_data.copy_from_slice(&self.oam[sprite_index * 4..sprite_index * 4 + 4]);
-        SpriteInfo::from_memory(&sprite_data)
+        SpriteInfo::from_memory(sprite_index, &sprite_data)
     }
 
     fn get_sprite_tile(&self, tile_index: u8) -> Tile {
@@ -421,6 +412,7 @@ struct SpriteInfo {
     tile_index: u8,
     attrs: u8,
     x: u8,
+    sprite_index: usize,
 }
 
 impl SpriteInfo {
@@ -456,12 +448,13 @@ impl SpriteInfo {
     }
 
     /* create a SpriteInfo from memory */
-    fn from_memory(src_slice: &[u8]) -> SpriteInfo {
+    fn from_memory(sprite_index: usize, src_slice: &[u8]) -> SpriteInfo {
         SpriteInfo {
             y: src_slice[0],
             tile_index: src_slice[1],
             attrs: src_slice[2],
             x: src_slice[3],
+            sprite_index,
         }
     }
 }
