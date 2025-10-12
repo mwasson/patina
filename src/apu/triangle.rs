@@ -53,7 +53,7 @@ impl Triangle {
     }
 
     pub fn amplitude(&self) -> f32 {
-        self.sequencer.amplitude() * self.length_counter.amplitude()
+        self.sequencer.amplitude()
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
