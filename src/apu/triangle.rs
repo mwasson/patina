@@ -113,6 +113,10 @@ impl TriangleSequencer {
     }
 
     fn amplitude(&self) -> f32 {
+        if self.timer.period < 2 {
+            return 0.0;
+        }
+
         let mut vol = self.sequence_index % 16;
 
         if self.sequence_index < 16 {
