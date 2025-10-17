@@ -56,8 +56,8 @@ impl CPU {
         Box::new(result)
     }
 
-    /* performs one operation, and then returns when the next operation should run */
-    pub fn transition(&mut self, start_time: Instant) -> Instant {
+    /* performs one operation, then returns how long it took, in cycles */
+    pub fn transition(&mut self) -> u16 {
         if self.nmi_set() {
             self.trigger_nmi();
         }
@@ -72,7 +72,7 @@ impl CPU {
 
         operation.apply(self);
 
-        start_time.add(self.cycles_to_duration(operation.realized_instruction.cycles))
+        operation.realized_instruction.cycles
     }
 
     pub fn set_nmi(&mut self, nmi_set: bool) {
