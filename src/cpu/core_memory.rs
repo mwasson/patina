@@ -14,7 +14,6 @@ pub trait MemoryListener {
 
 pub struct CoreMemory {
     memory: Box<[u8; MEMORY_SIZE]>,
-    nmi_flag: bool, /* a convenience, to avoid a PPU dependency on the CPU */
     listeners: FnvHashMap<u16, Rc<RefCell<dyn MemoryListener>>>,
     pub mapper: Rc<RefCell<Box<dyn Mapper>>>,
 }
@@ -23,7 +22,6 @@ impl CoreMemory {
     pub fn new(rom: &Rom) -> CoreMemory {
         CoreMemory {
             memory: Box::new([0; MEMORY_SIZE]),
-            nmi_flag: false,
             listeners: FnvHashMap::with_capacity_and_hasher(10, Default::default()),
             mapper: rom.initialize_mapper(),
         }

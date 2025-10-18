@@ -144,7 +144,7 @@ impl PPU {
                 if let Some(pixel_data) =
                     self.render_sprites(&self.scanline_sprites.as_ref().unwrap(), scanline, x)
                 {
-                    self.sprite0_hit_detection(scanline, x, &pixel_data.0);
+                    self.sprite0_hit_detection(x, &pixel_data.0);
                     if pixel_data.0.is_foreground() {
                         break 'pixel pixel_data.1;
                     } else {
@@ -218,7 +218,7 @@ impl PPU {
         None
     }
 
-    fn sprite0_hit_detection(&mut self, scanline: u8, x: u8, sprite_rendered: &SpriteInfo) {
+    fn sprite0_hit_detection(&mut self, x: u8, sprite_rendered: &SpriteInfo) {
         /* nothing to do if sprite 0 wasn't hit, or sprite zero has already been found */
         if sprite_rendered.sprite_index != 0 || self.ppu_status & (1 << 6) != 0 {
             return;
@@ -275,11 +275,10 @@ impl PPU {
         self.get_palette((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
     }
 
-
     /* optimized version of looking up the global background color that skips
      * constructing a palette
      */
-    fn render_background_color(&self) -> &'static [u8;4] {
+    fn render_background_color(&self) -> &'static [u8; 4] {
         Palette::hue_lookup(self.palette_memory[0] as usize)
     }
 

@@ -6,10 +6,8 @@ use crate::cpu::{
 use crate::processor::Processor;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::ops::Add;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 use winit::keyboard::Key;
 
 pub struct CPU {

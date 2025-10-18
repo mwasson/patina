@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+#[allow(dead_code)]
 pub trait Processor {
     fn clock_speed(&self) -> u64;
 
@@ -22,10 +23,6 @@ pub trait Processor {
         let ns = (1e9 as u64) * (cycles as u64) / (self.clock_speed());
         let frame_duration = Duration::from_nanos(ns);
         let sleep_time = frame_duration.saturating_sub(start_time.elapsed());
-
-        // while !frame_duration.saturating_sub(start_time.elapsed()).is_zero() {
-        //
-        // }
 
         if !sleep_time.is_zero() {
             std::thread::sleep(sleep_time);
