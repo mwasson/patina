@@ -329,7 +329,6 @@ pub struct RealizedInstruction {
     pub instruction: Instruction,
     pub addr_mode: AddressingMode,
     pub cycles: u16,
-    pub bytes: u8,
 }
 
 impl RealizedInstruction {
@@ -346,174 +345,176 @@ impl RealizedInstruction {
             Instruction::RTI => {}
             Instruction::BRK => {} // acts like a JMP
             _ => {
-                cpu.program_counter = cpu.program_counter.wrapping_add(self.bytes as u16);
+                cpu.program_counter = cpu
+                    .program_counter
+                    .wrapping_add(self.addr_mode.get_bytes() as u16);
             }
         }
     }
 }
 
 pub fn from_opcode(opcode: u8) -> RealizedInstruction {
-    let (instruction, addr_mode, cycles, bytes) = match opcode {
+    let (instruction, addr_mode, cycles) = match opcode {
         /* TODO: instructions marked 'boundary' take longer if crossing
          * a page boundary */
         /* branch instructions also take an extra cycle if branch taken */
-        0x00 => (Instruction::BRK, Implicit, 7, 2),
-        0x06 => (Instruction::ASL, ZeroPage, 5, 2),
-        0x08 => (Instruction::PHP, Implicit, 3, 1),
-        0x0a => (Instruction::ASL, Accumulator, 2, 1),
-        0x01 => (Instruction::ORA, IndirectX, 6, 2),
-        0x05 => (Instruction::ORA, ZeroPage, 3, 2),
-        0x09 => (Instruction::ORA, Immediate, 2, 2),
-        0x0d => (Instruction::ORA, Absolute, 4, 3),
-        0x0e => (Instruction::ASL, Absolute, 6, 3),
-        0x10 => (Instruction::BPL, Relative, 2, 2), /*boundary*/
-        0x11 => (Instruction::ORA, IndirectY, 5, 2), /*boundary*/
-        0x15 => (Instruction::ORA, ZeroPageX, 3, 2),
-        0x16 => (Instruction::ASL, ZeroPageX, 6, 2),
-        0x18 => (Instruction::CLC, Implicit, 2, 1),
-        0x19 => (Instruction::ORA, AbsoluteY, 4, 3), /*boundary*/
-        0x1a => (Instruction::NOP, Implicit, 2, 1),  /* unofficial */
-        0x1d => (Instruction::ORA, AbsoluteX, 4, 3), /*boundary*/
-        0x1e => (Instruction::ASL, AbsoluteX, 7, 3),
-        0x20 => (Instruction::JSR, Absolute, 6, 3),
-        0x21 => (Instruction::AND, IndirectX, 6, 2),
-        0x24 => (Instruction::BIT, ZeroPage, 3, 2),
-        0x25 => (Instruction::AND, ZeroPage, 3, 2),
-        0x26 => (Instruction::ROL, ZeroPage, 5, 2),
-        0x28 => (Instruction::PLP, Implicit, 4, 1),
-        0x29 => (Instruction::AND, Immediate, 2, 2),
-        0x2a => (Instruction::ROL, Accumulator, 2, 1),
-        0x2c => (Instruction::BIT, Absolute, 4, 3),
-        0x2d => (Instruction::AND, Absolute, 4, 3),
-        0x2e => (Instruction::ROL, Absolute, 6, 3),
-        0x30 => (Instruction::BMI, Relative, 2, 2), /*boundary*/
-        0x31 => (Instruction::AND, IndirectY, 5, 2), /*boundary*/
-        0x35 => (Instruction::AND, ZeroPageX, 4, 2),
-        0x36 => (Instruction::ROL, ZeroPageX, 6, 2),
-        0x38 => (Instruction::SEC, Implicit, 2, 1),
-        0x39 => (Instruction::AND, AbsoluteY, 4, 3), /*boundary*/
-        0x3a => (Instruction::NOP, Implicit, 2, 1),  /* unofficial */
-        0x3d => (Instruction::AND, AbsoluteX, 4, 3), /*boundary*/
-        0x3e => (Instruction::ROL, AbsoluteX, 7, 3),
-        0x40 => (Instruction::RTI, Implicit, 6, 1),
-        0x41 => (Instruction::EOR, IndirectX, 6, 2),
-        0x45 => (Instruction::EOR, ZeroPage, 3, 2),
-        0x46 => (Instruction::LSR, ZeroPage, 5, 2),
-        0x48 => (Instruction::PHA, Implicit, 3, 1),
-        0x49 => (Instruction::EOR, Immediate, 2, 2),
-        0x4a => (Instruction::LSR, Accumulator, 2, 1),
-        0x4c => (Instruction::JMP, Absolute, 3, 3),
-        0x4d => (Instruction::EOR, Absolute, 4, 3),
-        0x4e => (Instruction::LSR, Absolute, 6, 3),
-        0x50 => (Instruction::BVC, Relative, 2, 2), /*boundary*/
-        0x51 => (Instruction::EOR, IndirectY, 5, 2), /*boundary*/
-        0x55 => (Instruction::EOR, ZeroPageX, 4, 2),
-        0x56 => (Instruction::LSR, ZeroPageX, 6, 2),
-        0x58 => (Instruction::CLI, Implicit, 2, 1),
-        0x59 => (Instruction::EOR, AbsoluteY, 4, 3), /*boundary*/
-        0x5a => (Instruction::NOP, Implicit, 2, 1),  /* unofficial */
-        0x5d => (Instruction::EOR, AbsoluteX, 4, 3), /*boundary*/
-        0x5e => (Instruction::LSR, AbsoluteX, 7, 3),
-        0x60 => (Instruction::RTS, Implicit, 6, 1),
-        0x61 => (Instruction::ADC, IndirectX, 6, 2),
-        0x65 => (Instruction::ADC, ZeroPage, 3, 2),
-        0x66 => (Instruction::ROR, ZeroPage, 5, 2),
-        0x68 => (Instruction::PLA, Implicit, 4, 1),
-        0x69 => (Instruction::ADC, Immediate, 2, 2),
-        0x6a => (Instruction::ROR, Accumulator, 2, 1),
-        0x6c => (Instruction::JMP, Indirect, 5, 3),
-        0x6d => (Instruction::ADC, Absolute, 4, 3),
-        0x6e => (Instruction::ROR, Absolute, 6, 3),
-        0x70 => (Instruction::BVS, Relative, 2, 2), /*boundary*/
-        0x71 => (Instruction::ADC, IndirectY, 5, 2), /*boundary*/
-        0x75 => (Instruction::ADC, ZeroPageX, 4, 2),
-        0x76 => (Instruction::ROR, ZeroPageX, 6, 2),
-        0x78 => (Instruction::SEI, Implicit, 2, 1),
-        0x79 => (Instruction::ADC, AbsoluteY, 4, 3), /*boundary*/
-        0x7a => (Instruction::NOP, Implicit, 2, 1),  /* unofficial */
-        0x7d => (Instruction::ADC, AbsoluteX, 4, 3), /*boundary*/
-        0x7e => (Instruction::ROR, AbsoluteX, 7, 3),
-        0x81 => (Instruction::STA, IndirectX, 6, 2),
-        0x84 => (Instruction::STY, ZeroPage, 3, 2),
-        0x85 => (Instruction::STA, ZeroPage, 3, 2),
-        0x86 => (Instruction::STX, ZeroPage, 3, 2),
-        0x88 => (Instruction::DEY, Implicit, 2, 1),
-        0x8a => (Instruction::TXA, Implicit, 2, 1),
-        0x8c => (Instruction::STY, Absolute, 4, 3),
-        0x8d => (Instruction::STA, Absolute, 4, 3),
-        0x8e => (Instruction::STX, Absolute, 4, 3),
-        0x90 => (Instruction::BCC, Relative, 2, 2), /*boundary*/
-        0x91 => (Instruction::STA, IndirectY, 6, 2),
-        0x94 => (Instruction::STY, ZeroPageX, 4, 2),
-        0x95 => (Instruction::STA, ZeroPageX, 4, 2),
-        0x96 => (Instruction::STX, ZeroPageY, 4, 2),
-        0x98 => (Instruction::TYA, Implicit, 2, 1),
-        0x99 => (Instruction::STA, AbsoluteY, 5, 3),
-        0x9a => (Instruction::TXS, Implicit, 2, 1),
-        0x9d => (Instruction::STA, AbsoluteX, 5, 3),
-        0xa0 => (Instruction::LDY, Immediate, 2, 2),
-        0xa1 => (Instruction::LDA, IndirectX, 6, 2),
-        0xa2 => (Instruction::LDX, Immediate, 2, 2),
-        0xa4 => (Instruction::LDY, ZeroPage, 3, 2),
-        0xa5 => (Instruction::LDA, ZeroPage, 3, 2),
-        0xa6 => (Instruction::LDX, ZeroPage, 3, 2),
-        0xa8 => (Instruction::TAY, Implicit, 2, 1),
-        0xa9 => (Instruction::LDA, Immediate, 2, 2),
-        0xaa => (Instruction::TAX, Implicit, 2, 1),
-        0xac => (Instruction::LDY, Absolute, 4, 3),
-        0xad => (Instruction::LDA, Absolute, 4, 3),
-        0xae => (Instruction::LDX, Absolute, 4, 3),
-        0xb0 => (Instruction::BCS, Relative, 3, 2), /*boundary*/
-        0xb1 => (Instruction::LDA, IndirectY, 5, 2), /*boundary*/
-        0xb4 => (Instruction::LDY, ZeroPageX, 4, 2),
-        0xb5 => (Instruction::LDA, ZeroPageX, 4, 2),
-        0xb6 => (Instruction::LDX, ZeroPageY, 4, 2),
-        0xb8 => (Instruction::CLV, Implicit, 2, 1),
-        0xb9 => (Instruction::LDA, AbsoluteY, 4, 3), /*boundary*/
-        0xba => (Instruction::TSX, Implicit, 2, 1),
-        0xbc => (Instruction::LDY, AbsoluteX, 4, 3), /*boundary*/
-        0xbd => (Instruction::LDA, AbsoluteX, 4, 3), /*boundary*/
-        0xbe => (Instruction::LDX, AbsoluteY, 4, 3), /*boundary*/
-        0xc0 => (Instruction::CPY, Immediate, 2, 2),
-        0xc1 => (Instruction::CMP, IndirectX, 6, 2),
-        0xc4 => (Instruction::CPY, ZeroPage, 3, 2),
-        0xc5 => (Instruction::CMP, ZeroPage, 3, 2),
-        0xc6 => (Instruction::DEC, ZeroPage, 5, 2),
-        0xc8 => (Instruction::INY, Implicit, 2, 1),
-        0xc9 => (Instruction::CMP, Immediate, 2, 2),
-        0xca => (Instruction::DEX, Implicit, 2, 1),
-        0xcc => (Instruction::CPY, Absolute, 4, 3),
-        0xcd => (Instruction::CMP, Absolute, 4, 3),
-        0xce => (Instruction::DEC, Absolute, 6, 3),
-        0xd0 => (Instruction::BNE, Relative, 2, 2), /*boundary*/
-        0xd1 => (Instruction::CMP, IndirectY, 5, 2), /*boundary*/
-        0xd5 => (Instruction::CMP, ZeroPageX, 4, 2),
-        0xd6 => (Instruction::DEC, ZeroPageX, 6, 2),
-        0xd8 => (Instruction::CLD, Implicit, 2, 1),
-        0xd9 => (Instruction::CMP, AbsoluteY, 4, 3), /*boundary*/
-        0xda => (Instruction::NOP, Implicit, 2, 1),  /* unofficial */
-        0xdd => (Instruction::CMP, AbsoluteX, 4, 3), /*boundary*/
-        0xde => (Instruction::DEC, AbsoluteX, 7, 3),
-        0xe0 => (Instruction::CPX, Immediate, 2, 2),
-        0xe1 => (Instruction::SBC, IndirectX, 6, 2),
-        0xe4 => (Instruction::CPX, ZeroPage, 3, 2),
-        0xe5 => (Instruction::SBC, ZeroPage, 3, 2),
-        0xe6 => (Instruction::INC, ZeroPage, 5, 2),
-        0xe8 => (Instruction::INX, Implicit, 2, 1),
-        0xe9 => (Instruction::SBC, Immediate, 2, 2),
-        0xea => (Instruction::NOP, Implicit, 2, 1),
-        0xec => (Instruction::CPX, Absolute, 4, 3),
-        0xed => (Instruction::SBC, Absolute, 4, 3),
-        0xee => (Instruction::INC, Absolute, 6, 3),
-        0xf0 => (Instruction::BEQ, Relative, 2, 2), /*boundary*/
-        0xf1 => (Instruction::SBC, IndirectY, 5, 2),
-        0xf5 => (Instruction::SBC, ZeroPageX, 4, 2),
-        0xf6 => (Instruction::INC, ZeroPageX, 6, 2),
-        0xf8 => (Instruction::SED, Implicit, 2, 1),
-        0xf9 => (Instruction::SBC, AbsoluteY, 4, 3), /*boundary*/
-        0xfa => (Instruction::NOP, Implicit, 2, 1),  /* unofficial */
-        0xfd => (Instruction::SBC, AbsoluteX, 4, 3), /*boundary*/
-        0xfe => (Instruction::INC, AbsoluteX, 7, 3),
+        0x00 => (Instruction::BRK, Implicit, 7),
+        0x06 => (Instruction::ASL, ZeroPage, 5),
+        0x08 => (Instruction::PHP, Implicit, 3),
+        0x0a => (Instruction::ASL, Accumulator, 2),
+        0x01 => (Instruction::ORA, IndirectX, 6),
+        0x05 => (Instruction::ORA, ZeroPage, 3),
+        0x09 => (Instruction::ORA, Immediate, 2),
+        0x0d => (Instruction::ORA, Absolute, 4),
+        0x0e => (Instruction::ASL, Absolute, 6),
+        0x10 => (Instruction::BPL, Relative, 2), /*boundary*/
+        0x11 => (Instruction::ORA, IndirectY, 5), /*boundary*/
+        0x15 => (Instruction::ORA, ZeroPageX, 3),
+        0x16 => (Instruction::ASL, ZeroPageX, 6),
+        0x18 => (Instruction::CLC, Implicit, 2),
+        0x19 => (Instruction::ORA, AbsoluteY, 4), /*boundary*/
+        0x1a => (Instruction::NOP, Implicit, 2),  /* unofficial */
+        0x1d => (Instruction::ORA, AbsoluteX, 4), /*boundary*/
+        0x1e => (Instruction::ASL, AbsoluteX, 7),
+        0x20 => (Instruction::JSR, Absolute, 6),
+        0x21 => (Instruction::AND, IndirectX, 6),
+        0x24 => (Instruction::BIT, ZeroPage, 3),
+        0x25 => (Instruction::AND, ZeroPage, 3),
+        0x26 => (Instruction::ROL, ZeroPage, 5),
+        0x28 => (Instruction::PLP, Implicit, 4),
+        0x29 => (Instruction::AND, Immediate, 2),
+        0x2a => (Instruction::ROL, Accumulator, 2),
+        0x2c => (Instruction::BIT, Absolute, 4),
+        0x2d => (Instruction::AND, Absolute, 4),
+        0x2e => (Instruction::ROL, Absolute, 6),
+        0x30 => (Instruction::BMI, Relative, 2), /*boundary*/
+        0x31 => (Instruction::AND, IndirectY, 5), /*boundary*/
+        0x35 => (Instruction::AND, ZeroPageX, 4),
+        0x36 => (Instruction::ROL, ZeroPageX, 6),
+        0x38 => (Instruction::SEC, Implicit, 2),
+        0x39 => (Instruction::AND, AbsoluteY, 4), /*boundary*/
+        0x3a => (Instruction::NOP, Implicit, 2),  /* unofficial */
+        0x3d => (Instruction::AND, AbsoluteX, 4), /*boundary*/
+        0x3e => (Instruction::ROL, AbsoluteX, 7),
+        0x40 => (Instruction::RTI, Implicit, 6),
+        0x41 => (Instruction::EOR, IndirectX, 6),
+        0x45 => (Instruction::EOR, ZeroPage, 3),
+        0x46 => (Instruction::LSR, ZeroPage, 5),
+        0x48 => (Instruction::PHA, Implicit, 3),
+        0x49 => (Instruction::EOR, Immediate, 2),
+        0x4a => (Instruction::LSR, Accumulator, 2),
+        0x4c => (Instruction::JMP, Absolute, 3),
+        0x4d => (Instruction::EOR, Absolute, 4),
+        0x4e => (Instruction::LSR, Absolute, 6),
+        0x50 => (Instruction::BVC, Relative, 2), /*boundary*/
+        0x51 => (Instruction::EOR, IndirectY, 5), /*boundary*/
+        0x55 => (Instruction::EOR, ZeroPageX, 4),
+        0x56 => (Instruction::LSR, ZeroPageX, 6),
+        0x58 => (Instruction::CLI, Implicit, 2),
+        0x59 => (Instruction::EOR, AbsoluteY, 4), /*boundary*/
+        0x5a => (Instruction::NOP, Implicit, 2),  /* unofficial */
+        0x5d => (Instruction::EOR, AbsoluteX, 4), /*boundary*/
+        0x5e => (Instruction::LSR, AbsoluteX, 7),
+        0x60 => (Instruction::RTS, Implicit, 6),
+        0x61 => (Instruction::ADC, IndirectX, 6),
+        0x65 => (Instruction::ADC, ZeroPage, 3),
+        0x66 => (Instruction::ROR, ZeroPage, 5),
+        0x68 => (Instruction::PLA, Implicit, 4),
+        0x69 => (Instruction::ADC, Immediate, 2),
+        0x6a => (Instruction::ROR, Accumulator, 2),
+        0x6c => (Instruction::JMP, Indirect, 5),
+        0x6d => (Instruction::ADC, Absolute, 4),
+        0x6e => (Instruction::ROR, Absolute, 6),
+        0x70 => (Instruction::BVS, Relative, 2), /*boundary*/
+        0x71 => (Instruction::ADC, IndirectY, 5), /*boundary*/
+        0x75 => (Instruction::ADC, ZeroPageX, 4),
+        0x76 => (Instruction::ROR, ZeroPageX, 6),
+        0x78 => (Instruction::SEI, Implicit, 2),
+        0x79 => (Instruction::ADC, AbsoluteY, 4), /*boundary*/
+        0x7a => (Instruction::NOP, Implicit, 2),  /* unofficial */
+        0x7d => (Instruction::ADC, AbsoluteX, 4), /*boundary*/
+        0x7e => (Instruction::ROR, AbsoluteX, 7),
+        0x81 => (Instruction::STA, IndirectX, 6),
+        0x84 => (Instruction::STY, ZeroPage, 3),
+        0x85 => (Instruction::STA, ZeroPage, 3),
+        0x86 => (Instruction::STX, ZeroPage, 3),
+        0x88 => (Instruction::DEY, Implicit, 2),
+        0x8a => (Instruction::TXA, Implicit, 2),
+        0x8c => (Instruction::STY, Absolute, 4),
+        0x8d => (Instruction::STA, Absolute, 4),
+        0x8e => (Instruction::STX, Absolute, 4),
+        0x90 => (Instruction::BCC, Relative, 2), /*boundary*/
+        0x91 => (Instruction::STA, IndirectY, 6),
+        0x94 => (Instruction::STY, ZeroPageX, 4),
+        0x95 => (Instruction::STA, ZeroPageX, 4),
+        0x96 => (Instruction::STX, ZeroPageY, 4),
+        0x98 => (Instruction::TYA, Implicit, 2),
+        0x99 => (Instruction::STA, AbsoluteY, 5),
+        0x9a => (Instruction::TXS, Implicit, 2),
+        0x9d => (Instruction::STA, AbsoluteX, 5),
+        0xa0 => (Instruction::LDY, Immediate, 2),
+        0xa1 => (Instruction::LDA, IndirectX, 6),
+        0xa2 => (Instruction::LDX, Immediate, 2),
+        0xa4 => (Instruction::LDY, ZeroPage, 3),
+        0xa5 => (Instruction::LDA, ZeroPage, 3),
+        0xa6 => (Instruction::LDX, ZeroPage, 3),
+        0xa8 => (Instruction::TAY, Implicit, 2),
+        0xa9 => (Instruction::LDA, Immediate, 2),
+        0xaa => (Instruction::TAX, Implicit, 2),
+        0xac => (Instruction::LDY, Absolute, 4),
+        0xad => (Instruction::LDA, Absolute, 4),
+        0xae => (Instruction::LDX, Absolute, 4),
+        0xb0 => (Instruction::BCS, Relative, 3), /*boundary*/
+        0xb1 => (Instruction::LDA, IndirectY, 5), /*boundary*/
+        0xb4 => (Instruction::LDY, ZeroPageX, 4),
+        0xb5 => (Instruction::LDA, ZeroPageX, 4),
+        0xb6 => (Instruction::LDX, ZeroPageY, 4),
+        0xb8 => (Instruction::CLV, Implicit, 2),
+        0xb9 => (Instruction::LDA, AbsoluteY, 4), /*boundary*/
+        0xba => (Instruction::TSX, Implicit, 2),
+        0xbc => (Instruction::LDY, AbsoluteX, 4), /*boundary*/
+        0xbd => (Instruction::LDA, AbsoluteX, 4), /*boundary*/
+        0xbe => (Instruction::LDX, AbsoluteY, 4), /*boundary*/
+        0xc0 => (Instruction::CPY, Immediate, 2),
+        0xc1 => (Instruction::CMP, IndirectX, 6),
+        0xc4 => (Instruction::CPY, ZeroPage, 3),
+        0xc5 => (Instruction::CMP, ZeroPage, 3),
+        0xc6 => (Instruction::DEC, ZeroPage, 5),
+        0xc8 => (Instruction::INY, Implicit, 2),
+        0xc9 => (Instruction::CMP, Immediate, 2),
+        0xca => (Instruction::DEX, Implicit, 2),
+        0xcc => (Instruction::CPY, Absolute, 4),
+        0xcd => (Instruction::CMP, Absolute, 4),
+        0xce => (Instruction::DEC, Absolute, 6),
+        0xd0 => (Instruction::BNE, Relative, 2), /*boundary*/
+        0xd1 => (Instruction::CMP, IndirectY, 5), /*boundary*/
+        0xd5 => (Instruction::CMP, ZeroPageX, 4),
+        0xd6 => (Instruction::DEC, ZeroPageX, 6),
+        0xd8 => (Instruction::CLD, Implicit, 2),
+        0xd9 => (Instruction::CMP, AbsoluteY, 4), /*boundary*/
+        0xda => (Instruction::NOP, Implicit, 2),  /* unofficial */
+        0xdd => (Instruction::CMP, AbsoluteX, 4), /*boundary*/
+        0xde => (Instruction::DEC, AbsoluteX, 7),
+        0xe0 => (Instruction::CPX, Immediate, 2),
+        0xe1 => (Instruction::SBC, IndirectX, 6),
+        0xe4 => (Instruction::CPX, ZeroPage, 3),
+        0xe5 => (Instruction::SBC, ZeroPage, 3),
+        0xe6 => (Instruction::INC, ZeroPage, 5),
+        0xe8 => (Instruction::INX, Implicit, 2),
+        0xe9 => (Instruction::SBC, Immediate, 2),
+        0xea => (Instruction::NOP, Implicit, 2),
+        0xec => (Instruction::CPX, Absolute, 4),
+        0xed => (Instruction::SBC, Absolute, 4),
+        0xee => (Instruction::INC, Absolute, 6),
+        0xf0 => (Instruction::BEQ, Relative, 2), /*boundary*/
+        0xf1 => (Instruction::SBC, IndirectY, 5),
+        0xf5 => (Instruction::SBC, ZeroPageX, 4),
+        0xf6 => (Instruction::INC, ZeroPageX, 6),
+        0xf8 => (Instruction::SED, Implicit, 2),
+        0xf9 => (Instruction::SBC, AbsoluteY, 4), /*boundary*/
+        0xfa => (Instruction::NOP, Implicit, 2),  /* unofficial */
+        0xfd => (Instruction::SBC, AbsoluteX, 4), /*boundary*/
+        0xfe => (Instruction::INC, AbsoluteX, 7),
         _ => handle_unknown_opcode(opcode),
     };
 
@@ -521,11 +522,10 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
         instruction,
         addr_mode,
         cycles,
-        bytes,
     }
 }
 
-fn handle_unknown_opcode(opcode: u8) -> (Instruction, AddressingMode, u16, u8) /* unused */ {
+fn handle_unknown_opcode(opcode: u8) -> (Instruction, AddressingMode, u16) /* unused */ {
     panic!("Unknown opcode 0x{opcode:x}");
 }
 
