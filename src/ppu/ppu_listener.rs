@@ -43,6 +43,8 @@ impl MemoryListener for PPUListener {
             match updated_register {
                 PPUCTRL => ppu.ppu_ctrl,
                 PPUMASK => ppu.ppu_mask,
+                OAMADDR => ppu.oam_addr,
+                OAMDATA => ppu.oam[ppu.oam_addr as usize],
                 PPUSTATUS => {
                     ppu.internal_regs.w = false;
                     let result = ppu.ppu_status;
@@ -78,6 +80,9 @@ impl MemoryListener for PPUListener {
         if let Some(updated_register) = PPURegister::from_addr(address) {
             let mut ppu = self.ppu.borrow_mut();
             match updated_register {
+                PPUSTATUS => {
+                    /* for now, no effect */
+                }
                 PPUCTRL => {
                     ppu.tall_sprites = value & 0x20 != 0;
                     ppu.ppu_ctrl = value;
@@ -95,9 +100,9 @@ impl MemoryListener for PPUListener {
                     }
                 }
                 OAMDATA => {
-                    /* TODO: write to the OAM */
-                    /* TODO: increment OAMADDR */
-                    panic!("oamdata unimplemented");
+                    let addr = ppu.oam_addr as usize;
+                    ppu.oam[addr] = value;
+                    ppu.oam_addr += 1;
                 }
                 PPUSCROLL => {
                     let coarse = (value >> 3) & 0x1f;
@@ -129,9 +134,6 @@ impl MemoryListener for PPUListener {
                 OAMDMA => {
                     let base_addr = (value as u16) << 8;
                     memory.copy_slice(base_addr, OAM_SIZE, &mut ppu.oam);
-                }
-                _ => {
-                    panic!("unimplemented ppu listener write for {updated_register:?}")
                 }
             }
         }

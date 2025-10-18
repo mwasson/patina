@@ -5,16 +5,14 @@ use crate::scheduler::TaskType::*;
 use std::cell::RefCell;
 use std::ops::Add;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::window::Window;
 
 enum TaskType {
     CPU,
-    PPUScreen,
-    PPUScanline(u8, u8),
-    PPUVBlank,
+    PPU,
     APU,
 }
 
@@ -22,11 +20,10 @@ pub(crate) fn simulate(
     cpu: &mut CPU,
     ppu: Rc<RefCell<PPU>>,
     apu: Rc<RefCell<APU>>,
-    requester: Arc<Mutex<RenderRequester>>,
 ) {
     let start_time = Instant::now();
     let mut next_cpu_task = (CPU, 0);
-    let mut next_ppu_task = (PPUScreen, 0);
+    let mut next_ppu_task = (PPU, 0);
     let mut next_apu_task = (APU, 0);
 
     let quantum = Duration::from_millis(10);
@@ -49,47 +46,9 @@ pub(crate) fn simulate(
             (CPU, time) => {
                 next_cpu_task = (CPU, time + (cpu.transition() as u64) * 12);
             }
-            (PPUScreen, time) => {
-                let mut borrowed_ppu = ppu.borrow_mut();
-
-                borrowed_ppu.beginning_of_screen_render();
-
-                next_ppu_task = (PPUScanline(0, 0), time + 2 * 4)
-            }
-            (PPUScanline(scanline_ref, x_ref), time) => {
-                let scanline = *scanline_ref;
-                let x = *x_ref;
-                let mut borrowed_ppu = ppu.borrow_mut();
-
-                if x == 0 {
-                    borrowed_ppu.render_scanline_begin(scanline);
-                }
-
-                borrowed_ppu.render_pixel(scanline, x);
-
-                if x == 0xff {
-                    borrowed_ppu.render_scanline_end();
-                }
-
-                let (next_task_type, lol_rename) = if x == 0xff {
-                    if scanline == 239 {
-                        (PPUVBlank, time + 84 * 4)
-                    } else {
-                        (PPUScanline(scanline + 1, 0), time + (84 + 1) * 4)
-                    }
-                } else {
-                    (PPUScanline(scanline, x + 1), time + 1 * 4)
-                };
-                next_ppu_task = (next_task_type, lol_rename)
-            }
-            (PPUVBlank, time) => {
-                let mut borrowed_ppu = ppu.borrow_mut();
-                borrowed_ppu.end_of_screen_render(cpu);
-
-                /* send window message to redraw */
-                requester.lock().unwrap().request_redraw();
-
-                next_ppu_task = (PPUScreen, time + (21 * 341 + 304) * 4);
+            (PPU, time) => {
+                ppu.borrow_mut().tick(cpu);
+                next_ppu_task = (PPU, time + 4);
             }
             (APU, time) => {
                 let mut apu = apu.borrow_mut();

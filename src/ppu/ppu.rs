@@ -8,8 +8,10 @@ use crate::ppu::{
 };
 use crate::processor::Processor;
 use std::cell::RefCell;
+use std::mem::replace;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use crate::scheduler::RenderRequester;
 
 pub struct PPU {
     mapper: Rc<RefCell<Box<dyn Mapper>>>,
@@ -21,13 +23,18 @@ pub struct PPU {
     scanline_sprites: Option<Vec<SpriteInfo>>,
     current_tile: Option<Tile>,
     current_palette: Option<Palette>,
-    // tick_count: u16,
+    next_tile: Option<Tile>,
+    next_palette: Option<Palette>,
+    tick_count: u32,
+    is_even_frame: bool,
     /* shared registers */
     pub(super) ppu_ctrl: u8,
     pub(super) ppu_mask: u8,
+    pub(super) oam_addr: u8,
     pub(super) ppu_status: u8,
     pub(super) tall_sprites: bool, /* if true, sprites are 16 pixels tall instead of 8 */
     pub(super) internal_regs: PPUInternalRegisters,
+    requester: Arc<Mutex<RenderRequester>>,
 }
 
 #[derive(Clone, Debug)]
@@ -50,6 +57,7 @@ impl PPU {
     pub fn new(
         write_buffer: Arc<Mutex<WriteBuffer>>,
         mapper: Rc<RefCell<Box<dyn Mapper>>>,
+        requester: Arc<Mutex<RenderRequester>>,
     ) -> Rc<RefCell<PPU>> {
         Rc::new(RefCell::new(PPU {
             mapper,
@@ -58,53 +66,111 @@ impl PPU {
             vram: [0; VRAM_SIZE],
             palette_memory: [0; PALETTE_MEMORY_SIZE],
             internal_buffer: [0; WRITE_BUFFER_SIZE],
+            tick_count: 0,
             ppu_status: 0,
             ppu_ctrl: 0,
             ppu_mask: 0,
+            oam_addr: 0,
             internal_regs: PPUInternalRegisters::default(),
             tall_sprites: false,
             scanline_sprites: None,
             current_tile: None,
             current_palette: None,
+            next_tile: None,
+            next_palette: None,
+            is_even_frame: false,
+            requester,
         }))
     }
 
-    // pub fn tick(&mut self) {
-    //     let scanline = self.tick_count / 340;
-    //     let dot = self.tick_count % 340;
-    //
-    //     if scanline <= 239 {
-    //         self.render_scanline(scanline, dot);
-    //     } else if scanline == 240 && dot == 0 {
-    //
-    //     } else if scanline == 241 && dot == 1 {
-    //         /* set vblank flag */
-    //         self.ppu_status = set_bit_on(self.ppu_status, 7);
-    //     } else if scanline == 261 {
-    //
-    //     }
-    //
-    //
-    //     self.tick_count += 1;
-    // }
+    pub fn tick(&mut self, cpu: &mut CPU) {
+        /* skip (0,0) on even frames */
+        if(self.tick_count == 0 && self.is_even_frame) {
+            self.tick_count += 1;
+        }
 
-    pub fn beginning_of_screen_render(&mut self) {
-        /* dummy scanline */
-        /* clear VBlank */
-        self.ppu_status = set_bit_off(self.ppu_status, 7);
-        /* clear sprite 0 hit flag */
-        self.ppu_status = set_bit_off(self.ppu_status, 6);
-        /* clear overflow flag */
-        self.ppu_status = set_bit_off(self.ppu_status, 5);
+        let scanline = self.tick_count / 341;
+        let dot = (self.tick_count % 341) as u16;
+        let rendering_on = self.ppu_mask & 0x18 != 0;
 
-        if self.ppu_mask & 0x18 != 0 {
-            self.internal_regs.copy_y_bits();
+        if scanline < 240 {
+            self.render_scanline(scanline as u8, dot, rendering_on);
+        } else if scanline == 240 {
+            if dot == 1 {
+                // todo!()
+            }
+        } else if scanline == 241 && dot == 1 {
+            self.end_of_screen_render(cpu);
+        } else if scanline == 261 {
+            self.prerender_scanline(dot, rendering_on);
+        }
+
+        if self.tick_count == 341*262 - 1 {
+            self.tick_count = 0;
+            self.is_even_frame = !self.is_even_frame;
+        } else {
+            self.tick_count += 1;
+        }
+    }
+
+    fn render_scanline(&mut self, scanline: u8, dot: u16, rendering_on: bool) {
+        if dot == 0 {
+            self.render_scanline_begin(scanline);
+        } else if dot < 257 {
+            self.render_block(scanline, (dot - 1) as u8, rendering_on);
+            if dot == 256 && rendering_on {
+                self.internal_regs.y_increment();
+            }
+        } else if dot == 257 && rendering_on {
+            self.internal_regs.copy_x_bits();
+        } else if dot > 320 && dot < 329 {//337 TODO fix {
+            self.render_block( (scanline + 1) % 240, (dot - 1 - 320) as u8, rendering_on);
+        }
+    }
+
+    fn prerender_scanline(&mut self, dot: u16, rendering_on: bool) {
+        if dot == 1 {
+            /* clear overflow flag */
+            set_bit_off(&mut self.ppu_status, 5);
+            /* clear sprite 0 hit flag */
+            set_bit_off(&mut self.ppu_status, 6);
+            /* clear vblank flag */
+            set_bit_off(&mut self.ppu_status, 7);
+            /* TODO also ends PPU init period on startup/reset */
+        } else if dot > 279 && dot < 305 {
+            if rendering_on {
+                self.internal_regs.copy_y_bits();
+            }
+        }
+        self.render_scanline(0xff, dot, rendering_on);
+    }
+
+    fn render_block(&mut self, scanline: u8, dot: u8, rendering_on: bool) {
+        let mod8 = dot % 8;
+        /* NB: these are offset by 1 from dot number */
+        match mod8 {
+            2 => { self.load_tile() }
+            4 => { self.load_palette() /* TODO only half the time? */ }
+            7 => { // 4 -> 0 and 1, 5 -> 2 and 3, 6 -> 4 and 5, 7 -> 6 and 7
+                if rendering_on {
+                    self.internal_regs.coarse_x_increment();
+                    self.render_pixel(scanline, dot - 7);
+                    self.render_pixel(scanline, dot - 6);
+                    self.render_pixel(scanline, dot - 5);
+                    self.render_pixel(scanline, dot - 4);
+                    self.render_pixel(scanline, dot - 3);
+                    self.render_pixel(scanline, dot - 2);
+                    self.render_pixel(scanline, dot - 1);
+                    self.render_pixel(scanline, dot);
+                }
+            }
+            _ => {}
         }
     }
 
     pub fn end_of_screen_render(&mut self, cpu: &mut CPU) {
         /* set vblank flag */
-        self.ppu_status = set_bit_on(self.ppu_status, 7);
+        set_bit_on(&mut self.ppu_status, 7);
         /* vblank NMI */
         if self.ppu_ctrl & (1 << 7) != 0 {
             cpu.set_nmi(true);
@@ -115,6 +181,8 @@ impl PPU {
             .lock()
             .unwrap()
             .copy_from_slice(&self.internal_buffer);
+
+        self.requester.lock().unwrap().request_redraw();
     }
 
     pub fn render_scanline_begin(&mut self, scanline: u8) {
@@ -166,28 +234,60 @@ impl PPU {
         };
         let index = scanline as usize * 1024 + x as usize * 4;
         self.internal_buffer[index..index + 4].copy_from_slice(pixel);
-        if x % 8 + self.internal_regs.get_fine_x() == 7 {
-            let coarse_x = if render_sprites || render_background {
-                self.internal_regs.coarse_x_increment()
+    }
+
+    fn load_palette(&mut self) {
+        let new_palette = Some(self.get_bg_palette());
+        self.current_palette = replace(&mut self.next_palette, new_palette);
+    }
+
+    fn load_tile(&mut self) {
+        let new_tile = Some(self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize)));
+        self.current_tile = replace(&mut self.next_tile, new_tile);
+    }
+
+    fn get_bg_palette(&self) -> Palette {
+        /* TODO comment */
+        /* 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07) */
+        let addr = 0x23c0
+            | ((self.internal_regs.get_nametable() as u16) << 10)
+            | (((self.internal_regs.get_coarse_y() as u16) & 0x1c) << 1)
+            | ((self.internal_regs.get_coarse_x() as u16) >> 2);
+        /* each address controls a 32x32 pixel block; 8 blocks per row */
+        let attr_table_value = self.read_vram(addr as usize);
+        /* the attr_table_value stores information about 16x16 blocks as 2-bit palette references.
+         * in order from the lowest bits they are: upper left, upper right, bottom left, bottom right
+         */
+        let x_low = 8 * self.internal_regs.get_coarse_x() % 32 < 16;
+        let y_low = 8 * self.internal_regs.get_coarse_y() % 32 < 16;
+        let attr_table_offset = if x_low {
+            if y_low {
+                0
             } else {
-                self.internal_regs.get_coarse_x()
-            };
-            self.current_tile = Some(self.get_current_tile());
-            if coarse_x % 2 == 0 {
-                self.current_palette = Some(self.palette_for_current_bg_tile());
+                4
             }
-        }
+        } else {
+            if y_low {
+                2
+            } else {
+                6
+            }
+        };
+        self.get_palette((attr_table_value >> attr_table_offset) & 3) /* only need two bits */
     }
 
     fn render_background_tiles(&mut self, x: u8) -> Option<&'static [u8; 4]> {
-        let brightness = self.current_tile.as_mut().unwrap().pixel_intensity(
-            x - (self.internal_regs.get_coarse_x() * 8 - self.internal_regs.get_fine_x()),
+        let x_offset = x % 8 + self.internal_regs.get_fine_x();
+        let tile = if x_offset > 7 { &mut self.next_tile } else { &mut self.current_tile };
+        let palette = if x_offset > 7 { &mut self.next_palette } else { &mut self.current_palette };
+        let brightness = tile.as_mut().unwrap().pixel_intensity(
+            x_offset % 8,
             self.internal_regs.get_fine_y(),
         );
 
         if brightness > 0 {
             Some(
-                self.current_palette
+                palette
                     .as_ref()
                     .unwrap()
                     .brightness_to_pixels(brightness),
@@ -299,7 +399,7 @@ impl PPU {
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
                 /* already found eight sprites, set overflow */
                 if sprites_found == 8 {
-                    self.ppu_status = set_bit_on(self.ppu_status, 1);
+                    set_bit_on(&mut self.ppu_status, 1);
                     break;
                 }
             }
@@ -407,10 +507,10 @@ impl PPU {
     }
 }
 
-fn set_bit_on(flags: u8, bit: u8) -> u8 {
-    flags | (1 << bit)
+fn set_bit_on(flags: &mut u8, bit: u8) {
+    *flags = *flags | (1 << bit);
 }
 
-fn set_bit_off(flags: u8, bit: u8) -> u8 {
-    flags & !(1 << bit)
+fn set_bit_off(flags: &mut u8, bit: u8) {
+    *flags = *flags & !(1 << bit);
 }
