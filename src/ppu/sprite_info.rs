@@ -1,7 +1,7 @@
 use crate::ppu::palette::Palette;
 use crate::ppu::PPU;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SpriteInfo {
     /* NB: this is one less than the top of the sprite! you'll have to add 1 whenever you use it (see get_y) */
     y: u8,

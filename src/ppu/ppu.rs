@@ -119,7 +119,7 @@ impl PPU {
 
     pub fn render_scanline_begin(&mut self, scanline: u8) {
         let sprite_data = self.sprite_evaluation(scanline);
-        self.scanline_sprites = Some(sprite_data.0);
+        self.scanline_sprites = Some(sprite_data);
         self.current_tile = Some(self.get_current_tile());
         self.current_palette = Some(self.palette_for_current_bg_tile());
     }
@@ -288,29 +288,23 @@ impl PPU {
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
-    fn sprite_evaluation(&mut self, scanline_num: u8) -> (Vec<SpriteInfo>, Option<SpriteInfo>) {
+    fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo> {
         let mut scanline_sprites = Vec::new();
-        let mut sprite0 = None;
-        let found_sprite0 = self.ppu_status & (1 << 6) != 0;
         let mut sprites_found = 0;
         for i in 0..OAM_SIZE / 4 {
             let sprite_data = self.slice_as_sprite(i);
             if sprite_data.in_scanline(scanline_num, self.sprite_height()) {
                 scanline_sprites.push(sprite_data);
-                if i == 0 && !found_sprite0 {
-                    sprite0 = Some(sprite_data);
-                }
                 sprites_found += 1;
                 /* TODO: should we implement the buggy 'diagonal' behavior for this? */
                 /* already found eight sprites, set overflow */
-
                 if sprites_found == 8 {
                     self.ppu_status = set_bit_on(self.ppu_status, 1);
                     break;
                 }
             }
         }
-        (scanline_sprites, sprite0)
+        scanline_sprites
     }
 
     fn slice_as_sprite(&self, sprite_index: usize) -> SpriteInfo {
