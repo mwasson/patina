@@ -1,6 +1,7 @@
 use crate::cpu::CPU;
 use crate::mapper::Mapper;
 use crate::ppu::palette::Palette;
+use crate::ppu::sprite_info::SpriteInfo;
 use crate::ppu::{
     PPUInternalRegisters, Tile, WriteBuffer, OAM, OAM_SIZE, OVERSCAN, PALETTE_MEMORY_SIZE,
     VRAM_SIZE, WRITE_BUFFER_SIZE,
@@ -233,7 +234,7 @@ impl PPU {
         }
     }
 
-    fn sprite_height(&self) -> u8 {
+    pub(super) fn sprite_height(&self) -> u8 {
         if self.tall_sprites {
             16
         } else {
@@ -318,7 +319,7 @@ impl PPU {
         SpriteInfo::from_memory(sprite_index, &sprite_data)
     }
 
-    fn get_sprite_tile(&self, tile_index: u8) -> Tile {
+    pub(super) fn get_sprite_tile(&self, tile_index: u8) -> Tile {
         let (tile_index, pattern_table) = if self.tall_sprites {
             (tile_index & !1, tile_index & 1)
         } else {
@@ -337,7 +338,7 @@ impl PPU {
         Tile::new(tile_start, self.mapper.clone())
     }
 
-    fn get_palette(&self, palette_index: u8) -> Palette {
+    pub(super) fn get_palette(&self, palette_index: u8) -> Palette {
         let palette_mem_loc: usize = (palette_index as usize) * 4;
         let mut palette_data = [0u8; 4];
         palette_data.copy_from_slice(&self.palette_memory[palette_mem_loc..palette_mem_loc + 4]);
@@ -408,60 +409,6 @@ impl PPU {
             }
 
             result
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct SpriteInfo {
-    /* NB: this is one less than the top of the sprite! you'll have to add 1 whenever you use it (see get_y) */
-    y: u8,
-    tile_index: u8,
-    attrs: u8,
-    x: u8,
-    sprite_index: usize,
-}
-
-impl SpriteInfo {
-    fn in_scanline(&self, scanline: u8, sprite_height: u8) -> bool {
-        self.get_y() <= scanline && scanline - self.get_y() < sprite_height
-    }
-
-    fn get_y(&self) -> u8 {
-        self.y + 1
-    }
-
-    fn get_brightness_localized(&self, ppu: &PPU, x: u8, y: u8) -> u8 {
-        let mut tile = ppu.get_sprite_tile(self.tile_index);
-        let mut x_to_use = x;
-        if self.attrs & 0x40 != 0 {
-            /* flipped horizontally */
-            x_to_use = 7 - x_to_use;
-        }
-        let mut y_to_use = y;
-        if self.attrs & 0x80 != 0 {
-            /* flipped vertically */
-            y_to_use = (ppu.sprite_height() - 1) - y_to_use;
-        }
-        tile.pixel_intensity(x_to_use, y_to_use)
-    }
-
-    fn get_palette(&self, ppu: &PPU) -> Palette {
-        ppu.get_palette((self.attrs & 0x3) + 4)
-    }
-
-    pub fn is_foreground(&self) -> bool {
-        self.attrs & 0x20 == 0
-    }
-
-    /* create a SpriteInfo from memory */
-    fn from_memory(sprite_index: usize, src_slice: &[u8]) -> SpriteInfo {
-        SpriteInfo {
-            y: src_slice[0],
-            tile_index: src_slice[1],
-            attrs: src_slice[2],
-            x: src_slice[3],
-            sprite_index,
         }
     }
 }

@@ -2,6 +2,7 @@ mod palette;
 mod ppu;
 mod ppu_internal_registers;
 mod ppu_registers;
+mod sprite_info;
 mod tile;
 
 pub mod ppu_listener;
