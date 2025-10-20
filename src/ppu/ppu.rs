@@ -145,26 +145,19 @@ impl PPU {
         self.render_scanline(0xff, dot, rendering_on);
     }
 
-    fn render_block(&mut self, scanline: u8, dot: u8, rendering_on: bool) {
-        let mod8 = dot % 8;
-        /* NB: these are offset by 1 from dot number */
-        match mod8 {
-            2 => { self.load_tile() }
-            4 => { self.load_palette() /* TODO only half the time? */ }
-            7 => { // 4 -> 0 and 1, 5 -> 2 and 3, 6 -> 4 and 5, 7 -> 6 and 7
-                if rendering_on {
-                    self.internal_regs.coarse_x_increment();
-                    self.render_pixel(scanline, dot - 7);
-                    self.render_pixel(scanline, dot - 6);
-                    self.render_pixel(scanline, dot - 5);
-                    self.render_pixel(scanline, dot - 4);
-                    self.render_pixel(scanline, dot - 3);
-                    self.render_pixel(scanline, dot - 2);
-                    self.render_pixel(scanline, dot - 1);
-                    self.render_pixel(scanline, dot);
-                }
+    fn render_block(&mut self, scanline: u8, x: u8, rendering_on: bool) {
+        let mod8 = x % 8;
+        /* NB: these are offset by 1 from actual dot number */
+        if mod8 == 0 {
+            self.load_tile();
+            self.load_palette();
+        }
+        if rendering_on {
+            self.render_pixel(scanline, x);
+
+            if mod8 == 7 {
+                self.internal_regs.coarse_x_increment();
             }
-            _ => {}
         }
     }
 
@@ -200,12 +193,10 @@ impl PPU {
     }
 
     pub fn render_pixel(&mut self, scanline: u8, x: u8) {
-        if scanline < OVERSCAN || scanline > 240 - OVERSCAN {
-            return;
-        }
-
-        let render_background = self.ppu_mask & (1 << 3) != 0;
-        let render_sprites = self.ppu_mask & (1 << 4) != 0;
+        let render_background =
+            self.ppu_mask & (1 << 3) != 0 && (x > 7 || self.ppu_mask & (1 << 1) != 0);
+        let render_sprites =
+            self.ppu_mask & (1 << 4) != 0 && (x > 7 || self.ppu_mask & (1 << 2) != 0);
 
         let pixel = 'pixel: {
             let mut background_sprite_pixel = None;
@@ -213,7 +204,9 @@ impl PPU {
                 if let Some(pixel_data) =
                     self.render_sprites(&self.scanline_sprites.as_ref().unwrap(), scanline, x)
                 {
-                    self.sprite0_hit_detection(x, &pixel_data.0);
+                    if render_background {
+                        self.sprite0_hit_detection(x, &pixel_data.0);
+                    }
                     if pixel_data.0.is_foreground() {
                         break 'pixel pixel_data.1;
                     } else {
@@ -232,8 +225,12 @@ impl PPU {
             /* if no sprites or bg tile, render the global background color */
             self.render_background_color()
         };
-        let index = scanline as usize * 1024 + x as usize * 4;
-        self.internal_buffer[index..index + 4].copy_from_slice(pixel);
+
+        if (scanline >= OVERSCAN) && (scanline <= 240 - OVERSCAN) {
+            let index = scanline as usize * 1024 + x as usize * 4;
+            self.internal_buffer[index..index + 4].copy_from_slice(pixel);
+            return;
+        }
     }
 
     fn load_palette(&mut self) {
@@ -304,7 +301,7 @@ impl PPU {
         x: u8,
     ) -> Option<(SpriteInfo, &'static [u8; 4])> {
         for sprite in scanline_sprites {
-            if x < sprite.x || x > sprite.x + 7 {
+            if !(x >= sprite.x && x - sprite.x < 8) {
                 continue;
             }
             let brightness =
@@ -320,13 +317,20 @@ impl PPU {
     }
 
     fn sprite0_hit_detection(&mut self, x: u8, sprite_rendered: &SpriteInfo) {
-        /* nothing to do if sprite 0 wasn't hit, or sprite zero has already been found */
-        if sprite_rendered.sprite_index != 0 || self.ppu_status & (1 << 6) != 0 {
+        /* nothing to do if any of these hold (some of which are checked before this call):
+         * -the hit sprite isn't sprite 0
+         * -sprite zero has already been found
+         * -we're not rendering both sprites and the background,
+         * -we're checking a pixel on the far left of the screen and we don't have both
+         *   background and sprite rendering enabled for that column,
+         * -x is the rightmost column, 255
+         */
+        if sprite_rendered.sprite_index != 0 || self.ppu_status & (1 << 6) != 0 || x == 0xff {
             return;
         }
         /* check to see if we're already rendering a background pixel; if so, it's a hit */
         if self.current_tile.as_mut().unwrap().pixel_intensity(
-            x - (self.internal_regs.get_coarse_x() * 8 - self.internal_regs.get_fine_x()),
+            x % 8 + self.internal_regs.get_fine_x(),
             self.internal_regs.get_fine_y(),
         ) > 0
         {
