@@ -80,9 +80,7 @@ impl MemoryListener for PPUListener {
         if let Some(updated_register) = PPURegister::from_addr(address) {
             let mut ppu = self.ppu.borrow_mut();
             match updated_register {
-                PPUSTATUS => {
-                    /* for now, no effect */
-                }
+                PPUSTATUS => { /* for now, no effect */ }
                 PPUCTRL => {
                     ppu.tall_sprites = value & 0x20 != 0;
                     ppu.ppu_ctrl = value;

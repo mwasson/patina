@@ -47,7 +47,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     thread::spawn(move || {
         let mut memory = Box::new(CoreMemory::new(&rom));
-        let ppu = PPU::new(write_buffer_clone, memory.mapper.clone(), render_listener_clone);
+        let ppu = PPU::new(
+            write_buffer_clone,
+            memory.mapper.clone(),
+            render_listener_clone,
+        );
 
         let apu = APU::new();
         memory.register_listener(apu.clone());

@@ -7,11 +7,11 @@ use crate::ppu::{
     VRAM_SIZE, WRITE_BUFFER_SIZE,
 };
 use crate::processor::Processor;
+use crate::scheduler::RenderRequester;
 use std::cell::RefCell;
 use std::mem::replace;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use crate::scheduler::RenderRequester;
 
 pub struct PPU {
     mapper: Rc<RefCell<Box<dyn Mapper>>>,
@@ -85,7 +85,7 @@ impl PPU {
 
     pub fn tick(&mut self, cpu: &mut CPU) {
         /* skip (0,0) on even frames */
-        if(self.tick_count == 0 && self.is_even_frame) {
+        if self.tick_count == 0 && self.is_even_frame {
             self.tick_count += 1;
         }
 
@@ -105,7 +105,7 @@ impl PPU {
             self.prerender_scanline(dot, rendering_on);
         }
 
-        if self.tick_count == 341*262 - 1 {
+        if self.tick_count == 341 * 262 - 1 {
             self.tick_count = 0;
             self.is_even_frame = !self.is_even_frame;
         } else {
@@ -123,8 +123,9 @@ impl PPU {
             }
         } else if dot == 257 && rendering_on {
             self.internal_regs.copy_x_bits();
-        } else if dot > 320 && dot < 329 {//337 TODO fix {
-            self.render_block( (scanline + 1) % 240, (dot - 1 - 320) as u8, rendering_on);
+        } else if dot > 320 && dot < 329 {
+            //337 TODO fix {
+            self.render_block((scanline + 1) % 240, (dot - 1 - 320) as u8, rendering_on);
         }
     }
 
@@ -185,13 +186,6 @@ impl PPU {
         self.current_palette = Some(self.palette_for_current_bg_tile());
     }
 
-    pub fn render_scanline_end(&mut self) {
-        if self.ppu_mask & 0x18 != 0 {
-            self.internal_regs.copy_x_bits();
-            self.internal_regs.y_increment();
-        }
-    }
-
     pub fn render_pixel(&mut self, scanline: u8, x: u8) {
         let render_background =
             self.ppu_mask & (1 << 3) != 0 && (x > 7 || self.ppu_mask & (1 << 1) != 0);
@@ -239,7 +233,9 @@ impl PPU {
     }
 
     fn load_tile(&mut self) {
-        let new_tile = Some(self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize)));
+        let new_tile = Some(
+            self.get_bg_tile(self.read_vram((0x2000 | (self.internal_regs.v & 0xfff)) as usize)),
+        );
         self.current_tile = replace(&mut self.next_tile, new_tile);
     }
 
@@ -275,20 +271,23 @@ impl PPU {
 
     fn render_background_tiles(&mut self, x: u8) -> Option<&'static [u8; 4]> {
         let x_offset = x % 8 + self.internal_regs.get_fine_x();
-        let tile = if x_offset > 7 { &mut self.next_tile } else { &mut self.current_tile };
-        let palette = if x_offset > 7 { &mut self.next_palette } else { &mut self.current_palette };
-        let brightness = tile.as_mut().unwrap().pixel_intensity(
-            x_offset % 8,
-            self.internal_regs.get_fine_y(),
-        );
+        let tile = if x_offset > 7 {
+            &mut self.next_tile
+        } else {
+            &mut self.current_tile
+        };
+        let palette = if x_offset > 7 {
+            &mut self.next_palette
+        } else {
+            &mut self.current_palette
+        };
+        let brightness = tile
+            .as_mut()
+            .unwrap()
+            .pixel_intensity(x_offset % 8, self.internal_regs.get_fine_y());
 
         if brightness > 0 {
-            Some(
-                palette
-                    .as_ref()
-                    .unwrap()
-                    .brightness_to_pixels(brightness),
-            )
+            Some(palette.as_ref().unwrap().brightness_to_pixels(brightness))
         } else {
             None
         }

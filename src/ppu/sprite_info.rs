@@ -13,7 +13,8 @@ pub struct SpriteInfo {
 
 impl SpriteInfo {
     pub(super) fn in_scanline(&self, scanline: u8, sprite_height: u8) -> bool {
-        self.get_y() <= scanline && scanline - self.get_y() < sprite_height
+        let y = self.get_y();
+        y <= scanline && scanline - y < sprite_height
     }
 
     pub(super) fn get_y(&self) -> u8 {

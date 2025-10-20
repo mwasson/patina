@@ -16,11 +16,7 @@ enum TaskType {
     APU,
 }
 
-pub(crate) fn simulate(
-    cpu: &mut CPU,
-    ppu: Rc<RefCell<PPU>>,
-    apu: Rc<RefCell<APU>>,
-) {
+pub(crate) fn simulate(cpu: &mut CPU, ppu: Rc<RefCell<PPU>>, apu: Rc<RefCell<APU>>) {
     let start_time = Instant::now();
     let mut next_cpu_task = (CPU, 0);
     let mut next_ppu_task = (PPU, 0);
