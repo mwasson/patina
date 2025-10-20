@@ -503,7 +503,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
         0xac => (Instruction::LDY, Absolute, 4),
         0xad => (Instruction::LDA, Absolute, 4),
         0xae => (Instruction::LDX, Absolute, 4),
-        0xb0 => (Instruction::BCS, Relative, 3), /*boundary*/
+        0xb0 => (Instruction::BCS, Relative, 2), /*boundary*/
         0xb1 => (Instruction::LDA, IndirectY, 5), /*boundary*/
         0xb4 => (Instruction::LDY, ZeroPageX, 4),
         0xb5 => (Instruction::LDA, ZeroPageX, 4),

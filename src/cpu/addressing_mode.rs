@@ -2,18 +2,18 @@ use crate::cpu::{addr, zero_page_addr, CPU};
 
 use AddressingMode::*;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AddressingMode {
     Implicit,
     Accumulator,
     Immediate,
-    ZeroPage,
-    ZeroPageX,
-    ZeroPageY,
+    ZeroPage,  /* next byte is an address in the first page (second byte ignored) */
+    ZeroPageX, /* next byte is an address in the first page; x is added to it. Wraps to stay in the first page */
+    ZeroPageY, /* next byte is an address in the first page; y is added to it. Wraps to stay in the first page */
     Relative,
-    Absolute,
-    AbsoluteX,
-    AbsoluteY,
+    Absolute,  /* next two bytes interpreted as 16-bit address */
+    AbsoluteX, /* next two bytes as a 16-bit address plus the x register */
+    AbsoluteY, /* next two bytes as a 16-bit address plus the y register */
     Indirect,
     IndirectX,
     IndirectY,
