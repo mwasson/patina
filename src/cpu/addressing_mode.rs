@@ -86,6 +86,31 @@ impl AddressingMode {
         }
     }
 
+    pub fn deref_check_boundary_cross(
+        self: &AddressingMode,
+        cpu: &mut CPU,
+        byte1: u8,
+        byte2: u8,
+        extra_cycles: &mut u16,
+    ) -> u8 {
+        match self {
+            Immediate => byte1,
+            Accumulator => cpu.accumulator,
+            _ => {
+                let address = self.resolve_address(cpu, byte1, byte2);
+                match self {
+                    AbsoluteX | AbsoluteY | IndirectY => {
+                        if (address >> 8) as u8 != byte2 {
+                            *extra_cycles += 1;
+                        }
+                    }
+                    _ => {}
+                };
+                cpu.read_mem(address)
+            }
+        }
+    }
+
     pub fn write(self: &AddressingMode, cpu: &mut CPU, byte1: u8, byte2: u8, new_val: u8) {
         match self {
             AddressingMode::Accumulator => cpu.accumulator = new_val,

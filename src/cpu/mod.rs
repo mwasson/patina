@@ -3,6 +3,7 @@ mod controller;
 mod core_memory;
 mod cpu;
 mod instruction;
+mod operation;
 mod status_flag;
 
 pub use crate::cpu::instruction::from_opcode;
@@ -18,27 +19,6 @@ pub const MEMORY_SIZE: usize = 1 << 11; /* 2kB onboard RAM */
 const NMI_HANDLER_LOCATION: u16 = 0xfffa;
 const INITIAL_PC_LOCATION: u16 = 0xfffc;
 const IRQ_HANDLER_LOCATION: u16 = 0xfffe;
-
-#[derive(Debug)]
-pub struct Operation {
-    pub realized_instruction: RealizedInstruction, /* TODO should this be a reference? */
-    pub byte1: u8,
-    pub byte2: u8,
-}
-
-impl Operation {
-    fn apply(&self, cpu: &mut CPU) {
-        self.realized_instruction.apply(cpu, self.byte1, self.byte2);
-    }
-}
-
-fn operation_from_memory(opcode: u8, byte1: u8, byte2: u8) -> Operation {
-    Operation {
-        realized_instruction: from_opcode(opcode),
-        byte1,
-        byte2,
-    }
-}
 
 /**
  * Converts a pair of bytes into a u16 to look up an address in memory.

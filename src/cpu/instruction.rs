@@ -87,14 +87,15 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn apply(&self, cpu: &mut CPU, addr_mode: &AddressingMode, b1: u8, b2: u8) {
+    pub fn apply(&self, cpu: &mut CPU, addr_mode: &AddressingMode, b1: u8, b2: u8) -> u16 {
+        let mut extra_cycles = 0;
         match self {
             Instruction::ADC => {
-                let val = addr_mode.deref(cpu, b1, b2);
+                let val = addr_mode.deref_check_boundary_cross(cpu, b1, b2, &mut extra_cycles);
                 add_with_carry_and_update(cpu, val, StatusFlag::Carry.as_num(cpu));
             }
             Instruction::AND => {
-                let mem_val = addr_mode.deref(cpu, b1, b2);
+                let mem_val = addr_mode.deref_check_boundary_cross(cpu, b1, b2, &mut extra_cycles);
                 cpu.accumulator = cpu.accumulator & mem_val;
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
@@ -105,9 +106,15 @@ impl Instruction {
                 cpu.update_zero_neg_flags(result);
                 addr_mode.write(cpu, b1, b2, result);
             }
-            Instruction::BCC => Self::branch_instr(cpu, StatusFlag::Carry, false, b1),
-            Instruction::BCS => Self::branch_instr(cpu, StatusFlag::Carry, true, b1),
-            Instruction::BEQ => Self::branch_instr(cpu, StatusFlag::Zero, true, b1),
+            Instruction::BCC => {
+                extra_cycles += Self::branch_instr(cpu, StatusFlag::Carry, false, b1);
+            }
+            Instruction::BCS => {
+                extra_cycles += Self::branch_instr(cpu, StatusFlag::Carry, true, b1);
+            }
+            Instruction::BEQ => {
+                extra_cycles += Self::branch_instr(cpu, StatusFlag::Zero, true, b1);
+            }
             Instruction::BIT => {
                 let mem = addr_mode.deref(cpu, b1, b2);
                 let val = cpu.accumulator & mem;
@@ -115,14 +122,24 @@ impl Instruction {
                 cpu.update_flag(StatusFlag::Overflow, mem & 0x40 != 0);
                 cpu.update_flag(StatusFlag::Negative, mem & 0x80 != 0);
             }
-            Instruction::BMI => Self::branch_instr(cpu, StatusFlag::Negative, true, b1),
-            Instruction::BNE => Self::branch_instr(cpu, StatusFlag::Zero, false, b1),
-            Instruction::BPL => Self::branch_instr(cpu, StatusFlag::Negative, false, b1),
+            Instruction::BMI => {
+                extra_cycles += Self::branch_instr(cpu, StatusFlag::Negative, true, b1);
+            }
+            Instruction::BNE => {
+                extra_cycles += Self::branch_instr(cpu, StatusFlag::Zero, false, b1);
+            }
+            Instruction::BPL => {
+                extra_cycles += Self::branch_instr(cpu, StatusFlag::Negative, false, b1);
+            }
             Instruction::BRK => {
                 cpu.irq_with_offset(2);
             }
-            Instruction::BVC => Self::branch_instr(cpu, StatusFlag::Overflow, false, b1),
-            Instruction::BVS => Self::branch_instr(cpu, StatusFlag::Overflow, true, b1),
+            Instruction::BVC => {
+                extra_cycles += Self::branch_instr(cpu, StatusFlag::Overflow, false, b1);
+            }
+            Instruction::BVS => {
+                extra_cycles += Self::branch_instr(cpu, StatusFlag::Overflow, true, b1);
+            }
             Instruction::CLC => {
                 cpu.update_flag(StatusFlag::Carry, false);
             }
@@ -140,13 +157,13 @@ impl Instruction {
                 cpu.update_flag(StatusFlag::Overflow, false);
             }
             Instruction::CMP => {
-                Self::compare(cpu, addr_mode, b1, b2, cpu.accumulator);
+                Self::compare(cpu, addr_mode, b1, b2, cpu.accumulator, &mut extra_cycles);
             }
             Instruction::CPX => {
-                Self::compare(cpu, addr_mode, b1, b2, cpu.index_x);
+                Self::compare(cpu, addr_mode, b1, b2, cpu.index_x, &mut extra_cycles);
             }
             Instruction::CPY => {
-                Self::compare(cpu, addr_mode, b1, b2, cpu.index_y);
+                Self::compare(cpu, addr_mode, b1, b2, cpu.index_y, &mut extra_cycles);
             }
             Instruction::DEC => {
                 let new_val = addr_mode.deref(cpu, b1, b2).wrapping_sub(1);
@@ -162,7 +179,7 @@ impl Instruction {
                 cpu.update_zero_neg_flags(cpu.index_y);
             }
             Instruction::EOR => {
-                let mem_val = addr_mode.deref(cpu, b1, b2);
+                let mem_val = addr_mode.deref_check_boundary_cross(cpu, b1, b2, &mut extra_cycles);
                 cpu.accumulator = cpu.accumulator ^ mem_val;
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
@@ -187,15 +204,16 @@ impl Instruction {
                 cpu.program_counter = addr_mode.resolve_address(cpu, b1, b2);
             }
             Instruction::LDA => {
-                cpu.accumulator = addr_mode.deref(cpu, b1, b2);
+                cpu.accumulator =
+                    addr_mode.deref_check_boundary_cross(cpu, b1, b2, &mut extra_cycles);
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
             Instruction::LDX => {
-                cpu.index_x = addr_mode.deref(cpu, b1, b2);
+                cpu.index_x = addr_mode.deref_check_boundary_cross(cpu, b1, b2, &mut extra_cycles);
                 cpu.update_zero_neg_flags(cpu.index_x);
             }
             Instruction::LDY => {
-                cpu.index_y = addr_mode.deref(cpu, b1, b2);
+                cpu.index_y = addr_mode.deref_check_boundary_cross(cpu, b1, b2, &mut extra_cycles);
                 cpu.update_zero_neg_flags(cpu.index_y);
             }
             Instruction::LSR => {
@@ -208,7 +226,8 @@ impl Instruction {
             }
             Instruction::NOP => { /* nothing */ }
             Instruction::ORA => {
-                cpu.accumulator |= addr_mode.deref(cpu, b1, b2);
+                cpu.accumulator |=
+                    addr_mode.deref_check_boundary_cross(cpu, b1, b2, &mut extra_cycles);
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
             Instruction::PHA => {
@@ -254,7 +273,7 @@ impl Instruction {
                 cpu.program_counter = cpu.pop_memory_loc() + 1;
             }
             Instruction::SBC => {
-                let val = addr_mode.deref(cpu, b1, b2);
+                let val = addr_mode.deref_check_boundary_cross(cpu, b1, b2, &mut extra_cycles);
                 add_with_carry_and_update(cpu, !val, StatusFlag::Carry.as_num(cpu));
             }
             Instruction::SEC => {
@@ -304,16 +323,34 @@ impl Instruction {
                 cpu.update_zero_neg_flags(cpu.accumulator);
             }
         }
+
+        extra_cycles
     }
 
-    fn branch_instr(cpu: &mut CPU, flag: StatusFlag, is_positive: bool, offset: u8) {
+    fn branch_instr(cpu: &mut CPU, flag: StatusFlag, is_positive: bool, offset: u8) -> u16 {
         if is_positive == flag.is_set(cpu) {
+            let old_pc = cpu.program_counter;
             cpu.program_counter = Relative.resolve_address(cpu, offset, 0);
+            /* TODO comment */
+            if old_pc & !0xff != cpu.program_counter & !0xff {
+                2
+            } else {
+                1
+            }
+        } else {
+            0
         }
     }
 
-    fn compare(cpu: &mut CPU, addr_mode: &AddressingMode, b1: u8, b2: u8, compare_val: u8) {
-        let mem_val = addr_mode.deref(cpu, b1, b2);
+    fn compare(
+        cpu: &mut CPU,
+        addr_mode: &AddressingMode,
+        b1: u8,
+        b2: u8,
+        compare_val: u8,
+        extra_cycles: &mut u16,
+    ) {
+        let mem_val = addr_mode.deref_check_boundary_cross(cpu, b1, b2, extra_cycles);
 
         cpu.update_flag(StatusFlag::Carry, compare_val >= mem_val);
         cpu.update_flag(StatusFlag::Zero, compare_val == mem_val);
@@ -332,8 +369,8 @@ pub struct RealizedInstruction {
 }
 
 impl RealizedInstruction {
-    pub fn apply(&self, cpu: &mut CPU, b1: u8, b2: u8) {
-        self.instruction.apply(cpu, &self.addr_mode, b1, b2);
+    pub fn apply(&self, cpu: &mut CPU, b1: u8, b2: u8) -> u16 {
+        let extra_cycles = self.instruction.apply(cpu, &self.addr_mode, b1, b2);
         /* note that this holds even for branching instructions (but not jump instructions): program counter needs to be
          * incremented by the number of bytes for instruction, arguments
          */
@@ -350,6 +387,8 @@ impl RealizedInstruction {
                     .wrapping_add(self.addr_mode.get_bytes() as u16);
             }
         }
+
+        extra_cycles
     }
 }
 

@@ -1,7 +1,8 @@
 use crate::cpu;
+use crate::cpu::operation::Operation;
 use crate::cpu::{
-    operation_from_memory, AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION,
-    IRQ_HANDLER_LOCATION, NMI_HANDLER_LOCATION,
+    AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION, IRQ_HANDLER_LOCATION,
+    NMI_HANDLER_LOCATION,
 };
 use crate::processor::Processor;
 use std::cell::RefCell;
@@ -62,7 +63,7 @@ impl CPU {
 
         let operation_loc = self.program_counter;
         /* TODO: what if this hits the top of program memory */
-        let operation = operation_from_memory(
+        let mut operation = Operation::operation_from_memory(
             self.read_mem(operation_loc),
             self.read_mem(operation_loc.wrapping_add(1)),
             self.read_mem(operation_loc.wrapping_add(2)),
@@ -70,7 +71,7 @@ impl CPU {
 
         operation.apply(self);
 
-        operation.realized_instruction.cycles
+        operation.cycles()
     }
 
     pub fn set_nmi(&mut self, nmi_set: bool) {
