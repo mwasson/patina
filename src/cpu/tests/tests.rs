@@ -13,36 +13,274 @@ fn test_instructions() {
     /* ADC */
     /* simple addition test */
     ADC.apply(cpu, &Immediate, 0x05, 0x0);
+    /* 0x0 + 0x5 = 0x5 */
+    /* TODO clean up all these gross flag accesses */
     assert_eq!(cpu.accumulator, 5);
+    assert_eq!(cpu.status & 1 != 0, false); // no carry
+    assert_eq!(cpu.status & 2 != 0, false); // not zero
+    assert_eq!(cpu.status & (1 << 6) != 0, false); // no overflow
+    assert_eq!(cpu.status & (1 << 7) != 0, false); // positive result
     /* now test with carry */
     cpu.status |= 1; /* set carry */
     ADC.apply(cpu, &Immediate, 0x10, 0x0);
-    /* 0xfe + 0x5 + 1 = 0x4 */
+    /* 0x5 + 0x10 + 1 = 0x16 */
+    /* TODO clean up all these gross flag accesses */
+
     assert_eq!(cpu.accumulator, 0x16);
+    assert_eq!(cpu.status & 1 != 0, false); // no carry
+    assert_eq!(cpu.status & 2 != 0, false); // not zero
+    assert_eq!(cpu.status & (1 << 6) != 0, false); // no overflow
+    assert_eq!(cpu.status & (1 << 7) != 0, false); // positive result
     /* test wrapping */
     ADC.apply(cpu, &Immediate, 0xf0, 0x0);
-    /* carry was updated 0xf0 + 0x16 = 0x06*/
+    /* carry was updated, so: 0x16 + 0xf0 = 0x06*/
+    /* TODO clean up all these gross flag accesses */
     assert_eq!(cpu.accumulator, 0x06);
-    /* but that should've set carry flag on its own */
+    assert_eq!(cpu.status & 1 != 0, true); // carry
+    assert_eq!(cpu.status & 2 != 0, false); // not zero
+    assert_eq!(cpu.status & (1 << 6) != 0, false); // not overflow
+    assert_eq!(cpu.status & (1 << 7) != 0, false); // positive result
+    /* should've set carry flag on its own */
+    /* 0x06 + 0x00 + 1 = 0x07 */
     ADC.apply(cpu, &Immediate, 0x0, 0x0);
+    /* TODO clean up all these gross flag accesses */
+
     assert_eq!(cpu.accumulator, 0x07);
+    assert_eq!(cpu.status & 1 != 0, false); // no carry
+    assert_eq!(cpu.status & 2 != 0, false); // not zero
+    assert_eq!(cpu.status & (1 << 6) != 0, false); // no overflow
+    assert_eq!(cpu.status & (1 << 7) != 0, false); // positive result
     cpu.write_mem(0x0010, 0x20);
     /* test that reading from memory doesn't lead to any issues */
     ADC.apply(cpu, &Absolute, 0x10, 0x0);
     assert_eq!(cpu.accumulator, 0x27);
-    /* TODO check flags */
+    /* TODO clean up all these gross flag accesses */
+    /* test underflow, zero */
+    cpu.accumulator = 0x80;
+    ADC.apply(cpu, &Immediate, 0x80, 0x0);
+    assert_eq!(cpu.accumulator, 0x0);
+    assert_eq!(cpu.status & 1 != 0, true); // carry (unsigned overflow)
+    assert_eq!(cpu.status & 2 != 0, true); // is zero
+    assert_eq!(cpu.status & (1 << 6) != 0, true); // underflow
+    assert_eq!(cpu.status & (1 << 7) != 0, false); // zero result
+    /* finally test negative, from overflow */
+    cpu.accumulator = 0x40;
+    ADC.apply(cpu, &Immediate, 0x40, 0x0);
+    assert_eq!(cpu.accumulator, 0x81); /* note carry bit was set */
+    assert_eq!(cpu.status & 1 != 0, false); // no carry (unsigned overflow)
+    assert_eq!(cpu.status & 2 != 0, false); // is zero
+    assert_eq!(cpu.status & (1 << 6) != 0, true); // signed overflow
+    assert_eq!(cpu.status & (1 << 7) != 0, true); // negative result
+
 
     /* AND */
     cpu.accumulator = 0b11110000;
     AND.apply(cpu, &Immediate, 0b10101010, 0x0);
     assert_eq!(cpu.accumulator, 0b10100000);
-    /* TODO check flags */
+    /* TODO clean up flag access */
+    assert_eq!(cpu.status & (1 << 7) != 0, true); /* result is negative */
+    assert_eq!(cpu.status & (1 << 2) != 0, false); /* result is not zero */
+    AND.apply(cpu, &Immediate, 0b00001111, 0x0);
+    assert_eq!(cpu.status & (1 << 7) != 0, false); /* result is not negative */
+    assert_eq!(cpu.status & (1 << 1) != 0, true); /* result is zero */
 
     /* ASL */
     cpu.accumulator = 0b00111100;
     ASL.apply(cpu, &Accumulator, 0xab, 0xcd);
     assert_eq!(cpu.accumulator, 0b01111000);
-    /* TODO test carry flag */
+    /* TODO clean up flags */
+    assert_eq!(cpu.status & 1 != 0, false); // no carry
+    assert_eq!(cpu.status & 2 != 0, false); // result is not zero
+    assert_eq!(cpu.status & 7 != 0, false); // result not negative
+    ASL.apply(cpu, &Accumulator, 0xab, 0xcd);
+    assert_eq!(cpu.accumulator, 0b11110000);
+    assert_eq!(cpu.status & 1 != 0, false); // no carry
+    assert_eq!(cpu.status & 2 != 0, false); // result is not zero
+    assert_eq!(cpu.status & (1 << 7) != 0, true); // result is negative
+    ASL.apply(cpu, &Accumulator, 0xab, 0xcd);
+    assert_eq!(cpu.accumulator, 0b11100000);
+    assert_eq!(cpu.status & 1 != 0, true); // carry
+    assert_eq!(cpu.status & 2 != 0, false); // result is not zero
+    assert_eq!(cpu.status & (1 << 7) != 0, true); // result is negative
+    ASL.apply(cpu, &Accumulator, 0xab, 0xcd);
+    ASL.apply(cpu, &Accumulator, 0xab, 0xcd);
+    assert_eq!(cpu.status & 2 != 0, false); // result is STILL not zero
+    ASL.apply(cpu, &Accumulator, 0xab, 0xcd);
+    assert_eq!(cpu.status & 2 != 0, true); // result *is* zero
+
+    /* BCC */
+    cpu.program_counter = 0xf000;
+    /* TODO clean up use of flags */
+    cpu.status = 1; /* carry set */
+    let extra_cycles = BCC.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf000); /* no branch */
+    assert_eq!(extra_cycles, 0);
+    /* TODO clean up use of flags */
+    cpu.status = 0; /* carry clear */
+    let extra_cycles = BCC.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    /* branch; relative to PC+2, but note that the CPU handles the +2, not the instruction */
+    /* TODO test that */
+    assert_eq!(cpu.program_counter, 0xf020);
+    assert_eq!(extra_cycles, 1);
+    /* checking for extra cycles when branching and it leads to page cross -
+     * in this case 0x80 = -128, so this also tests negative offsets */
+    cpu.program_counter = 0xf000;
+    let extra_cycles = BCC.apply(cpu, &Relative, 0x80, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xef80);
+    assert_eq!(extra_cycles, 2);
+
+    /* BCS */
+    cpu.program_counter = 0xf000;
+    /* TODO clean up use of flags */
+    cpu.status = 1; /* carry set */
+    let extra_cycles = BCS.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* branches */
+    assert_eq!(extra_cycles, 1);
+    cpu.status = 0; /* carry clear */
+    let extra_cycles = BCS.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* didn't branch */
+    assert_eq!(extra_cycles, 0);
+
+    /* BEQ */
+    cpu.program_counter = 0xf000;
+    /* TODO clean up use of flags */
+    cpu.status = 2; /* zero set */
+    let extra_cycles = BEQ.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* branches */
+    assert_eq!(extra_cycles, 1);
+    cpu.status = 0; /* zero clear */
+    let extra_cycles = BEQ.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* didn't branch */
+    assert_eq!(extra_cycles, 0);
+
+    /* BIT */
+    cpu.status = 0;
+    cpu.accumulator = 0b11111111;
+    cpu.write_mem(0x0010, 0b11111111);
+    BIT.apply(cpu, &Absolute, 0x10, 0x00);
+    assert_eq!(cpu.accumulator, 0b11111111); /* doesn't do anything to the accumulator! */
+    /* TODO clean up flag access */
+    assert_eq!(cpu.status & 2 != 0, false); // result is non-zero
+    assert_eq!(cpu.status & (1 << 6) != 0, true); // input had bit 6 set
+    assert_eq!(cpu.status & (1 << 7) != 0, true); // input had bit 7 set
+    cpu.accumulator = 0b11000000;
+    cpu.write_mem(0x0010, 0b00111111);
+    BIT.apply(cpu, &Absolute, 0x10, 0x00);
+    assert_eq!(cpu.accumulator, 0b11000000); /* no effect on accumulator */
+    /* TODO clean up flag access */
+    assert_eq!(cpu.status & 2 != 0, true); // result is zero
+    assert_eq!(cpu.status & (1 << 6) != 0, false); // input did not have bit 6 set
+    assert_eq!(cpu.status & (1 << 7) != 0, false); // input did not have bit 7 set
+
+    /* BMI */
+    cpu.program_counter = 0xf000;
+    /* TODO clean up use of flags */
+    cpu.status = 1 << 7; /* negative set */
+    let extra_cycles = BMI.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* branches */
+    assert_eq!(extra_cycles, 1);
+    cpu.status = 0; /* negative clear */
+    let extra_cycles = BMI.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* didn't branch */
+    assert_eq!(extra_cycles, 0);
+
+    /* BNE */
+    cpu.program_counter = 0xf000;
+    /* TODO clean up use of flags */
+    cpu.status = 0; /* zero clear */
+    let extra_cycles = BNE.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* branches */
+    assert_eq!(extra_cycles, 1);
+    cpu.status = 2; /* zero set */
+    let extra_cycles = BNE.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* didn't branch */
+    assert_eq!(extra_cycles, 0);
+
+    /* BPL */
+    cpu.program_counter = 0xf000;
+    /* TODO clean up use of flags */
+    cpu.status = 0; /* negative clear */
+    let extra_cycles = BPL.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* branches */
+    assert_eq!(extra_cycles, 1);
+    cpu.status = 1 << 7; /* negative set */
+    let extra_cycles = BPL.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* didn't branch */
+    assert_eq!(extra_cycles, 0);
+
+    /* BRK */
+    cpu.s_register = 0xf0;
+    cpu.status = 0b11000000;
+    cpu.program_counter = 0x1234;
+    cpu.write_mem(0xfffe, 0xbc); /* IRQ handler */
+    cpu.write_mem(0xffff, 0x8a); /* IRQ handler */
+    BRK.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0x8abc);
+    assert_eq!(cpu.s_register, 0xf0 - 3);
+    assert_eq!(cpu.read_mem(0x01f0), 0x12); /* old PC upper byte */
+    assert_eq!(cpu.read_mem(0x01f0 - 1), 0x36); /* old PC lower byte + 2 */
+    assert_eq!(cpu.read_mem(0x01f0 - 2), 0b11110000); /* B set but not I */
+    assert_eq!(cpu.status, 0b11000100); /* I set but not B */
+
+    /* BVC */
+    cpu.program_counter = 0xf000;
+    /* TODO clean up use of flags */
+    cpu.status = 0; /* overflow clear */
+    let extra_cycles = BVC.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* branches */
+    assert_eq!(extra_cycles, 1);
+    cpu.status = 1 << 6; /* overflow set */
+    let extra_cycles = BVC.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* didn't branch */
+    assert_eq!(extra_cycles, 0);
+
+    /* BVS */
+    cpu.program_counter = 0xf000;
+    /* TODO clean up use of flags */
+    cpu.status = 1 << 6; /* overflow set */
+    let extra_cycles = BVS.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* branches */
+    assert_eq!(extra_cycles, 1);
+    cpu.status = 0; /* overflow clear */
+    let extra_cycles = BVS.apply(cpu, &Relative, 0x20, 0xcd /* unused */);
+    assert_eq!(cpu.program_counter, 0xf020); /* didn't branch */
+    assert_eq!(extra_cycles, 0);
+
+    /* CLC */
+    /* TODO clean up use of flags */
+    cpu.status = 0b11111110;
+    CLC.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
+    assert_eq!(cpu.status, 0b11111110); /* no effect if carry already clear */
+    cpu.status = 1;
+    CLC.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
+    assert_eq!(cpu.status, 0); /* clears carry */
+
+    /* CLD */
+    /* TODO clean up use of flags */
+    cpu.status = 0b1111_0111;
+    CLD.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
+    assert_eq!(cpu.status, 0b1111_0111); /* no effect if decimal already clear */
+    cpu.status = 0b0000_1000;
+    CLD.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
+    assert_eq!(cpu.status, 0); /* clears decimal */
+
+    /* CLI */
+    /* TODO clean up use of flags */
+    cpu.status = 0b1111_1011;
+    CLI.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
+    assert_eq!(cpu.status, 0b1111_1011); /* no effect if interrupt disable already clear */
+    cpu.status = 0b0000_0100;
+    CLI.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
+    assert_eq!(cpu.status, 0); /* clears interrupt disable */
+
+    /* CLV */
+    /* TODO clean up use of flags */
+    cpu.status = 0b1011_1111;
+    CLV.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
+    assert_eq!(cpu.status, 0b1011_1111); /* no effect if overflow already clear */
+    cpu.status = 0b0100_0000;
+    CLV.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
+    assert_eq!(cpu.status, 0); /* clears overflow */
 }
 
 #[test]
@@ -356,6 +594,14 @@ fn test_opcodes() {
 
     /* TYA */
     test_opcode(0x98, TYA, Implicit, 2);
+
+    /* unofficial opcodes */
+    test_opcode(0x1a, NOP, Implicit, 2);
+    test_opcode(0x3a, NOP, Implicit, 2);
+    test_opcode(0x5a, NOP, Implicit, 2);
+    test_opcode(0x7a, NOP, Implicit, 2);
+    test_opcode(0xda, NOP, Implicit, 2);
+    test_opcode(0xfa, NOP, Implicit, 2);
 }
 
 fn test_opcode(
@@ -368,6 +614,13 @@ fn test_opcode(
     assert_eq!(realized_instruction.instruction, expected_instruction);
     assert_eq!(realized_instruction.addr_mode, expected_addr_mode);
     assert_eq!(realized_instruction.cycles, expected_cycles);
+}
+
+#[test]
+#[should_panic(expected = "Unknown opcode 0x2")]
+fn test_unknown_opcode_causes_panic() {
+    /* will have to update this when unofficial opcodes are finished */
+    instruction::from_opcode(0x02);
 }
 
 fn testing_cpu() -> Box<CPU> {

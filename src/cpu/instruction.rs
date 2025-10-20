@@ -398,12 +398,12 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
          * a page boundary */
         /* branch instructions also take an extra cycle if branch taken */
         0x00 => (Instruction::BRK, Implicit, 7),
-        0x06 => (Instruction::ASL, ZeroPage, 5),
-        0x08 => (Instruction::PHP, Implicit, 3),
-        0x0a => (Instruction::ASL, Accumulator, 2),
         0x01 => (Instruction::ORA, IndirectX, 6),
         0x05 => (Instruction::ORA, ZeroPage, 3),
+        0x06 => (Instruction::ASL, ZeroPage, 5),
+        0x08 => (Instruction::PHP, Implicit, 3),
         0x09 => (Instruction::ORA, Immediate, 2),
+        0x0a => (Instruction::ASL, Accumulator, 2),
         0x0d => (Instruction::ORA, Absolute, 4),
         0x0e => (Instruction::ASL, Absolute, 6),
         0x10 => (Instruction::BPL, Relative, 2), /*boundary*/
