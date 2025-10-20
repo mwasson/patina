@@ -408,7 +408,7 @@ pub fn from_opcode(opcode: u8) -> RealizedInstruction {
         0x0e => (Instruction::ASL, Absolute, 6),
         0x10 => (Instruction::BPL, Relative, 2), /*boundary*/
         0x11 => (Instruction::ORA, IndirectY, 5), /*boundary*/
-        0x15 => (Instruction::ORA, ZeroPageX, 3),
+        0x15 => (Instruction::ORA, ZeroPageX, 4),
         0x16 => (Instruction::ASL, ZeroPageX, 6),
         0x18 => (Instruction::CLC, Implicit, 2),
         0x19 => (Instruction::ORA, AbsoluteY, 4), /*boundary*/

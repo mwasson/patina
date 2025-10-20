@@ -189,6 +189,173 @@ fn test_opcodes() {
     test_opcode(0xd6, DEC, ZeroPageX, 6);
     test_opcode(0xce, DEC, Absolute, 6);
     test_opcode(0xde, DEC, AbsoluteX, 7);
+
+    /* DEX */
+    test_opcode(0xca, DEX, Implicit, 2);
+
+    /* DEY */
+    test_opcode(0x88, DEY, Implicit, 2);
+
+    /* EOR */
+    test_opcode(0x49, EOR, Immediate, 2);
+    test_opcode(0x45, EOR, ZeroPage, 3);
+    test_opcode(0x55, EOR, ZeroPageX, 4);
+    test_opcode(0x4d, EOR, Absolute, 4);
+    test_opcode(0x5d, EOR, AbsoluteX, 4);
+    test_opcode(0x59, EOR, AbsoluteY, 4);
+    test_opcode(0x41, EOR, IndirectX, 6);
+    test_opcode(0x51, EOR, IndirectY, 5);
+
+    /* INC */
+    test_opcode(0xe6, INC, ZeroPage, 5);
+    test_opcode(0xf6, INC, ZeroPageX, 6);
+    test_opcode(0xee, INC, Absolute, 6);
+    test_opcode(0xfe, INC, AbsoluteX, 7);
+
+    /* INX */
+    test_opcode(0xe8, INX, Implicit, 2);
+
+    /* INY */
+    test_opcode(0xc8, INY, Implicit, 2);
+
+    /* JMP */
+    test_opcode(0x4c, JMP, Absolute, 3);
+    test_opcode(0x6c, JMP, Indirect, 5);
+
+    /* JSR */
+    test_opcode(0x20, JSR, Absolute, 6);
+
+    /* LDA */
+    test_opcode(0xa9, LDA, Immediate, 2);
+    test_opcode(0xa5, LDA, ZeroPage, 3);
+    test_opcode(0xb5, LDA, ZeroPageX, 4);
+    test_opcode(0xad, LDA, Absolute, 4);
+    test_opcode(0xbd, LDA, AbsoluteX, 4);
+    test_opcode(0xb9, LDA, AbsoluteY, 4);
+    test_opcode(0xa1, LDA, IndirectX, 6);
+    test_opcode(0xb1, LDA, IndirectY, 5);
+
+    /* LDX */
+    test_opcode(0xa2, LDX, Immediate, 2);
+    test_opcode(0xa6, LDX, ZeroPage, 3);
+    test_opcode(0xb6, LDX, ZeroPageY, 4);
+    test_opcode(0xae, LDX, Absolute, 4);
+    test_opcode(0xbe, LDX, AbsoluteY, 4);
+
+    /* LDY */
+    test_opcode(0xa0, LDY, Immediate, 2);
+    test_opcode(0xa4, LDY, ZeroPage, 3);
+    test_opcode(0xb4, LDY, ZeroPageX, 4);
+    test_opcode(0xac, LDY, Absolute, 4);
+    test_opcode(0xbc, LDY, AbsoluteX, 4);
+
+    /* LSR */
+    test_opcode(0x4a, LSR, Accumulator, 2);
+    test_opcode(0x46, LSR, ZeroPage, 5);
+    test_opcode(0x56, LSR, ZeroPageX, 6);
+    test_opcode(0x4e, LSR, Absolute, 6);
+    test_opcode(0x5e, LSR, AbsoluteX, 7);
+
+    /* NOP */
+    test_opcode(0xea, NOP, Implicit, 2);
+
+    /* ORA */
+    test_opcode(0x09, ORA, Immediate, 2);
+    test_opcode(0x05, ORA, ZeroPage, 3);
+    test_opcode(0x15, ORA, ZeroPageX, 4);
+    test_opcode(0x0d, ORA, Absolute, 4);
+    test_opcode(0x1d, ORA, AbsoluteX, 4);
+    test_opcode(0x19, ORA, AbsoluteY, 4);
+    test_opcode(0x01, ORA, IndirectX, 6);
+    test_opcode(0x11, ORA, IndirectY, 5);
+
+    /* PHA */
+    test_opcode(0x48, PHA, Implicit, 3);
+
+    /* PHP */
+    test_opcode(0x08, PHP, Implicit, 3);
+
+    /* PLA */
+    test_opcode(0x68, PLA, Implicit, 4);
+
+    /* PLP */
+    test_opcode(0x28, PLP, Implicit, 4);
+
+    /* ROL */
+    test_opcode(0x2a, ROL, Accumulator, 2);
+    test_opcode(0x26, ROL, ZeroPage, 5);
+    test_opcode(0x36, ROL, ZeroPageX, 6);
+    test_opcode(0x2e, ROL, Absolute, 6);
+    test_opcode(0x3e, ROL, AbsoluteX, 7);
+
+    /* ROL */
+    test_opcode(0x6a, ROR, Accumulator, 2);
+    test_opcode(0x66, ROR, ZeroPage, 5);
+    test_opcode(0x76, ROR, ZeroPageX, 6);
+    test_opcode(0x6e, ROR, Absolute, 6);
+    test_opcode(0x7e, ROR, AbsoluteX, 7);
+
+    /* RTI */
+    test_opcode(0x40, RTI, Implicit, 6);
+
+    /* RTS */
+    test_opcode(0x60, RTS, Implicit, 6);
+
+    /* SBC */
+    test_opcode(0xe9, SBC, Immediate, 2);
+    test_opcode(0xe5, SBC, ZeroPage, 3);
+    test_opcode(0xf5, SBC, ZeroPageX, 4);
+    test_opcode(0xed, SBC, Absolute, 4);
+    test_opcode(0xfd, SBC, AbsoluteX, 4);
+    test_opcode(0xf9, SBC, AbsoluteY, 4);
+    test_opcode(0xe1, SBC, IndirectX, 6);
+    test_opcode(0xf1, SBC, IndirectY, 5);
+
+    /* SEC */
+    test_opcode(0x38, SEC, Implicit, 2);
+
+    /* SED */
+    test_opcode(0xf8, SED, Implicit, 2);
+
+    /* SEI */
+    test_opcode(0x78, SEI, Implicit, 2);
+
+    /* STA */
+    test_opcode(0x85, STA, ZeroPage, 3);
+    test_opcode(0x95, STA, ZeroPageX, 4);
+    test_opcode(0x8d, STA, Absolute, 4);
+    test_opcode(0x9d, STA, AbsoluteX, 5);
+    test_opcode(0x99, STA, AbsoluteY, 5);
+    test_opcode(0x81, STA, IndirectX, 6);
+    test_opcode(0x91, STA, IndirectY, 6);
+
+    /* STX */
+    test_opcode(0x86, STX, ZeroPage, 3);
+    test_opcode(0x96, STX, ZeroPageY, 4);
+    test_opcode(0x8e, STX, Absolute, 4);
+
+    /* STY */
+    test_opcode(0x84, STY, ZeroPage, 3);
+    test_opcode(0x94, STY, ZeroPageX, 4);
+    test_opcode(0x8c, STY, Absolute, 4);
+
+    /* TAX */
+    test_opcode(0xaa, TAX, Implicit, 2);
+
+    /* TAY */
+    test_opcode(0xa8, TAY, Implicit, 2);
+
+    /* TSX */
+    test_opcode(0xba, TSX, Implicit, 2);
+
+    /* TXA */
+    test_opcode(0x8a, TXA, Implicit, 2);
+
+    /* TXS */
+    test_opcode(0x9a, TXS, Implicit, 2);
+
+    /* TYA */
+    test_opcode(0x98, TYA, Implicit, 2);
 }
 
 fn test_opcode(
