@@ -7,7 +7,7 @@ const CHR_BANK_SIZE: usize = 1 << 13; /* 8kb CHR RAM */
 
 pub struct NROM {
     prg_ram: Box<[u8; PRG_BANK_SIZE]>,
-    chr_ram: Box<[u8; CHR_BANK_SIZE]>,
+    chr: Box<[u8; CHR_BANK_SIZE]>,
     is_32_kb: bool, /* NROM can be either 32kb or 16kb mirrored */
     nametable_mirroring: NametableMirroring,
 }
@@ -20,11 +20,12 @@ impl NROM {
         prg_ram[0..rom.prg_data.len()].copy_from_slice(&*rom.prg_data);
 
         let mut chr_ram = Box::new([0; CHR_BANK_SIZE]);
+        /* no-op if we're using CHR-RAM, not CHR-ROM */
         chr_ram[0x0000..rom.chr_data.len()].copy_from_slice(&rom.chr_data);
 
         NROM {
             prg_ram,
-            chr_ram,
+            chr: chr_ram,
             is_32_kb,
             nametable_mirroring: rom.nametable_mirroring(),
         }
@@ -56,11 +57,11 @@ impl Mapper for NROM {
     }
 
     fn read_chr(&self, address: u16) -> u8 {
-        self.chr_ram[address as usize]
+        self.chr[address as usize]
     }
 
     fn write_chr(&mut self, address: u16, value: u8) {
-        panic!("NROM: ATTEMPTED TO WRITE TO CHR-ROM ADDRESS 0x{address:x} VALUE 0x{value:x}");
+        self.chr[address as usize] = value;
     }
 
     fn get_nametable_mirroring(&self) -> NametableMirroring {
