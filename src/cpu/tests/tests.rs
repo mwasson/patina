@@ -1,10 +1,14 @@
 use crate::cpu::instruction::Instruction;
 use crate::cpu::instruction::Instruction::*;
+use crate::cpu::StatusFlag::*;
 use crate::cpu::tests::test_mapper::TestMapper;
 use crate::cpu::AddressingMode::*;
-use crate::cpu::{instruction, AddressingMode, CoreMemory, CPU};
+use crate::cpu::{instruction, AddressingMode, Controller, CoreMemory, CPU};
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+use winit::keyboard::{Key, NamedKey};
 
 #[test]
 fn test_instructions() {
@@ -14,12 +18,11 @@ fn test_instructions() {
     /* simple addition test */
     ADC.apply(cpu, &Immediate, 0x05, 0x0);
     /* 0x0 + 0x5 = 0x5 */
-    /* TODO clean up all these gross flag accesses */
     assert_eq!(cpu.accumulator, 5);
-    assert_eq!(cpu.status & 1 != 0, false); // no carry
-    assert_eq!(cpu.status & 2 != 0, false); // not zero
-    assert_eq!(cpu.status & (1 << 6) != 0, false); // no overflow
-    assert_eq!(cpu.status & (1 << 7) != 0, false); // positive result
+    assert_eq!(Carry.is_set(cpu), false); // no carry
+    assert_eq!(Zero.is_set(cpu), false); // not zero
+    assert_eq!(Overflow.is_set(cpu), false); // no overflow
+    assert_eq!(Negative.is_set(cpu), false); // positive result
     /* now test with carry */
     cpu.status |= 1; /* set carry */
     ADC.apply(cpu, &Immediate, 0x10, 0x0);
@@ -281,6 +284,110 @@ fn test_instructions() {
     cpu.status = 0b0100_0000;
     CLV.apply(cpu, &Implicit, 0xab /* unused */, 0xcd /* unused */);
     assert_eq!(cpu.status, 0); /* clears overflow */
+
+    /* CMP */
+    cpu.accumulator = 0x10; /* should be in function but leads to borrowing issues */
+    test_compare_instruction(cpu, &CMP);
+    assert_eq!(cpu.accumulator, 0x10); // compare operations do not affect the register
+
+    /* CPX */
+    cpu.index_x = 0x10; /* should be in function but leads to borrowing issues */
+    test_compare_instruction(cpu, &CPX);
+    assert_eq!(cpu.index_x, 0x10); // compare operations do not affect the register
+
+    /* CPY */
+    cpu.index_y = 0x10; /* should be in function but leads to borrowing issues */
+    test_compare_instruction(cpu, &CPY);
+    assert_eq!(cpu.index_y, 0x10); // compare operations do not affect the register
+
+    /* DEC */
+    /* setting these values for testing */
+    Carry.update_bool(cpu, true);
+    Overflow.update_bool(cpu, false);
+    cpu.write_mem(0x1000, 0xc0);
+    DEC.apply(cpu, &Absolute, 0x00 , 0x10 );
+    assert_eq!(cpu.read_mem(0x1000), 0xbf);
+    assert_eq!(Zero.is_set(cpu), false); // not zero
+    assert_eq!(Negative.is_set(cpu), true); // is negative
+    assert_eq!(Carry.is_set(cpu), true); // unaffected
+    assert_eq!(Overflow.is_set(cpu), false); // unaffected
+    cpu.write_mem(0x1000, 0x01);
+    DEC.apply(cpu, &Absolute, 0x00 , 0x10 );
+    assert_eq!(cpu.read_mem(0x1000), 0x00);
+    assert_eq!(Zero.is_set(cpu), true); // not zero
+    assert_eq!(Negative.is_set(cpu), false); // not negative
+    assert_eq!(Carry.is_set(cpu), true); // unaffected
+    assert_eq!(Overflow.is_set(cpu), false); // unaffected
+
+    /* DEX */
+    /* setting these values for testing */
+    Carry.update_bool(cpu, true);
+    Overflow.update_bool(cpu, false);
+    cpu.index_x = 0xc0;
+    DEX.apply(cpu, &Implicit, 0x00 , 0x10 );
+    assert_eq!(cpu.index_x, 0xbf);
+    assert_eq!(Zero.is_set(cpu), false); // not zero
+    assert_eq!(Negative.is_set(cpu), true); // is negative
+    assert_eq!(Carry.is_set(cpu), true); // unaffected
+    assert_eq!(Overflow.is_set(cpu), false); // unaffected
+    cpu.index_x = 0x01;
+    DEX.apply(cpu, &Implicit, 0x00 , 0x10 );
+    assert_eq!(cpu.index_x, 0x00);
+    assert_eq!(Zero.is_set(cpu), true); // not zero
+    assert_eq!(Negative.is_set(cpu), false); // not negative
+    assert_eq!(Carry.is_set(cpu), true); // unaffected
+    assert_eq!(Overflow.is_set(cpu), false); // unaffected
+
+    /* DEY */
+    /* setting these values for testing */
+    Carry.update_bool(cpu, true);
+    Overflow.update_bool(cpu, false);
+    cpu.index_y = 0xc0;
+    DEY.apply(cpu, &Implicit, 0x00 , 0x10 );
+    assert_eq!(cpu.index_y, 0xbf);
+    assert_eq!(Zero.is_set(cpu), false); // not zero
+    assert_eq!(Negative.is_set(cpu), true); // is negative
+    assert_eq!(Carry.is_set(cpu), true); // unaffected
+    assert_eq!(Overflow.is_set(cpu), false); // unaffected
+    cpu.index_y = 0x01;
+    DEY.apply(cpu, &Implicit, 0x00 , 0x10 );
+    assert_eq!(cpu.index_y, 0x00);
+    assert_eq!(Zero.is_set(cpu), true); // not zero
+    assert_eq!(Negative.is_set(cpu), false); // not negative
+    assert_eq!(Carry.is_set(cpu), true); // unaffected
+    assert_eq!(Overflow.is_set(cpu), false); // unaffected
+
+    /* EOR */
+    cpu.accumulator = 0b0011_0011;
+    let extra_cycles = EOR.apply(cpu, &Immediate, 0b1010_1010 , 0x10 /* unused */);
+    assert_eq!(cpu.accumulator, 0b1001_1001);
+    assert_eq!(Zero.is_set(cpu), false);
+    assert_eq!(Negative.is_set(cpu), true);
+    assert_eq!(extra_cycles, 0);
+    /* test boundary crossing penalty using AbsoluteX */
+    cpu.index_x = 0;
+    /* reading from 0x01f0 + 0x0 = 0x01f0, no boundary crossing */
+    let extra_cycles = EOR.apply(cpu, &AbsoluteX, 0xf0 , 0x01);
+    assert_eq!(extra_cycles, 0);
+    cpu.index_x = 0xff;
+    /* reading from 0x01f0 + 0x00ff = 0x02ef, boundary crossing */
+    let extra_cycles = EOR.apply(cpu, &AbsoluteX, 0xf0 , 0x01);
+    assert_eq!(extra_cycles, 1);
+}
+
+fn test_compare_instruction(cpu: &mut CPU, instruction: &Instruction) {
+    instruction.apply(cpu, &Immediate, 0x10, 0xff /* unused */);
+    assert_eq!(Carry.is_set(cpu), true); // carry on equality
+    assert_eq!(Zero.is_set(cpu), true); // is zero
+    assert_eq!(Negative.is_set(cpu), false); // is zero
+    instruction.apply(cpu, &Immediate, 0x15, 0xff /* unused */);
+    assert_eq!(Carry.is_set(cpu), false); // no carry when A < memory
+    assert_eq!(Zero.is_set(cpu), false); // is negative
+    assert_eq!(Negative.is_set(cpu), true); // is negative
+    instruction.apply(cpu, &Immediate, 0x05, 0xff /* unused */);
+    assert_eq!(Carry.is_set(cpu), true); // carry when A > memory
+    assert_eq!(Zero.is_set(cpu), false); // is positive
+    assert_eq!(Negative.is_set(cpu), false); // is positive
 }
 
 #[test]
@@ -614,6 +721,82 @@ fn test_opcode(
     assert_eq!(realized_instruction.instruction, expected_instruction);
     assert_eq!(realized_instruction.addr_mode, expected_addr_mode);
     assert_eq!(realized_instruction.cycles, expected_cycles);
+}
+
+#[test]
+fn test_cpu() {
+    let cpu = &mut testing_cpu();
+
+    /* simple transition test: can we update via ADC, and a memory read? */
+    cpu.accumulator = 0x05;
+    cpu.write_mem(0x1234, 0x04); // value we will add
+    cpu.index_x = 0x20;
+    cpu.write_mem(0x1f, 0x34); // the address stored in zero page memory, lo
+    cpu.write_mem(0x20, 0x12); // that address, hi
+    cpu.program_counter = 0x8000;
+    cpu.write_mem(0x8000, 0x61); // ADC, IndirectX
+    cpu.write_mem(0x8001, 0xff); // wrapping add 0xff == subtract 1 from x
+    let cycles = cpu.transition();
+    assert_eq!(cpu.accumulator, 0x09); // added four to a
+    assert_eq!(cycles, 6); // ADC IndirectX takes 6 cycles
+
+    /* test nmi */
+    cpu.set_nmi(true);
+    assert_eq!(cpu.nmi_set(), true);
+    cpu.status = 0;
+    cpu.program_counter = 0x8000;
+    cpu.s_register = 0x50; // so we can test how it affects stack
+    cpu.write_mem(0x8000, 0xea); // NOP, but we won't run it
+    cpu.write_mem(0xfffa, 0x00); // NMI handler lo byte
+    cpu.write_mem(0xfffb, 0x90); // NMI handler hi byte
+    cpu.write_mem(0x9000, 0x4e); // LSR absolute
+    cpu.write_mem(0x9001, 0x05); // LSR absolute address to change lo
+    cpu.write_mem(0x9002, 0x03); // LSR absolute address to change hi
+    cpu.write_mem(0x0305, 0b0011_0011);
+    let cycles = cpu.transition();
+    assert_eq!(cycles, 6); // NOP takes two cycles, LSR Absolute takes 6
+    assert_eq!(cpu.read_mem(0x0305), 0b0001_1001); // LSRed this value
+    assert_eq!(cpu.program_counter, 0x9003); // next instruction in hypothetical NMI handler
+    assert_eq!(cpu.s_register, 0x4d); // pushed 3 values onto stack
+    assert_eq!(cpu.read_mem(0x0150), 0x80); // previous execution address hi byte
+    assert_eq!(cpu.read_mem(0x014f), 0x00); // previous execution address lo byte
+    assert_eq!(cpu.read_mem(0x014e), 0b0010_0000); // CPU status flags
+    assert_eq!(cpu.nmi_set(), false); // when we're done, 'do nmi' flag is turned off
+}
+
+#[test]
+fn test_memory() {
+    let memory = CoreMemory::new_from_mapper(Rc::new(RefCell::new(Box::new(TestMapper::new()))));
+
+    /* TODO this isn't what open bus should actually do */
+    assert_eq!(memory.open_bus(), 0);
+}
+
+#[test]
+fn test_controller() {
+    let mut controller = Controller::new();
+    let key_source = Arc::new(Mutex::new(HashSet::new()));
+    controller.set_key_source(key_source.clone());
+    {
+        let mut unwrapped_key_source = key_source.lock().unwrap();
+        unwrapped_key_source.insert(Key::Named(NamedKey::ArrowUp)); // up press
+        unwrapped_key_source.insert(Key::Named(NamedKey::Tab)); // select press
+        unwrapped_key_source.insert(Key::Character("z".parse().unwrap())); // B press
+        unwrapped_key_source.insert(Key::Character("t".parse().unwrap())); // no effect
+    }
+    controller.record_data();
+    /* make sure we got the write output */
+    assert_eq!(controller.get_next_byte(), 0); // A off
+    assert_eq!(controller.get_next_byte(), 1); // B on
+    assert_eq!(controller.get_next_byte(), 1); // select on
+    assert_eq!(controller.get_next_byte(), 0); // start off
+    assert_eq!(controller.get_next_byte(), 1); // up on
+    assert_eq!(controller.get_next_byte(), 0); // down off
+    assert_eq!(controller.get_next_byte(), 0); // left off
+    assert_eq!(controller.get_next_byte(), 0); // right off
+    assert_eq!(controller.get_next_byte(), 1); // will output 1 indefinitely
+    assert_eq!(controller.get_next_byte(), 1); // will output 1 indefinitely
+    assert_eq!(controller.get_next_byte(), 1); // will output 1 indefinitely
 }
 
 #[test]
