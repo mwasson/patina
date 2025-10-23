@@ -10,7 +10,7 @@ pub struct Operation {
 
 impl Operation {
     pub fn apply(&mut self, cpu: &mut CPU) {
-        self.extra_cycles += self.realized_instruction.apply(cpu, self.byte1, self.byte2);
+        self.extra_cycles = self.realized_instruction.apply(cpu, self.byte1, self.byte2);
     }
 
     pub fn cycles(&self) -> u16 {
