@@ -10,6 +10,8 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use winit::keyboard::Key;
+use crate::ppu::PPURegister;
+use crate::ppu::PPURegister::OAMDMA;
 
 pub struct CPU {
     pub accumulator: u8,
@@ -21,6 +23,7 @@ pub struct CPU {
     nmi_flag: bool,
     memory: Box<CoreMemory>,
     controller: Rc<RefCell<Controller>>,
+    doing_oamdma: bool,
 }
 
 impl Processor for CPU {
@@ -47,6 +50,7 @@ impl CPU {
             nmi_flag: false,
             memory,
             controller,
+            doing_oamdma: false,
         };
 
         result.program_counter =
@@ -70,6 +74,11 @@ impl CPU {
         );
 
         operation.apply(self);
+
+        if self.doing_oamdma {
+            self.doing_oamdma = false;
+            return 513 + operation.cycles();
+        }
 
         operation.cycles()
     }
@@ -137,6 +146,9 @@ impl CPU {
     }
 
     pub fn write_mem(&mut self, addr: u16, data: u8) {
+        if addr == PPURegister::address(&OAMDMA) {
+            self.doing_oamdma = true;
+        }
         self.memory.write(addr, data);
     }
 
