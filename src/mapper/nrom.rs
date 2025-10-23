@@ -53,7 +53,7 @@ impl Mapper for NROM {
     }
 
     fn write_prg(&mut self, address: u16, value: u8) {
-        panic!("NROM: ATTEMPTED TO WRITE TO PRG-ROM ADDRESS 0x{address:x} VALUE 0x{value:x}");
+        /* no effect */
     }
 
     fn read_chr(&self, address: u16) -> u8 {
