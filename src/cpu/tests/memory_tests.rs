@@ -1,5 +1,5 @@
 use crate::apu::APU;
-use crate::cpu::tests::memory_for_testing;
+use crate::cpu::tests::{memory_for_testing, NoOpMemoryListener};
 use crate::cpu::{tests, CoreMemory, MemoryListener};
 use crate::rom::Rom;
 use std::cell::RefCell;
@@ -26,14 +26,16 @@ fn test_memory() {
 #[test]
 #[should_panic(expected = "Attempting to register a second memory listener at address 0x4000")]
 fn test_only_single_listener_per_address() {
-    let mut memory = tests::memory_for_testing();
-    memory.register_listener(APU::new());
-    memory.register_listener(APU::new());
+    let mut memory = memory_for_testing();
+    let listener_1 = NoOpMemoryListener::new(0x4000);
+    let listener_2 = NoOpMemoryListener::new(0x4000);
+    memory.register_listener(Rc::new(RefCell::new(listener_1)));
+    memory.register_listener(Rc::new(RefCell::new(listener_2)));
 }
 
 #[test]
 fn test_memory_listener() {
-    let mut memory = tests::memory_for_testing();
+    let mut memory = memory_for_testing();
     let apu = APU::new();
 
     memory.register_listener(apu.clone());
@@ -50,7 +52,7 @@ fn test_memory_listener() {
 
 #[test]
 fn test_copy_from_slice() {
-    let mut memory = tests::memory_for_testing();
+    let mut memory = memory_for_testing();
 
     for i in 0x100..0x200 {
         memory.write(i, (i % 0x100) as u8);

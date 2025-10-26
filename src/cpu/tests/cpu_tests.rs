@@ -1,6 +1,6 @@
 use crate::cpu::controller::CONTROLLER_ADDRESS;
-use crate::cpu::tests::{cpu_for_testing, memory_for_testing};
-use crate::cpu::{tests, CoreMemory, MemoryListener, CPU};
+use crate::cpu::tests::{cpu_for_testing, memory_for_testing, NoOpMemoryListener};
+use crate::cpu::{tests, CPU};
 use crate::ppu::PPURegister;
 use crate::ppu::PPURegister::OAMDMA;
 use crate::processor::Processor;
@@ -95,28 +95,4 @@ fn test_oamdma() {
     cpu.program_counter = 0xfff0;
     cpu.write_mem(0xfff0, 0xe8); // perform the two cycle INX instruction
     assert_eq!(cpu.transition(), 2 + 513); // 513 extra cycles for OAMDMA
-}
-
-struct NoOpMemoryListener {
-    addr: u16,
-}
-
-impl NoOpMemoryListener {
-    fn new(addr: u16) -> NoOpMemoryListener {
-        NoOpMemoryListener { addr }
-    }
-}
-
-impl MemoryListener for NoOpMemoryListener {
-    fn get_addresses(&self) -> Vec<u16> {
-        vec![self.addr]
-    }
-
-    fn read(&mut self, _memory: &CoreMemory, _address: u16) -> u8 {
-        0 /* ignored */
-    }
-
-    fn write(&mut self, _memory: &CoreMemory, _address: u16, _value: u8) {
-        /* noop */
-    }
 }
