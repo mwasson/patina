@@ -29,7 +29,11 @@ impl StatusFlag {
     }
 
     pub fn as_num(&self, cpu: &CPU) -> u8 {
-        if self.is_set(cpu) { 1 } else { 0 }
+        if self.is_set(cpu) {
+            1
+        } else {
+            0
+        }
     }
 
     #[inline(always)]

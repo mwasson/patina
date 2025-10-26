@@ -52,7 +52,7 @@ impl Mapper for NROM {
         &self.prg_ram[mapped_address..mapped_address + size]
     }
 
-    fn write_prg(&mut self, address: u16, value: u8) {
+    fn write_prg(&mut self, _address: u16, _value: u8) {
         /* no effect */
     }
 

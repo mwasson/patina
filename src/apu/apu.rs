@@ -24,6 +24,7 @@ pub struct APU {
     triangle: Triangle,
     noise: Noise,
     dmc: DMC,
+    status: u8,
     queue: Arc<RwLock<VecDeque<f32>>>,
 }
 
@@ -54,6 +55,7 @@ impl APU {
             dmc,
             queue,
             _sink: sink,
+            status: 0,
         }))
     }
 
@@ -85,6 +87,11 @@ impl APU {
             / (1.0 / (triangle_vol / 8227.0 + noise_vol / 12241.0 + dmc_vol / 22638.0) + 100.0);
 
         pulse_out + tnd_out
+    }
+
+    #[cfg(test)]
+    pub fn get_status(&self) -> u8 {
+        self.status
     }
 }
 
@@ -125,6 +132,7 @@ impl MemoryListener for APU {
             0x10 => self.dmc.write(memory, address, value),
             _ => {
                 if address == 0x4015 {
+                    self.status = value;
                     self.pulse1.set_enabled(value & 0x1 != 0);
                     self.pulse2.set_enabled(value & 0x2 != 0);
                     self.triangle.set_enabled(value & 0x4 != 0);

@@ -235,7 +235,8 @@ impl Instruction {
             }
             Instruction::PHP => {
                 /* pushes status onto the stack, with the 'B' flag (bit 4) on */
-                cpu.push(cpu.status | (1 << 4));
+                /* bit 5 should always be pushes as 1, too */
+                cpu.push(cpu.status | (1 << 5) | (1 << 4));
             }
             Instruction::PLA => {
                 cpu.accumulator = cpu.pop();
@@ -264,8 +265,8 @@ impl Instruction {
                 cpu.update_zero_neg_flags(result);
             }
             Instruction::RTI => {
-                /* TODO: this works as is, but should it be loading flags 4 and 5? */
-                cpu.status = cpu.pop();
+                /* does not pull flags 4 and 5; update is immediate */
+                cpu.status = cpu.pop() & !0b0011_0000 | (cpu.status & 0b0011_0000);
 
                 cpu.program_counter = cpu.pop_memory_loc();
             }

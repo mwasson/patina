@@ -23,8 +23,8 @@ impl AddressingMode {
     /* behavior based on: https://www.nesdev.org/obelisk-6502-guide/addressing.html */
     pub fn resolve_address(self: &AddressingMode, cpu: &mut CPU, byte1: u8, byte2: u8) -> u16 {
         let result = match self {
-            Implicit => panic!("Should never be explicitly referenced--remove?"),
-            Accumulator => panic!("Should never be explicitly referenced--remove?"),
+            Implicit => panic!("Implicit mode should never be directly referenced"),
+            Accumulator => panic!("Accumulator mode should never be directly referenced"),
             Immediate => panic!("Immediate mode shouldn't look up in memory"),
             ZeroPage => zero_page_addr(byte1),
             ZeroPageX => zero_page_addr(byte1.wrapping_add(cpu.index_x)),

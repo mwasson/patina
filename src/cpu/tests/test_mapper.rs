@@ -19,15 +19,24 @@ impl TestMapper {
 
 impl Mapper for TestMapper {
     fn read_prg(&self, address: u16) -> u8 {
+        if address < 0x8000 {
+            return 0;
+        }
         self.memory[Self::map_address(address)]
     }
 
-    fn read_prg_slice(&self, _address: u16, _size: usize) -> &[u8] {
-        panic!("should never be called")
+    fn read_prg_slice(&self, address: u16, _size: usize) -> &[u8] {
+        let map_address = Self::map_address(address);
+
+        &self.memory[map_address..map_address + _size]
     }
 
     fn write_prg(&mut self, address: u16, value: u8) {
-        self.memory[Self::map_address(address)] = value;
+        if address >= 0x8000 {
+            self.memory[Self::map_address(address)] = value;
+        } else {
+            panic!("writing to address test mapper doesn't cover");
+        }
     }
 
     fn read_chr(&self, _address: u16) -> u8 {

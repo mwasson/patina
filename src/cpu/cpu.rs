@@ -4,14 +4,14 @@ use crate::cpu::{
     AddressingMode, Controller, CoreMemory, StatusFlag, INITIAL_PC_LOCATION, IRQ_HANDLER_LOCATION,
     NMI_HANDLER_LOCATION,
 };
+use crate::ppu::PPURegister;
+use crate::ppu::PPURegister::OAMDMA;
 use crate::processor::Processor;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use winit::keyboard::Key;
-use crate::ppu::PPURegister;
-use crate::ppu::PPURegister::OAMDMA;
 
 pub struct CPU {
     pub accumulator: u8,

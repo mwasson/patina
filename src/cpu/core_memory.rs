@@ -37,6 +37,7 @@ impl CoreMemory {
             if let Some(listener) = self.listeners.get(&mapped_addr) {
                 return listener.borrow_mut().read(self, mapped_addr);
             }
+            panic!("(read) Special address 0x{mapped_addr:x} doesn't have a registered listener");
         }
         self.read_no_listen_no_map(mapped_addr)
     }
@@ -47,9 +48,7 @@ impl CoreMemory {
          * of whitelisted addresses; will have to revisit this
          */
         if CoreMemory::is_special_addr(mapped_addr) {
-            if self.listeners.get(&address).is_some() {
-                panic!("read16 not supported for listened-to addresses");
-            }
+            panic!("read16 not supported for special addresses");
         }
 
         /* there's a bug where if there's a page crossing, it reads from the bottom of the same
@@ -102,6 +101,9 @@ impl CoreMemory {
                     listener.borrow_mut().write(self, mapped_addr, value);
                     return;
                 }
+                panic!(
+                    "(write) Special address 0x{mapped_addr:x} doesn't have a registered listener"
+                );
             }
 
             self.memory[mapped_addr as usize] = value;
@@ -124,7 +126,7 @@ impl CoreMemory {
         }
     }
 
-    fn map_address(&self, addr: u16) -> u16 {
+    pub(super) fn map_address(&self, addr: u16) -> u16 {
         if addr <= 0x3fff {
             if addr > 0x7ff && addr <= 0x1fff {
                 addr & 0x7ff

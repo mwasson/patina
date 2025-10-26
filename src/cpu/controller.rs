@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use winit::keyboard::{Key, NamedKey};
 
-const CONTROLLER_ADDRESS: u16 = 0x4016;
+pub const CONTROLLER_ADDRESS: u16 = 0x4016;
 
 #[derive(Clone)]
 pub struct Controller {
