@@ -1,4 +1,3 @@
-use crate::apu::APU;
 use crate::cpu::tests::{memory_for_testing, NoOpMemoryListener};
 use crate::cpu::{tests, CoreMemory, MemoryListener};
 use crate::rom::Rom;
@@ -36,17 +35,15 @@ fn test_only_single_listener_per_address() {
 #[test]
 fn test_memory_listener() {
     let mut memory = memory_for_testing();
-    let apu = APU::new();
-
-    memory.register_listener(apu.clone());
 
     /* test write */
-    memory.write(0x4015, 0b0000_1010);
-    assert_eq!(apu.borrow().get_status(), 0b0000_1010);
+    let test_memory_listener = Rc::new(RefCell::new(TestMemoryListener { val: 0x01 }));
+    memory.register_listener(test_memory_listener.clone());
+    memory.write(0x2000, 0x32);
+    assert_eq!(test_memory_listener.borrow().val, 0x32);
 
     /* test read */
-    let test_memory_listener = TestMemoryListener {};
-    memory.register_listener(Rc::new(RefCell::new(test_memory_listener)));
+    test_memory_listener.borrow_mut().val = 0x64;
     assert_eq!(memory.read(0x2000), 0x64);
 }
 
@@ -133,7 +130,11 @@ fn read16_special_address_panics() {
     memory_for_testing().read16(0x2000);
 }
 
-struct TestMemoryListener {}
+struct TestMemoryListener {
+    val: u8,
+}
+
+impl TestMemoryListener {}
 
 impl MemoryListener for TestMemoryListener {
     fn get_addresses(&self) -> Vec<u16> {
@@ -141,10 +142,10 @@ impl MemoryListener for TestMemoryListener {
     }
 
     fn read(&mut self, _memory: &CoreMemory, _address: u16) -> u8 {
-        0x64
+        self.val
     }
 
-    fn write(&mut self, _memory: &CoreMemory, _address: u16, _value: u8) {
-        todo!()
+    fn write(&mut self, _memory: &CoreMemory, _address: u16, value: u8) {
+        self.val = value;
     }
 }

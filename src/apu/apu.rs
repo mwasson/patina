@@ -88,11 +88,6 @@ impl APU {
 
         pulse_out + tnd_out
     }
-
-    #[cfg(test)]
-    pub fn get_status(&self) -> u8 {
-        self.status
-    }
 }
 
 impl Processor for APU {
