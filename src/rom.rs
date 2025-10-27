@@ -16,7 +16,7 @@ pub struct Rom {
 }
 
 impl Rom {
-    pub fn parse_file(file_ref: &str) -> io::Result<Rom> {
+    pub fn parse_file(file_ref: String) -> io::Result<Rom> {
         println!("Attempting to parse {}", file_ref);
         let rom_data: Vec<u8> = fs::read(file_ref)?;
         Rom::read_rom_data(&rom_data)

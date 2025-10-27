@@ -1,10 +1,10 @@
+use clap::Parser;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::error::Error;
-use std::io::{self, ErrorKind};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::{env, thread};
+use std::thread;
 
 mod cpu;
 
@@ -24,18 +24,9 @@ mod scheduler;
 mod window;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    println!("Here begins the Patina project. An inauspicious start?");
-    let args = env::args().collect::<Vec<_>>();
+    let args = CommandLineArgs::parse();
 
-    let rom = if let Some(rom_path) = args.get(1) {
-        let path = &*rom_path.clone();
-        Rom::parse_file(path)?
-    } else {
-        return Err(Box::new(io::Error::new(
-            ErrorKind::Other,
-            "First argument must be ROM file path",
-        )));
-    };
+    let rom = Rom::parse_file(args.rom)?;
 
     let write_buffer = Arc::new(Mutex::new([0; WRITE_BUFFER_SIZE]));
     let write_buffer_clone = write_buffer.clone();
@@ -68,4 +59,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         Ok(()) => Ok(()),
         Err(event_loop_error) => Err(event_loop_error.into()),
     }
+}
+
+#[derive(Parser, Debug)]
+#[command(author = "Mike Wasson", version = "0.0.0 unreleased",
+    about, long_about = None)]
+struct CommandLineArgs {
+    /// rom file
+    rom: String,
+
+    /// save file for games with battery-backed saves
+    #[arg(short, long)]
+    savefile: Option<String>,
 }
