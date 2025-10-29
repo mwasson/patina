@@ -18,7 +18,7 @@ impl SpriteInfo {
     }
 
     pub(super) fn get_y(&self) -> u8 {
-        self.y + 1
+        self.y.saturating_add(1)
     }
 
     pub(super) fn get_brightness_localized(&self, ppu: &PPU, x: u8, y: u8) -> u8 {
