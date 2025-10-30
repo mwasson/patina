@@ -11,12 +11,15 @@ mod cpu;
 mod rom;
 use crate::apu::APU;
 use crate::cpu::{CoreMemory, CPU};
+use crate::key_event_handler::KeyEventHandler;
 use crate::ppu::ppu_listener::PPUListener;
 use crate::ppu::{PPU, WRITE_BUFFER_SIZE};
 use rom::Rom;
 use scheduler::RenderRequester;
 
 mod apu;
+mod config;
+mod key_event_handler;
 mod mapper;
 mod ppu;
 mod processor;
@@ -32,7 +35,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let write_buffer_clone = write_buffer.clone();
 
     let keys = Arc::new(Mutex::new(HashSet::new()));
-    let keys_clone = keys.clone();
+    let key_event_handler = KeyEventHandler::new(keys.clone(), write_buffer.clone());
+
     let render_listener = Arc::new(Mutex::new(RenderRequester::new()));
     let render_listener_clone = render_listener.clone();
 
@@ -51,11 +55,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         memory.register_listener(Rc::new(RefCell::new(ppu_listener)));
 
         let mut cpu = CPU::new(memory);
-        cpu.set_key_source(keys_clone);
+        cpu.set_key_source(keys);
         scheduler::simulate(&mut cpu, ppu, apu);
     });
 
-    match window::initialize_ui(write_buffer, keys, render_listener) {
+    match window::initialize_ui(write_buffer, key_event_handler, render_listener) {
         Ok(()) => Ok(()),
         Err(event_loop_error) => Err(event_loop_error.into()),
     }
