@@ -1,6 +1,6 @@
 use crate::cpu::controller::CONTROLLER_ADDRESS;
 use crate::cpu::tests::{cpu_for_testing, memory_for_testing, NoOpMemoryListener};
-use crate::cpu::{tests, CPU};
+use crate::cpu::CPU;
 use crate::ppu::PPURegister;
 use crate::ppu::PPURegister::OAMDMA;
 use crate::processor::Processor;
@@ -12,7 +12,7 @@ use winit::keyboard::{Key, NamedKey};
 
 #[test]
 fn test_cpu() {
-    let cpu = &mut tests::cpu_for_testing();
+    let cpu = &mut cpu_for_testing();
 
     /* simple transition test: can we update via ADC, and a memory read? */
     cpu.accumulator = 0x05;

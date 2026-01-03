@@ -3,11 +3,11 @@ use crate::cpu::instruction::Instruction::*;
 use crate::cpu::tests::cpu_for_testing;
 use crate::cpu::AddressingMode::*;
 use crate::cpu::StatusFlag::*;
-use crate::cpu::{from_opcode, instruction, tests, AddressingMode, CPU};
+use crate::cpu::{from_opcode, AddressingMode, CPU};
 
 #[test]
 fn test_instructions() {
-    let cpu = &mut tests::cpu_for_testing();
+    let cpu = &mut cpu_for_testing();
 
     /* ADC */
     /* simple addition test */
@@ -980,7 +980,7 @@ fn test_opcode(
     expected_addr_mode: AddressingMode,
     expected_cycles: u16,
 ) {
-    let realized_instruction = instruction::from_opcode(opcode);
+    let realized_instruction = from_opcode(opcode);
     assert_eq!(realized_instruction.instruction, expected_instruction);
     assert_eq!(realized_instruction.addr_mode, expected_addr_mode);
     assert_eq!(realized_instruction.cycles, expected_cycles);
@@ -990,7 +990,7 @@ fn test_opcode(
 #[should_panic(expected = "Unknown opcode 0x2")]
 fn test_unknown_opcode_causes_panic() {
     /* will have to update this when unofficial opcodes are finished */
-    instruction::from_opcode(0x02);
+    from_opcode(0x02);
 }
 
 #[test]

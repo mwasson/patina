@@ -1,12 +1,12 @@
 use crate::cpu::tests::{memory_for_testing, NoOpMemoryListener};
-use crate::cpu::{tests, CoreMemory, MemoryListener};
+use crate::cpu::{CoreMemory, MemoryListener};
 use crate::rom::Rom;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 #[test]
 fn test_memory() {
-    let mut memory = tests::memory_for_testing();
+    let mut memory = memory_for_testing();
 
     /* TODO this isn't what open bus should actually do */
     assert_eq!(memory.open_bus(), 0);
