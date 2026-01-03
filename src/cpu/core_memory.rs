@@ -19,15 +19,16 @@ pub struct CoreMemory {
 }
 
 impl CoreMemory {
+    #[allow(dead_code)] // semi-vestigial, still used by test code
     pub fn new(rom: &Rom) -> CoreMemory {
         Self::new_from_mapper(rom.initialize_mapper())
     }
 
-    pub fn new_from_mapper(mapper: Rc<RefCell<Box<dyn Mapper>>>) -> CoreMemory {
+    pub fn new_from_mapper(mapper: Box<dyn Mapper>) -> CoreMemory {
         CoreMemory {
             memory: Box::new([0; MEMORY_SIZE]),
             listeners: FnvHashMap::with_capacity_and_hasher(10, Default::default()),
-            mapper,
+            mapper: Rc::new(RefCell::new(mapper)),
         }
     }
 

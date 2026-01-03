@@ -62,7 +62,8 @@ impl KeyEventHandler {
     // TODO document
     // TODO screenshot handling should probably be in its own type
     fn take_screenshot(&self) {
-        self.take_screenshot_with_path(self.screenshot_path());
+        self.take_screenshot_with_path(self.screenshot_path())
+            .expect("Failed to take Screenshot");
     }
 
     // TODO maybe we can find a better place to put this?
@@ -79,7 +80,7 @@ impl KeyEventHandler {
             DISPLAY_HEIGHT,
             ExtendedColorType::Rgba8,
         )?;
-        screenshot_path.flush();
+        screenshot_path.flush().expect("TODO: panic message");
         Ok(())
     }
 
