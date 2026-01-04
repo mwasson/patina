@@ -7,6 +7,9 @@ mod tile;
 
 pub mod ppu_listener;
 
+#[cfg(test)]
+mod tests;
+
 pub use ppu::{NametableMirroring, PPU};
 pub use ppu_internal_registers::PPUInternalRegisters;
 pub use ppu_registers::PPURegister;

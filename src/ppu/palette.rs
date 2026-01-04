@@ -81,6 +81,10 @@ impl Palette {
 
     /* based on Wiki values */
     pub fn hue_lookup(hue: usize) -> &'static [u8; 4] {
-        &HUE_LOOKUP[hue]
+        hue_lookup(hue & 0x3F)
     }
+}
+
+pub fn hue_lookup(hue: usize) -> &'static [u8; 4] {
+    &HUE_LOOKUP[hue & 0x3F]
 }
