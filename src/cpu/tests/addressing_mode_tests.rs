@@ -1,8 +1,8 @@
+use crate::cpu::tests;
 use crate::cpu::AddressingMode::{
     Absolute, AbsoluteX, AbsoluteY, Accumulator, Immediate, Implicit, Indirect, IndirectX,
     IndirectY, Relative, ZeroPage, ZeroPageX, ZeroPageY,
 };
-use crate::cpu::{tests, AddressingMode};
 
 #[test]
 fn test_addressing_modes() {
@@ -13,7 +13,7 @@ fn test_addressing_modes() {
     /* we can read memory through an addressing mode */
     assert_eq!(Absolute.deref(cpu, 0x10, 0x0), 0x20);
     /* we can write memory through an addressing mode */
-    AddressingMode::Absolute.write(cpu, 0x11, 0x0, 0x80);
+    Absolute.write(cpu, 0x11, 0x0, 0x80);
     assert_eq!(Absolute.deref(cpu, 0x11, 0x10), 0x80);
 
     /* we can read the accumulator through an addressing mode */

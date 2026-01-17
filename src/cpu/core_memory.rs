@@ -19,15 +19,16 @@ pub struct CoreMemory {
 }
 
 impl CoreMemory {
+    #[allow(dead_code)] // semi-vestigial, still used by test code
     pub fn new(rom: &Rom) -> CoreMemory {
         Self::new_from_mapper(rom.initialize_mapper())
     }
 
-    pub fn new_from_mapper(mapper: Rc<RefCell<Box<dyn Mapper>>>) -> CoreMemory {
+    pub fn new_from_mapper(mapper: Box<dyn Mapper>) -> CoreMemory {
         CoreMemory {
             memory: Box::new([0; MEMORY_SIZE]),
             listeners: FnvHashMap::with_capacity_and_hasher(10, Default::default()),
-            mapper,
+            mapper: Rc::new(RefCell::new(mapper)),
         }
     }
 
@@ -144,5 +145,21 @@ impl CoreMemory {
     pub fn open_bus(&self) -> u8 {
         /* TODO not how hardware behaves */
         0
+    }
+
+    /**
+     * Returns the current value of the data that would be saved in RAM, if it exists,
+     * or None if the current mapper doesn't support it.
+     */
+    pub fn get_save_data(&self) -> Option<Vec<u8>> {
+        self.mapper.borrow().get_save_data()
+    }
+
+    /**
+     * Sets the current save RAM data. If the current mapper does not support save RAM,
+     * this has no effect.
+     */
+    pub fn set_save_data(&mut self, data: &Vec<u8>) {
+        self.mapper.borrow_mut().set_save_data(data);
     }
 }

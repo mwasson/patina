@@ -113,7 +113,7 @@ impl AddressingMode {
 
     pub fn write(self: &AddressingMode, cpu: &mut CPU, byte1: u8, byte2: u8, new_val: u8) {
         match self {
-            AddressingMode::Accumulator => cpu.accumulator = new_val,
+            Accumulator => cpu.accumulator = new_val,
             _ => {
                 let resolved_addr = self.resolve_address(cpu, byte1, byte2);
                 cpu.write_mem(resolved_addr, new_val)

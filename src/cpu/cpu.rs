@@ -156,6 +156,22 @@ impl CPU {
         self.memory.read(addr)
     }
 
+    /**
+     * Returns the current value of the data that would be saved in RAM, if it exists,
+     * or None if the current mapper doesn't support it.
+     */
+    pub fn get_save_data(&self) -> Option<Vec<u8>> {
+        self.memory.get_save_data()
+    }
+
+    /**
+     * Sets the current save RAM data. If the current mapper does not support save RAM,
+     * this has no effect.
+     */
+    pub fn set_save_data(&mut self, data: &Vec<u8>) {
+        self.memory.set_save_data(data)
+    }
+
     pub fn read_mem16(&mut self, addr: u16) -> u16 {
         self.memory.read16(addr)
     }

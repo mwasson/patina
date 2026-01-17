@@ -1,16 +1,15 @@
+use crate::key_event_handler::KeyEventHandler;
 use crate::ppu;
 use crate::ppu::WriteBuffer;
-use crate::scheduler::RenderRequester;
+use crate::simulator::RenderRequester;
 use pixels::{Pixels, SurfaceTexture};
-use std::collections::HashSet;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::Key;
 use winit::window::{Window, WindowId};
 
 const WINDOW_START_WIDTH: u16 = 420;
@@ -18,24 +17,24 @@ const WINDOW_START_HEIGHT: u16 = 380;
 
 struct WindowApp<'a> {
     write_buffer: Arc<Mutex<WriteBuffer>>,
-    keys: Arc<Mutex<HashSet<Key>>>,
     pixels: Option<Pixels<'a>>,
     window: Option<Arc<Window>>,
     requester: Arc<Mutex<RenderRequester>>,
+    key_event_handler: KeyEventHandler,
 }
 
 impl WindowApp<'_> {
     fn new(
         write_buffer: Arc<Mutex<WriteBuffer>>,
-        keys: Arc<Mutex<HashSet<Key>>>,
+        key_event_handler: KeyEventHandler,
         requester: Arc<Mutex<RenderRequester>>,
     ) -> Self {
         Self {
             write_buffer,
-            keys,
             requester,
             pixels: None,
             window: None,
+            key_event_handler,
         }
     }
 }
@@ -91,14 +90,9 @@ impl ApplicationHandler for WindowApp<'_> {
                 device_id: _,
                 event: input,
                 is_synthetic: _,
-            } => match input.state {
-                ElementState::Pressed => {
-                    self.keys.lock().unwrap().insert(input.logical_key);
-                }
-                ElementState::Released => {
-                    self.keys.lock().unwrap().remove(&input.logical_key);
-                }
-            },
+            } => {
+                self.key_event_handler.handle_key_event(&input);
+            }
             _ => (),
         }
     }
@@ -106,9 +100,13 @@ impl ApplicationHandler for WindowApp<'_> {
 
 pub fn initialize_ui(
     write_buffer: Arc<Mutex<WriteBuffer>>,
-    keys: Arc<Mutex<HashSet<Key>>>,
+    key_event_handler: KeyEventHandler,
     requester: Arc<Mutex<RenderRequester>>,
 ) -> Result<(), EventLoopError> {
     let event_loop = EventLoop::new();
-    event_loop?.run_app(&mut WindowApp::new(write_buffer, keys, requester))
+    event_loop?.run_app(&mut WindowApp::new(
+        write_buffer,
+        key_event_handler,
+        requester,
+    ))
 }

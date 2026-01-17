@@ -7,7 +7,7 @@ use crate::ppu::{
     VRAM_SIZE, WRITE_BUFFER_SIZE,
 };
 use crate::processor::Processor;
-use crate::scheduler::RenderRequester;
+use crate::simulator::RenderRequester;
 use std::cell::RefCell;
 use std::mem::replace;
 use std::rc::Rc;
