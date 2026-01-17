@@ -184,4 +184,12 @@ impl Mapper for MMC1 {
     fn get_nametable_mirroring(&self) -> NametableMirroring {
         self.nametable_mirroring.clone()
     }
+
+    fn get_save_data(&self) -> Option<Vec<u8>> {
+        Some(Vec::from(*self.prg_ram))
+    }
+
+    fn set_save_data(&mut self, data: &Vec<u8>) {
+        self.prg_ram[0..data.len()].copy_from_slice(data);
+    }
 }

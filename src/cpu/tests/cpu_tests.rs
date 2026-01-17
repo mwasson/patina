@@ -96,3 +96,17 @@ fn test_oamdma() {
     cpu.write_mem(0xfff0, 0xe8); // perform the two cycle INX instruction
     assert_eq!(cpu.transition(), 2 + 513); // 513 extra cycles for OAMDMA
 }
+
+/* trying to save without a mapper should have no effect */
+#[test]
+fn test_saving_no_mapper() {
+    let memory = memory_for_testing();
+    let mut cpu = CPU::new(Box::new(memory));
+
+    assert_eq!(cpu.get_save_data(), None);
+
+    let mut new_save_data: Vec<u8> = [1].repeat(0x2000);
+    cpu.set_save_data(&mut new_save_data);
+
+    assert_eq!(cpu.get_save_data(), None);
+}

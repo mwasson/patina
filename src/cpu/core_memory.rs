@@ -146,4 +146,20 @@ impl CoreMemory {
         /* TODO not how hardware behaves */
         0
     }
+
+    /**
+     * Returns the current value of the data that would be saved in RAM, if it exists,
+     * or None if the current mapper doesn't support it.
+     */
+    pub fn get_save_data(&self) -> Option<Vec<u8>> {
+        self.mapper.borrow().get_save_data()
+    }
+
+    /**
+     * Sets the current save RAM data. If the current mapper does not support save RAM,
+     * this has no effect.
+     */
+    pub fn set_save_data(&mut self, data: &Vec<u8>) {
+        self.mapper.borrow_mut().set_save_data(data);
+    }
 }

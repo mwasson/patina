@@ -1,7 +1,7 @@
 use crate::key_event_handler::KeyEventHandler;
 use crate::ppu;
 use crate::ppu::WriteBuffer;
-use crate::scheduler::RenderRequester;
+use crate::simulator::RenderRequester;
 use pixels::{Pixels, SurfaceTexture};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
