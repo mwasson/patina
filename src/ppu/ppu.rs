@@ -114,9 +114,10 @@ impl PPU {
     }
 
     fn render_scanline(&mut self, scanline: u8, dot: u16, rendering_on: bool) {
-        if dot == 0 {
-            self.render_scanline_begin(scanline);
-        } else if dot < 257 {
+        if 0 < dot && dot < 257 {
+            if dot == 1 {
+                self.render_scanline_begin(scanline);
+            }
             self.render_block(scanline, (dot - 1) as u8, rendering_on);
             if dot == 256 && rendering_on {
                 self.internal_regs.y_increment();
@@ -124,7 +125,9 @@ impl PPU {
         } else if dot == 257 && rendering_on {
             self.internal_regs.copy_x_bits();
         } else if dot > 320 && dot < 329 {
-            //337 TODO fix {
+            //337 TODO fix: this is leading to incorrect renders where sprites haven't
+            //been properly initialized. (scanline + 1) % 240 is probably at issue, but
+            //that's to pass some specific tests
             self.render_block((scanline + 1) % 240, (dot - 1 - 320) as u8, rendering_on);
         }
     }
