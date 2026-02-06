@@ -11,11 +11,9 @@ pub struct AxROM {
 
 impl AxROM {
     pub fn new(rom: &Rom) -> Self {
-        let mut chr_bank = BankArray::new(SIZE_8_KB, 0, rom.chr_data.clone());
-        chr_bank.set_bank(0, 0);
+        let chr_bank = BankArray::new_ram(0, SIZE_8_KB, SIZE_8_KB);
 
-        let mut prg_banks = BankArray::new(SIZE_32_KB, 0x8000, rom.prg_data.clone());
-        prg_banks.set_bank(0, 0);
+        let prg_banks = BankArray::new(0x8000, SIZE_32_KB, rom.prg_data.clone());
 
         AxROM {
             nametable_mirroring: rom.nametable_mirroring(),
@@ -34,17 +32,6 @@ impl Mapper for AxROM {
         self.prg_banks.read_slice(address, size)
     }
 
-    fn write_prg(&mut self, address: u16, value: u8) {
-        if address >= 0x8000 {
-            self.prg_banks.set_bank(0, value & 0x7);
-            self.nametable_mirroring = if value & 0x10 != 0 {
-                NametableMirroring::SingleNametable1
-            } else {
-                NametableMirroring::SingleNametable0
-            };
-        }
-    }
-
     fn read_chr(&self, address: u16) -> u8 {
         self.chr_bank.read(address)
     }
@@ -55,5 +42,18 @@ impl Mapper for AxROM {
 
     fn get_nametable_mirroring(&self) -> NametableMirroring {
         self.nametable_mirroring.clone()
+    }
+
+    fn write_prg_ram(&mut self, address: u16, data: u8) {
+        todo!()
+    }
+
+    fn write_prg_rom(&mut self, address: u16, data: u8) {
+        self.prg_banks.set_bank(0,data & 0x7);
+        self.nametable_mirroring = if data & 0x10 != 0 {
+            NametableMirroring::SingleNametable1
+        } else {
+            NametableMirroring::SingleNametable0
+        };
     }
 }

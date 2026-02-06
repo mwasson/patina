@@ -56,4 +56,8 @@ impl Mapper for TestMapper {
     fn get_save_data(&self) -> Option<Vec<u8>> {
         self.save_data.clone()
     }
+
+    fn write_prg_rom(&mut self, address: u16, data: u8) {
+        todo!()
+    }
 }

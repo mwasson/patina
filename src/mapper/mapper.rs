@@ -5,8 +5,6 @@ pub trait Mapper: Send {
 
     fn read_prg_slice(&self, address: u16, size: usize) -> &[u8];
 
-    fn write_prg(&mut self, address: u16, value: u8);
-
     fn read_chr(&self, address: u16) -> u8;
 
     fn write_chr(&mut self, address: u16, value: u8);
@@ -26,4 +24,18 @@ pub trait Mapper: Send {
      * this has no effect.
      */
     fn set_save_data(&mut self, _data: &Vec<u8>) {}
+
+    fn write_prg(&mut self, address: u16, data: u8) {
+        if address < 0x8000 {
+            self.write_prg_ram(address, data);
+        } else {
+            self.write_prg_rom(address, data);
+        }
+    }
+
+    fn write_prg_ram(&mut self, address: u16, data: u8) {
+        /* default: no-op due to having no ram */
+    }
+
+    fn write_prg_rom(&mut self, address: u16, data: u8);
 }

@@ -11,12 +11,9 @@ pub struct UxROM {
 
 impl UxROM {
     pub fn new(rom: &Rom) -> Self {
-        let mut chr_bank = BankArray::new(SIZE_8_KB, 0, rom.chr_data.clone());
-        chr_bank.set_bank(0, 0);
+        let chr_bank = BankArray::new(0, SIZE_8_KB, rom.chr_data.clone());
 
-        let mut prg_banks = BankArray::new(SIZE_16_KB, 0x8000, rom.prg_data.clone());
-        prg_banks.set_bank(0, 0);
-        prg_banks.set_last_bank(1);
+        let prg_banks = BankArray::new(0x8000, SIZE_16_KB, rom.prg_data.clone());
 
         UxROM {
             nametable_mirroring: rom.nametable_mirroring(),
@@ -35,15 +32,6 @@ impl Mapper for UxROM {
         self.prg_banks.read_slice(address, size)
     }
 
-    fn write_prg(&mut self, address: u16, value: u8) {
-        if address >= 0x8000 {
-            /* TODO: should be 0x7 for some variants */
-            self.prg_banks.set_bank(0, value & 0xf);
-        } else {
-            /* can ignore these writes */
-        }
-    }
-
     fn read_chr(&self, address: u16) -> u8 {
         self.chr_bank.read(address)
     }
@@ -54,5 +42,13 @@ impl Mapper for UxROM {
 
     fn get_nametable_mirroring(&self) -> NametableMirroring {
         self.nametable_mirroring.clone()
+    }
+
+    fn write_prg_ram(&mut self, _address: u16, _value: u8) {
+        /* ignore writes to ram for UxROM */
+    }
+
+    fn write_prg_rom(&mut self, address: u16, value: u8) {
+        self.prg_banks.set_bank(0, value & 0xf);
     }
 }
