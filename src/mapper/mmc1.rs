@@ -1,5 +1,5 @@
 use crate::mapper::bank_array::BankArray;
-use crate::mapper::{Mapper, SIZE_16_KB, SIZE_32_KB, SIZE_4_KB, SIZE_8_KB};
+use crate::mapper::{Mapper, RamBank, SIZE_16_KB, SIZE_32_KB, SIZE_4_KB, SIZE_8_KB};
 use crate::ppu::NametableMirroring;
 use crate::rom::Rom;
 
@@ -20,7 +20,7 @@ enum PrgRomBankMode {
 
 pub struct MMC1 {
     shift_register: u8,
-    prg_ram: Box<[u8; 1 << 15]>, /* optional RAM; TODO size can only be determined in NES 2.0 ROMs*/
+    prg_ram: RamBank, /* optional RAM; TODO size can only be determined in NES 2.0 ROMs*/
     prg_banks: BankArray,
     chr_banks: BankArray,
     chr_bank_0: u8,
@@ -33,8 +33,12 @@ pub struct MMC1 {
 
 impl MMC1 {
     pub fn new(rom: &Rom) -> MMC1 {
-        let prg_banks = BankArray::new(SIZE_16_KB, 0x8000, rom.prg_data.clone());
-        let chr_banks = BankArray::new(SIZE_8_KB, 0, rom.chr_data.clone());
+        let prg_banks = BankArray::new(0x8000, SIZE_16_KB, rom.prg_data.clone());
+        let chr_banks = if rom.chr_data.len() == 0 {
+            BankArray::new_ram(0, SIZE_8_KB, SIZE_8_KB) // 8kb CHR-RAM
+        } else {
+            BankArray::new(0, SIZE_8_KB, rom.chr_data.clone())
+        };
 
         let mut result = MMC1 {
             shift_register: SHIFT_REGISTER_INITIAL_VAL,
@@ -118,13 +122,13 @@ impl MMC1 {
             }
             PrgRomBankMode::Mode16KbFixLower => {
                 self.prg_banks.change_bank_size(SIZE_16_KB);
-                self.prg_banks.set_bank(0, 0);
+                /* bank 0 maps to 0 by default */
                 self.prg_banks.set_bank(1, self.prg_bank_index);
             }
             PrgRomBankMode::Mode16KbFixUpper => {
                 self.prg_banks.change_bank_size(SIZE_16_KB);
                 self.prg_banks.set_bank(0, self.prg_bank_index);
-                self.prg_banks.set_last_bank(1);
+                self.prg_banks.set_bank_from_end(1, -1);
             }
         }
     }
@@ -163,14 +167,13 @@ impl Mapper for MMC1 {
         }
     }
 
-    fn write_prg(&mut self, address: u16, value: u8) {
-        /* below 0x8000, it's writing to PRG-RAM, which we assume exists TODO update for NES 2.0 */
-        if address < 0x8000 {
-            self.prg_ram[self.prg_ram_index(address)] = value;
-        /* otherwise, writing to an MMC1 register */
-        } else {
-            self.listen_for_state_change(address, value);
-        }
+    fn write_prg_rom(&mut self, address: u16, value: u8) {
+        /* writing an MMC1 register */
+        self.listen_for_state_change(address, value);
+    }
+
+    fn write_prg_ram(&mut self, address: u16, value: u8) {
+        self.prg_ram[self.prg_ram_index(address)] = value;
     }
 
     fn read_chr(&self, address: u16) -> u8 {

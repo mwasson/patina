@@ -52,8 +52,12 @@ impl Mapper for NROM {
         &self.prg_ram[mapped_address..mapped_address + size]
     }
 
-    fn write_prg(&mut self, _address: u16, _value: u8) {
+    fn write_prg_rom(&mut self, _address: u16, _value: u8) {
         /* no effect */
+    }
+
+    fn write_prg_ram(&mut self, _address: u16, _value: u8) {
+        /* ignore writes to ram for NROM */
     }
 
     fn read_chr(&self, address: u16) -> u8 {

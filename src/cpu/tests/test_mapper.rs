@@ -50,4 +50,8 @@ impl Mapper for TestMapper {
     fn get_nametable_mirroring(&self) -> NametableMirroring {
         panic!("should never be called")
     }
+
+    fn write_prg_rom(&mut self, address: u16, data: u8) {
+        todo!()
+    }
 }
