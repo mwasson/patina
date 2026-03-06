@@ -11,9 +11,9 @@ pub struct AxROM {
 
 impl AxROM {
     pub fn new(rom: &Rom) -> Self {
-        let chr_bank = BankArray::new_ram(0, SIZE_8_KB, SIZE_8_KB);
+        let chr_bank = BankArray::new_ram(0, SIZE_8_KB, SIZE_8_KB, 1);
 
-        let prg_banks = BankArray::new(0x8000, SIZE_32_KB, rom.prg_data.clone());
+        let prg_banks = BankArray::new(0x8000, SIZE_32_KB, rom.prg_data.clone(), 1);
 
         AxROM {
             nametable_mirroring: rom.nametable_mirroring(),

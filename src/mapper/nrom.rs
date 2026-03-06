@@ -52,14 +52,6 @@ impl Mapper for NROM {
         &self.prg_ram[mapped_address..mapped_address + size]
     }
 
-    fn write_prg_rom(&mut self, _address: u16, _value: u8) {
-        /* no effect */
-    }
-
-    fn write_prg_ram(&mut self, _address: u16, _value: u8) {
-        /* ignore writes to ram for NROM */
-    }
-
     fn read_chr(&self, address: u16) -> u8 {
         self.chr[address as usize]
     }
@@ -70,5 +62,13 @@ impl Mapper for NROM {
 
     fn get_nametable_mirroring(&self) -> NametableMirroring {
         self.nametable_mirroring.clone()
+    }
+
+    fn write_prg_ram(&mut self, _address: u16, _value: u8) {
+        /* ignore writes to ram for NROM */
+    }
+
+    fn write_prg_rom(&mut self, _address: u16, _value: u8) {
+        /* no effect */
     }
 }
