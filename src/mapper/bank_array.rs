@@ -31,17 +31,17 @@ pub struct BankArray {
 }
 
 impl BankArray {
-    pub fn new_ram(base_address: u16, bank_size_log:usize, data_size: usize) -> BankArray {
-        BankArray::new(base_address, bank_size_log, vec![0; 1 << data_size])
+    pub fn new_ram(base_address: u16, bank_size_log:usize, data_size: usize, num_banks: usize) -> BankArray {
+        BankArray::new(base_address, bank_size_log, vec![0; 1 << data_size], num_banks)
     }
 
-    pub fn new(base_address: u16, bank_size_log:usize, data: Vec<u8>) -> BankArray {
+    pub fn new(base_address: u16, bank_size_log:usize, data: Vec<u8>, num_banks: usize) -> BankArray {
         /* if backing data is empty, that means we need to provide RAM */
         let base_address = base_address as usize;
         let bank_size = 1 << bank_size_log;
         assert_eq!(data.len() % bank_size, 0);
 
-        let banks = vec![0; data.len() / bank_size];
+        let banks = vec![0; num_banks];
 
         BankArray {
             base_address,
@@ -106,7 +106,7 @@ impl BankArray {
      * If the new bank_size_log is the same as the old one, this has no effect. (It does not
      * clear the banks.)
      */
-    pub fn change_bank_size(&mut self, bank_size_log: usize) {
+    pub fn change_bank_size(&mut self, bank_size_log: usize, num_banks: usize) {
         if(bank_size_log != self.bank_size_log) {
             let bank_size = 1 << bank_size_log;
             /* the data must be a multiple of the bank size */
@@ -115,9 +115,8 @@ impl BankArray {
             self.bank_size = bank_size;
             self.bank_size_mask = self.bank_size - 1;
 
-            let new_bank_len = self.data.len() / self.bank_size;
             self.banks.clear();
-            for i in 0..new_bank_len {
+            for i in 0..num_banks {
                 self.banks.push(0);
             };
         }

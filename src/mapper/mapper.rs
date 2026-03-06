@@ -1,3 +1,4 @@
+use crate::cpu::CPU;
 use crate::ppu::NametableMirroring;
 
 pub trait Mapper: Send {
@@ -38,4 +39,9 @@ pub trait Mapper: Send {
     }
 
     fn write_prg_rom(&mut self, address: u16, data: u8);
+
+    /* TODO comment before commit */
+    fn listen_ppu_a12(&mut self, cpu: &mut CPU) {
+        /* generally a no-op */
+    }
 }

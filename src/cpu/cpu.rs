@@ -21,6 +21,7 @@ pub struct CPU {
     pub program_counter: u16,
     pub status: u8,
     nmi_flag: bool,
+    irq_flag: bool,
     memory: Box<CoreMemory>,
     controller: Rc<RefCell<Controller>>,
     doing_oamdma: bool,
@@ -48,6 +49,7 @@ impl CPU {
             program_counter: 0x00,
             status: (0x11) << 4,
             nmi_flag: false,
+            irq_flag: false,
             memory,
             controller,
             doing_oamdma: false,
@@ -63,6 +65,8 @@ impl CPU {
     pub fn transition(&mut self) -> u16 {
         if self.nmi_set() {
             self.trigger_nmi();
+        } else if self.irq_set() && !StatusFlag::InterruptDisable.is_set(self) {
+            self.irq_with_offset(0, false);
         }
 
         let operation_loc = self.program_counter;
@@ -89,6 +93,14 @@ impl CPU {
 
     pub fn nmi_set(&self) -> bool {
         self.nmi_flag
+    }
+
+    pub fn set_irq(&mut self, irq_set: bool) {
+        self.irq_flag = irq_set;
+    }
+
+    pub fn irq_set(&self) -> bool {
+        self.irq_flag
     }
 
     pub fn update_flag(&mut self, flag: StatusFlag, new_val: bool) {
@@ -123,9 +135,16 @@ impl CPU {
         value
     }
 
-    pub fn irq_with_offset(&mut self, offset: u8) {
+    pub fn irq_with_offset(&mut self, offset: u8, set_b: bool) {
+        self.set_irq(false);
         self.push_memory_loc(self.program_counter.wrapping_add(offset as u16));
-        self.push((self.status | (1 << 4)) | (1 << 5));
+        let mut pushed_flags = self.status | (1 << 5);
+        if set_b {
+            pushed_flags |= 1 << 4;
+        } else {
+            pushed_flags &= !(1 << 4);
+        }
+        self.push(pushed_flags);
         self.update_flag(StatusFlag::InterruptDisable, true);
         self.program_counter =
             AddressingMode::Indirect.resolve_address_u16(self, IRQ_HANDLER_LOCATION);

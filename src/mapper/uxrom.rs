@@ -11,9 +11,9 @@ pub struct UxROM {
 
 impl UxROM {
     pub fn new(rom: &Rom) -> Self {
-        let chr_bank = BankArray::new(0, SIZE_8_KB, rom.chr_data.clone());
+        let chr_bank = BankArray::new(0, SIZE_8_KB, rom.chr_data.clone(), 2);
 
-        let prg_banks = BankArray::new(0x8000, SIZE_16_KB, rom.prg_data.clone());
+        let prg_banks = BankArray::new(0x8000, SIZE_16_KB, rom.prg_data.clone(), 1);
 
         UxROM {
             nametable_mirroring: rom.nametable_mirroring(),

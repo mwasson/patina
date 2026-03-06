@@ -33,11 +33,11 @@ pub struct MMC1 {
 
 impl MMC1 {
     pub fn new(rom: &Rom) -> MMC1 {
-        let prg_banks = BankArray::new(0x8000, SIZE_16_KB, rom.prg_data.clone());
+        let prg_banks = BankArray::new(0x8000, SIZE_16_KB, rom.prg_data.clone(), 2);
         let chr_banks = if rom.chr_data.len() == 0 {
-            BankArray::new_ram(0, SIZE_8_KB, SIZE_8_KB) // 8kb CHR-RAM
+            BankArray::new_ram(0, SIZE_8_KB, SIZE_8_KB, 2) // 8kb CHR-RAM
         } else {
-            BankArray::new(0, SIZE_8_KB, rom.chr_data.clone())
+            BankArray::new(0, SIZE_8_KB, rom.chr_data.clone(), 2)
         };
 
         let mut result = MMC1 {
@@ -116,17 +116,17 @@ impl MMC1 {
     fn update_prg_banks(&mut self) {
         match self.prg_bank_mode {
             PrgRomBankMode::Mode32kb => {
-                self.prg_banks.change_bank_size(SIZE_32_KB);
+                self.prg_banks.change_bank_size(SIZE_32_KB, 1);
                 /* first bit ignored in 32kb mode */
                 self.prg_banks.set_bank(0, self.prg_bank_index >> 1);
             }
             PrgRomBankMode::Mode16KbFixLower => {
-                self.prg_banks.change_bank_size(SIZE_16_KB);
+                self.prg_banks.change_bank_size(SIZE_16_KB, 2);
                 /* bank 0 maps to 0 by default */
                 self.prg_banks.set_bank(1, self.prg_bank_index);
             }
             PrgRomBankMode::Mode16KbFixUpper => {
-                self.prg_banks.change_bank_size(SIZE_16_KB);
+                self.prg_banks.change_bank_size(SIZE_16_KB, 2);
                 self.prg_banks.set_bank(0, self.prg_bank_index);
                 self.prg_banks.set_bank_from_end(1, -1);
             }
@@ -135,11 +135,11 @@ impl MMC1 {
 
     fn update_chr_banks(&mut self) {
         if self.chr_bank_mode {
-            self.chr_banks.change_bank_size(SIZE_4_KB);
+            self.chr_banks.change_bank_size(SIZE_4_KB, 2);
             self.chr_banks.set_bank(0, self.chr_bank_0);
             self.chr_banks.set_bank(1, self.chr_bank_1);
         } else {
-            self.chr_banks.change_bank_size(SIZE_8_KB);
+            self.chr_banks.change_bank_size(SIZE_8_KB, 1);
             self.chr_banks.set_bank(0, self.chr_bank_0 >> 1);
         }
     }
