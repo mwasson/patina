@@ -3,13 +3,16 @@ use crate::ppu::NametableMirroring;
 
 pub struct TestMapper {
     memory: Box<[u8; 0x8000]>,
+    save_data: Option<Vec<u8>>,
 }
 
 impl TestMapper {
     pub fn new() -> Self {
-        TestMapper {
-            memory: Box::new([0; 0x8000]),
-        }
+        TestMapper { memory: Box::new([0; 0x8000]), save_data: None }
+    }
+
+    pub fn with_save(data: Vec<u8>) -> Self {
+        TestMapper { memory: Box::new([0; 0x8000]), save_data: Some(data) }
     }
 
     fn map_address(address: u16) -> usize {
@@ -27,7 +30,6 @@ impl Mapper for TestMapper {
 
     fn read_prg_slice(&self, address: u16, _size: usize) -> &[u8] {
         let map_address = Self::map_address(address);
-
         &self.memory[map_address..map_address + _size]
     }
 
@@ -49,5 +51,9 @@ impl Mapper for TestMapper {
 
     fn get_nametable_mirroring(&self) -> NametableMirroring {
         panic!("should never be called")
+    }
+
+    fn get_save_data(&self) -> Option<Vec<u8>> {
+        self.save_data.clone()
     }
 }

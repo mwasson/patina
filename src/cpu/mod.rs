@@ -7,7 +7,7 @@ mod operation;
 mod status_flag;
 
 #[cfg(test)]
-mod tests;
+pub mod tests;
 
 pub use crate::cpu::instruction::from_opcode;
 pub use addressing_mode::AddressingMode;

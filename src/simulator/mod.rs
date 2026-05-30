@@ -1,10 +1,13 @@
 pub mod program_state;
 
 mod render_requester;
-mod scheduler;
+pub(crate) mod scheduler;
+
+#[cfg(test)]
+mod tests;
 
 pub use render_requester::RenderRequester;
 
-enum SimulatorSignal {
+pub(crate) enum SimulatorSignal {
     EndSimulation,
 }

@@ -6,7 +6,7 @@ mod controller_tests;
 mod cpu_tests;
 mod instruction_tests;
 mod memory_tests;
-mod test_mapper;
+pub mod test_mapper;
 
 fn memory_for_testing() -> CoreMemory {
     CoreMemory::new_from_mapper(Box::new(TestMapper::new()))
