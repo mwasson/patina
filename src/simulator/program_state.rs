@@ -7,7 +7,6 @@ use crate::rom::Rom;
 use crate::simulator::render_requester::RenderRequester;
 use crate::simulator::scheduler::Scheduler;
 use crate::simulator::SimulatorSignal;
-use crate::simulator::SimulatorSignal::EndSimulation;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -30,7 +29,7 @@ pub struct ProgramState {
 
     /* outputs */
     pub write_buffer: Arc<Mutex<WriteBuffer>>,
-    pub thread_handle: Option<JoinHandle<()>>,
+    pub thread_handle: Option<JoinHandle<Option<Vec<u8>>>>,
 
     /* communication */
     thread_sender: Sender<SimulatorSignal>,
@@ -93,35 +92,24 @@ impl ProgramState {
 
             let mut scheduler = Scheduler::new(cpu, ppu, apu, thread_receiver);
 
-            scheduler.simulate();
+            scheduler.simulate()
         }));
     }
 
-    pub fn handle_save(&self) -> Option<Vec<u8>> {
-        let (sx, rx) = channel();
-
-        self.thread_sender
-            .send(SimulatorSignal::HandleSave(sx))
-            .expect("Could not send save signal");
-        /* TODO should probably be on a timeout but it often fails? */
-        rx.recv().expect("Could not receive save signal")
-    }
-
-    #[allow(dead_code)]
-    pub fn cleanup(&mut self) {
+    pub fn cleanup(&mut self) -> Option<Vec<u8>> {
         if let Some(thread_handle) = self.thread_handle.take() {
-            /* tell the simulator thread to stop simulating */
             self.thread_sender
-                .send(EndSimulation)
-                .expect("TODO: panic message");
+                .send(SimulatorSignal::EndSimulation)
+                .expect("Could not send EndSimulation");
 
-            /* should be ready for joining soon, wait until then */
             match thread_handle.join() {
-                Ok(_) => {}
+                Ok(save_data) => save_data,
                 Err(x) => {
                     panic!("Unexpected panic on join to stop emulation: {:?}", x);
                 }
             }
+        } else {
+            None
         }
     }
 

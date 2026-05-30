@@ -44,7 +44,7 @@ impl Scheduler {
             next_apu_time: 0,
         }
     }
-    pub fn simulate(&mut self) {
+    pub fn simulate(&mut self) -> Option<Vec<u8>> {
         let start_time = Instant::now();
 
         let quantum = Duration::from_millis(10);
@@ -53,16 +53,10 @@ impl Scheduler {
         let mut check_time_clocks = duration_to_clocks(quantum);
 
         loop {
-            /* if we've received a message, terminate to prepare for joining */
             if let Ok(signal) = self.receiver.try_recv() {
                 match signal {
-                    /* handle save: write memory to save file */
-                    SimulatorSignal::HandleSave(sx) => {
-                        let _ = sx.send(self.cpu.get_save_data());
-                    }
-                    /* end simulation: break the loop */
                     SimulatorSignal::EndSimulation => {
-                        return;
+                        return self.cpu.get_save_data();
                     }
                 }
             }

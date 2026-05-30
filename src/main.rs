@@ -9,8 +9,8 @@ mod cpu;
 
 mod rom;
 use crate::key_event_handler::KeyEventHandler;
+use crate::simulator::program_state::ProgramState;
 use rom::Rom;
-use simulator::program_state::ProgramState;
 
 mod apu;
 mod config;
@@ -38,14 +38,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         KeyEventHandler::new(keys, program_state.read().unwrap().write_buffer.clone());
 
     let handler_clone = program_state.clone();
-    if let Some(savefile) = args.savefile.clone() {
-        let savefile_clone = savefile.clone();
-        ctrlc::set_handler(move || {
-            run_on_exit(&savefile_clone, &handler_clone.read().unwrap());
-            exit(0);
-        })
-        .expect("Should not error due to being only signal handler");
-    }
+    let savefile_clone = args.savefile.clone();
+    ctrlc::set_handler(move || {
+        cleanup_and_save(&handler_clone, &savefile_clone);
+        exit(0);
+    })
+    .expect("Should not error due to being only signal handler");
 
     let write_buffer = program_state.read().unwrap().write_buffer.clone();
     let render_requester = program_state.read().unwrap().render_requester.clone();
@@ -55,20 +53,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         Err(event_loop_error) => Err(event_loop_error.into()),
     };
 
-    if let Some(savefile) = args.savefile {
-        run_on_exit(&savefile, &program_state.read().unwrap());
-    }
+    cleanup_and_save(&program_state, &args.savefile);
 
     result
 }
 
-fn run_on_exit(savefile: &String, program_state: &ProgramState) {
-    if let Some(save_data) = program_state.handle_save() {
-        match fs::write(savefile, save_data) {
+fn cleanup_and_save(program_state: &Arc<RwLock<ProgramState>>, savefile: &Option<String>) {
+    let save_data = program_state.write().unwrap().cleanup();
+    if let (Some(path), Some(data)) = (savefile, save_data) {
+        match fs::write(path, data) {
             Ok(_) => {}
-            Err(x) => {
-                println!("Failed to write to save file {savefile}: {x}");
-            }
+            Err(x) => println!("Failed to write to save file {path}: {x}"),
         }
     }
 }
