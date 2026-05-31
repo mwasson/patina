@@ -46,9 +46,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     .expect("Should not error due to being only signal handler");
 
     let write_buffer = program_state.read().unwrap().write_buffer.clone();
-    let render_requester = program_state.read().unwrap().render_requester.clone();
 
-    let result = match window::initialize_ui(write_buffer, key_event_handler, render_requester) {
+    let result = match window::initialize_ui(write_buffer, key_event_handler) {
         Ok(()) => Ok(()),
         Err(event_loop_error) => Err(event_loop_error.into()),
     };

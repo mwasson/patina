@@ -1,7 +1,6 @@
 use crate::key_event_handler::KeyEventHandler;
 use crate::ppu;
 use crate::ppu::WriteBuffer;
-use crate::simulator::RenderRequester;
 use pixels::{Pixels, SurfaceTexture};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
@@ -19,22 +18,24 @@ struct WindowApp<'a> {
     write_buffer: Arc<Mutex<WriteBuffer>>,
     pixels: Option<Pixels<'a>>,
     window: Option<Arc<Window>>,
-    requester: Arc<Mutex<RenderRequester>>,
     key_event_handler: KeyEventHandler,
 }
 
 impl WindowApp<'_> {
-    fn new(
-        write_buffer: Arc<Mutex<WriteBuffer>>,
-        key_event_handler: KeyEventHandler,
-        requester: Arc<Mutex<RenderRequester>>,
-    ) -> Self {
+    fn new(write_buffer: Arc<Mutex<WriteBuffer>>, key_event_handler: KeyEventHandler) -> Self {
         Self {
             write_buffer,
-            requester,
             pixels: None,
             window: None,
             key_event_handler,
+        }
+    }
+
+    fn render(&mut self) {
+        if let Some(pixels) = self.pixels.as_mut() {
+            let frame = pixels.frame_mut();
+            frame.copy_from_slice(self.write_buffer.lock().unwrap().deref());
+            let _ = pixels.render();
         }
     }
 }
@@ -51,7 +52,6 @@ impl ApplicationHandler for WindowApp<'_> {
                 )
                 .unwrap(),
         );
-        self.requester.lock().unwrap().set_window(window.clone());
 
         /* TODO handle error? */
         self.pixels = {
@@ -63,18 +63,19 @@ impl ApplicationHandler for WindowApp<'_> {
 
         self.window = Some(window);
         event_loop.set_control_flow(ControlFlow::Wait);
-        self.window.as_mut().unwrap().request_redraw();
+        self.window.as_ref().unwrap().request_redraw();
+    }
+
+    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+        if let Some(window) = self.window.as_ref() {
+            window.request_redraw();
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::RedrawRequested => {
-                let pixels = self.pixels.as_mut().unwrap();
-                let frame = pixels.frame_mut();
-
-                frame.copy_from_slice(self.write_buffer.lock().unwrap().deref());
-
-                let _ = pixels.render();
+                self.render();
             }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -101,12 +102,7 @@ impl ApplicationHandler for WindowApp<'_> {
 pub fn initialize_ui(
     write_buffer: Arc<Mutex<WriteBuffer>>,
     key_event_handler: KeyEventHandler,
-    requester: Arc<Mutex<RenderRequester>>,
 ) -> Result<(), EventLoopError> {
-    let event_loop = EventLoop::new();
-    event_loop?.run_app(&mut WindowApp::new(
-        write_buffer,
-        key_event_handler,
-        requester,
-    ))
+    let event_loop = EventLoop::new()?;
+    event_loop.run_app(&mut WindowApp::new(write_buffer, key_event_handler))
 }

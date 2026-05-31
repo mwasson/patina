@@ -4,7 +4,6 @@ use crate::mapper::Mapper;
 use crate::ppu::ppu_listener::PPUListener;
 use crate::ppu::{WriteBuffer, PPU, WRITE_BUFFER_SIZE};
 use crate::rom::Rom;
-use crate::simulator::render_requester::RenderRequester;
 use crate::simulator::scheduler::Scheduler;
 use crate::simulator::SimulatorSignal;
 use std::cell::RefCell;
@@ -24,7 +23,6 @@ use winit::keyboard::Key;
  */
 pub struct ProgramState {
     /* inputs */
-    pub render_requester: Arc<Mutex<RenderRequester>>,
     pub key_source: Arc<Mutex<HashSet<Key>>>,
 
     /* outputs */
@@ -44,14 +42,11 @@ impl ProgramState {
         let write_buffer = Arc::new(Mutex::new([0; WRITE_BUFFER_SIZE]));
         let mapper = rom.initialize_mapper();
 
-        let render_requester = Arc::new(Mutex::new(RenderRequester::new()));
-
         let (thread_sender, thread_receiver) = channel::<SimulatorSignal>();
 
         let mut result = ProgramState {
             key_source,
             write_buffer,
-            render_requester,
             thread_sender,
             thread_handle: None,
         };
@@ -68,14 +63,13 @@ impl ProgramState {
         thread_receiver: Receiver<SimulatorSignal>,
     ) {
         let write_buffer = self.write_buffer.clone();
-        let render_requester = self.render_requester.clone();
         let key_source_clone = self.key_source.clone();
         let savefile = savefile.clone();
 
         self.thread_handle = Some(thread::spawn(move || {
             let mut memory = Box::new(CoreMemory::new_from_mapper(mapper));
 
-            let ppu = PPU::new(write_buffer, memory.mapper.clone(), render_requester);
+            let ppu = PPU::new(write_buffer, memory.mapper.clone());
 
             let apu = APU::new();
             memory.register_listener(apu.clone());

@@ -7,7 +7,6 @@ use crate::ppu::{
     VRAM_SIZE, WRITE_BUFFER_SIZE,
 };
 use crate::processor::Processor;
-use crate::simulator::RenderRequester;
 use std::cell::RefCell;
 use std::mem::replace;
 use std::rc::Rc;
@@ -34,7 +33,6 @@ pub struct PPU {
     pub(super) ppu_status: u8,
     pub(super) tall_sprites: bool, /* if true, sprites are 16 pixels tall instead of 8 */
     pub(super) internal_regs: PPUInternalRegisters,
-    requester: Arc<Mutex<RenderRequester>>,
 }
 
 #[derive(Clone, Debug)]
@@ -57,7 +55,6 @@ impl PPU {
     pub fn new(
         write_buffer: Arc<Mutex<WriteBuffer>>,
         mapper: Rc<RefCell<Box<dyn Mapper>>>,
-        requester: Arc<Mutex<RenderRequester>>,
     ) -> Rc<RefCell<PPU>> {
         Rc::new(RefCell::new(PPU {
             mapper,
@@ -79,7 +76,6 @@ impl PPU {
             next_tile: None,
             next_palette: None,
             is_even_frame: false,
-            requester,
         }))
     }
 
@@ -178,8 +174,6 @@ impl PPU {
             .lock()
             .unwrap()
             .copy_from_slice(&self.internal_buffer);
-
-        self.requester.lock().unwrap().request_redraw();
     }
 
     pub fn render_scanline_begin(&mut self, scanline: u8) {
