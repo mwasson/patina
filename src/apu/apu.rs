@@ -17,9 +17,9 @@ use std::time::Duration;
 
 pub struct APU {
     apu_counter: u16,
-    _output_stream: OutputStream, /* can't remove this--if it's collected, sound won't play */
-    _sink: Sink,                  /* ditto--confusingly, since OutputStream should have a ref */
-    pulse1: Pulse,                /* to it through the Mixer? */
+    _output_stream: Option<OutputStream>, /* can't remove this--if it's collected, sound won't play */
+    _sink: Option<Sink>,                  /* ditto--confusingly, since OutputStream should have a ref */
+    pulse1: Pulse,                        /* to it through the Mixer? */
     pulse2: Pulse,
     triangle: Triangle,
     noise: Noise,
@@ -33,11 +33,17 @@ const PULSE_2_FIRST_ADDR: u16 = 0x4004;
 
 impl APU {
     pub fn new() -> Rc<RefCell<APU>> {
-        let stream_handle =
-            rodio::OutputStreamBuilder::open_default_stream().expect("open default audio stream");
-        let sink = Sink::connect_new(&stream_handle.mixer());
         let queue = Arc::new(RwLock::new(VecDeque::new()));
-        sink.append(BufferedMixedSource::new(queue.clone()));
+
+        let (output_stream, sink) =
+            match rodio::OutputStreamBuilder::open_default_stream() {
+                Ok(stream_handle) => {
+                    let sink = Sink::connect_new(&stream_handle.mixer());
+                    sink.append(BufferedMixedSource::new(queue.clone()));
+                    (Some(stream_handle), Some(sink))
+                }
+                Err(_) => (None, None), /* headless: APU runs silently */
+            };
 
         let pulse1 = Pulse::new(PULSE_1_FIRST_ADDR, true);
         let pulse2 = Pulse::new(PULSE_2_FIRST_ADDR, false);
@@ -47,7 +53,7 @@ impl APU {
 
         Rc::new(RefCell::new(APU {
             apu_counter: 0,
-            _output_stream: stream_handle,
+            _output_stream: output_stream,
             pulse1,
             pulse2,
             triangle,

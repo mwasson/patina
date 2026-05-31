@@ -11,7 +11,7 @@ fn make_scheduler(mapper: TestMapper) -> (Scheduler, Sender<SimulatorSignal>) {
     let write_buffer: Arc<Mutex<WriteBuffer>> = Arc::new(Mutex::new([0; WRITE_BUFFER_SIZE]));
     let memory = Box::new(CoreMemory::new_from_mapper(Box::new(mapper)));
     let ppu = PPU::new(write_buffer, memory.mapper.clone());
-    let apu = APU::new(); /* requires a working audio device */
+    let apu = APU::new();
     let cpu = CPU::new(memory);
     let (tx, rx) = channel();
     (Scheduler::new(cpu, ppu, apu, rx), tx)
