@@ -31,6 +31,10 @@ impl KeyEventHandler {
 
     // TODO document
     // TODO how will this interact with configuration?
+    pub fn set_write_buffer(&mut self, write_buffer: Arc<Mutex<WriteBuffer>>) {
+        self.write_buffer = write_buffer;
+    }
+
     pub fn handle_key_event(&mut self, key_event: &KeyEvent) {
         match key_event.state {
             ElementState::Pressed => {
