@@ -54,6 +54,6 @@ The description should complete the sentence "This commit will…" and be writte
 - `Fix APU panicking in headless environments (e.g. CI)`
 
 ## Conventions
-- Tests live in a `tests/` subdirectory within each module (e.g. `src/ppu/tests/`)
+- Tests live in a separate `tests/` subpackage within each module (e.g. `src/ppu/tests/`); no inline `#[cfg(test)]` modules in source files
 - No mocks for the memory bus — integration-style tests that exercise real wiring
 - Mappers implement the `Mapper` trait (`src/mapper/mapper.rs`)
