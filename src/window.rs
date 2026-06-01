@@ -1,14 +1,18 @@
 use crate::key_event_handler::KeyEventHandler;
 use crate::ppu;
 use crate::ppu::WriteBuffer;
+use crate::rom::Rom;
+use crate::simulator::program_state::ProgramState;
 use pixels::{Pixels, SurfaceTexture};
+use std::fs;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::{Key, ModifiersState};
 use winit::window::{Window, WindowId};
 
 const WINDOW_START_WIDTH: u16 = 420;
@@ -19,15 +23,26 @@ struct WindowApp<'a> {
     pixels: Option<Pixels<'a>>,
     window: Option<Arc<Window>>,
     key_event_handler: KeyEventHandler,
+    program_state: Arc<RwLock<ProgramState>>,
+    savefile: Option<String>,
+    modifiers: ModifiersState,
 }
 
 impl WindowApp<'_> {
-    fn new(write_buffer: Arc<Mutex<WriteBuffer>>, key_event_handler: KeyEventHandler) -> Self {
+    fn new(
+        write_buffer: Arc<Mutex<WriteBuffer>>,
+        key_event_handler: KeyEventHandler,
+        program_state: Arc<RwLock<ProgramState>>,
+        savefile: Option<String>,
+    ) -> Self {
         Self {
             write_buffer,
             pixels: None,
             window: None,
             key_event_handler,
+            program_state,
+            savefile,
+            modifiers: ModifiersState::empty(),
         }
     }
 
@@ -38,11 +53,33 @@ impl WindowApp<'_> {
             let _ = pixels.render();
         }
     }
+
+    fn do_exit(&mut self, event_loop: &ActiveEventLoop) {
+        let save_data = self.program_state.write().unwrap().cleanup();
+        if let (Some(path), Some(data)) = (&self.savefile, save_data) {
+            if let Err(e) = fs::write(path, data) {
+                eprintln!("Failed to write save file {path}: {e}");
+            }
+        }
+        event_loop.exit();
+    }
+
+    fn load_rom(&mut self) {
+        let path = rfd::FileDialog::new()
+            .add_filter("NES ROM", &["nes"])
+            .pick_file();
+
+        let Some(path) = path else { return };
+
+        match Rom::parse_file(path.to_string_lossy().to_string()) {
+            Ok(rom) => self.program_state.write().unwrap().restart_with_rom(&rom),
+            Err(e) => eprintln!("Failed to load ROM: {e}"),
+        }
+    }
 }
 
 impl ApplicationHandler for WindowApp<'_> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        /* TODO handle error? */
         let window = Arc::new(
             event_loop
                 .create_window(
@@ -53,7 +90,6 @@ impl ApplicationHandler for WindowApp<'_> {
                 .unwrap(),
         );
 
-        /* TODO handle error? */
         self.pixels = {
             let window_size = window.inner_size();
             let surface_texture =
@@ -78,7 +114,7 @@ impl ApplicationHandler for WindowApp<'_> {
                 self.render();
             }
             WindowEvent::CloseRequested => {
-                event_loop.exit();
+                self.do_exit(event_loop);
             }
             WindowEvent::Resized(size) => {
                 self.pixels
@@ -87,11 +123,23 @@ impl ApplicationHandler for WindowApp<'_> {
                     .resize_surface(size.width, size.height)
                     .expect("TODO: panic message");
             }
-            WindowEvent::KeyboardInput {
-                device_id: _,
-                event: input,
-                is_synthetic: _,
-            } => {
+            WindowEvent::ModifiersChanged(new_modifiers) => {
+                self.modifiers = new_modifiers.state();
+            }
+            WindowEvent::KeyboardInput { event: input, .. } => {
+                if input.state == ElementState::Pressed && self.modifiers.control_key() {
+                    match &input.logical_key {
+                        Key::Character(c) if c.as_str() == "q" => {
+                            self.do_exit(event_loop);
+                            return;
+                        }
+                        Key::Character(c) if c.as_str() == "o" => {
+                            self.load_rom();
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
                 self.key_event_handler.handle_key_event(&input);
             }
             _ => (),
@@ -100,9 +148,16 @@ impl ApplicationHandler for WindowApp<'_> {
 }
 
 pub fn initialize_ui(
-    write_buffer: Arc<Mutex<WriteBuffer>>,
+    program_state: Arc<RwLock<ProgramState>>,
     key_event_handler: KeyEventHandler,
+    savefile: Option<String>,
 ) -> Result<(), EventLoopError> {
+    let write_buffer = program_state.read().unwrap().write_buffer.clone();
     let event_loop = EventLoop::new()?;
-    event_loop.run_app(&mut WindowApp::new(write_buffer, key_event_handler))
+    event_loop.run_app(&mut WindowApp::new(
+        write_buffer,
+        key_event_handler,
+        program_state,
+        savefile,
+    ))
 }

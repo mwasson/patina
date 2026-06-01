@@ -90,6 +90,14 @@ impl ProgramState {
         }));
     }
 
+    pub fn restart_with_rom(&mut self, rom: &Rom) {
+        self.cleanup();
+        let mapper = rom.initialize_mapper();
+        let (thread_sender, thread_receiver) = channel::<SimulatorSignal>();
+        self.thread_sender = thread_sender;
+        self.simulate_async_internal(mapper, &None, thread_receiver);
+    }
+
     pub fn cleanup(&mut self) -> Option<Vec<u8>> {
         if let Some(thread_handle) = self.thread_handle.take() {
             self.thread_sender
@@ -115,5 +123,40 @@ impl ProgramState {
                 fs::read(path).ok()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rom::Rom;
+    use std::sync::Mutex;
+
+    fn make_test_rom() -> Rom {
+        Rom {
+            prg_data: vec![0u8; 16384],
+            chr_data: vec![0u8; 8192],
+            byte_6_flags: 0,
+            byte_7_flags: 0,
+            _trainer: vec![],
+            _prg_ram: vec![],
+            _tv_system: 0,
+        }
+    }
+
+    #[test]
+    fn restart_with_rom_preserves_write_buffer_and_restarts_thread() {
+        let keys = Arc::new(Mutex::new(HashSet::new()));
+        let mut state = ProgramState::simulate_async(&make_test_rom(), &None, keys);
+
+        let original_buffer = Arc::as_ptr(&state.write_buffer);
+        state.restart_with_rom(&make_test_rom());
+
+        assert_eq!(Arc::as_ptr(&state.write_buffer), original_buffer,
+            "write_buffer arc should be preserved across restart");
+        assert!(state.thread_handle.is_some(), "emulator thread should be running after restart");
+
+        state.cleanup();
+        assert!(state.thread_handle.is_none(), "thread handle should be None after cleanup");
     }
 }

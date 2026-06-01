@@ -45,16 +45,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     })
     .expect("Should not error due to being only signal handler");
 
-    let write_buffer = program_state.read().unwrap().write_buffer.clone();
-
-    let result = match window::initialize_ui(write_buffer, key_event_handler) {
+    match window::initialize_ui(program_state.clone(), key_event_handler, args.savefile.clone()) {
         Ok(()) => Ok(()),
         Err(event_loop_error) => Err(event_loop_error.into()),
-    };
-
-    cleanup_and_save(&program_state, &args.savefile);
-
-    result
+    }
 }
 
 fn cleanup_and_save(program_state: &Arc<RwLock<ProgramState>>, savefile: &Option<String>) {
