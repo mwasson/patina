@@ -388,7 +388,7 @@ impl PPU {
      * pixels tall. It then copies these into secondary OAM. Also sets the
      * sprite overflow bit if necessary.
      */
-    fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo> {
+    pub(super) fn sprite_evaluation(&mut self, scanline_num: u8) -> Vec<SpriteInfo> {
         let mut scanline_sprites = Vec::new();
         let mut sprites_found = 0;
         for i in 0..OAM_SIZE / 4 {
