@@ -36,6 +36,23 @@ NES emulator written in Rust. Targets mapper 0 games (SMB, classic black-box tit
 
 These are hard rules, not guidelines.
 
+## Commit Message Format
+
+Issue-linked work:
+```
+Issue #N: <short description>
+```
+
+Non-issue work (CI fixes, refactors, tooling):
+```
+<short description>
+```
+
+The description should complete the sentence "This commit will…" and be written in imperative mood. Examples from this repo:
+- `Issue #5: Load ROM at runtime via file dialog, Ctrl+Q to exit`
+- `Issue #26: add PPU unit and integration tests`
+- `Fix APU panicking in headless environments (e.g. CI)`
+
 ## Conventions
 - Tests live in a `tests/` subdirectory within each module (e.g. `src/ppu/tests/`)
 - No mocks for the memory bus — integration-style tests that exercise real wiring
