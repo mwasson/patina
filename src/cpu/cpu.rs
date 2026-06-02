@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use winit::keyboard::Key;
+use tao::keyboard::Key;
 
 pub struct CPU {
     pub accumulator: u8,
@@ -176,7 +176,7 @@ impl CPU {
         self.memory.read16(addr)
     }
 
-    pub fn set_key_source(&mut self, keys: Arc<Mutex<HashSet<Key>>>) {
+    pub fn set_key_source(&mut self, keys: Arc<Mutex<HashSet<Key<'static>>>>) {
         self.controller.borrow_mut().set_key_source(keys);
     }
 }

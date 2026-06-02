@@ -14,6 +14,7 @@ mod apu;
 mod config;
 mod key_event_handler;
 mod mapper;
+mod menu;
 mod ppu;
 mod processor;
 mod simulator;
@@ -27,10 +28,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let program_state = ProgramState::simulate_async(&rom, &args.savefile, keys.clone());
     let key_event_handler = KeyEventHandler::new(keys, program_state.write_buffer.clone());
 
-    match window::initialize_ui(program_state, key_event_handler, args.savefile) {
-        Ok(()) => Ok(()),
-        Err(e) => Err(e.into()),
-    }
+    window::initialize_ui(program_state, key_event_handler, args.savefile)
 }
 
 #[derive(Parser, Debug)]

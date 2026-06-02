@@ -13,7 +13,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{fs, thread};
-use winit::keyboard::Key;
+use tao::keyboard::Key;
 
 /**
  * Provides an external view into a running emulator state. This packages up all relevant parts
@@ -23,7 +23,7 @@ use winit::keyboard::Key;
  */
 pub struct ProgramState {
     /* inputs */
-    pub key_source: Arc<Mutex<HashSet<Key>>>,
+    pub key_source: Arc<Mutex<HashSet<Key<'static>>>>,
 
     /* outputs */
     pub write_buffer: Arc<Mutex<WriteBuffer>>,
@@ -37,7 +37,7 @@ impl ProgramState {
     pub fn simulate_async(
         rom: &Rom,
         savefile: &Option<String>,
-        key_source: Arc<Mutex<HashSet<Key>>>,
+        key_source: Arc<Mutex<HashSet<Key<'static>>>>,
     ) -> ProgramState {
         let write_buffer = Arc::new(Mutex::new([0; WRITE_BUFFER_SIZE]));
         let mapper = rom.initialize_mapper();
