@@ -1,108 +1,209 @@
 use crate::key_event_handler::KeyEventHandler;
-use crate::ppu;
-use crate::ppu::WriteBuffer;
-use pixels::{Pixels, SurfaceTexture};
-use std::ops::Deref;
-use std::sync::{Arc, Mutex};
-use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
-use winit::error::EventLoopError;
-use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
+use crate::menu::{self, MenuAction};
+use crate::renderer::Renderer;
+use crate::rom::Rom;
+use crate::simulator::program_state::ProgramState;
+use muda::{Menu, MenuEvent, MenuId};
+use std::error::Error;
+use std::fs;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tao::dpi::LogicalSize;
+use tao::event::{ElementState, Event, WindowEvent};
+use tao::event_loop::{ControlFlow, EventLoopBuilder};
+use tao::keyboard::ModifiersState;
+use tao::window::{Window, WindowBuilder};
 
 const WINDOW_START_WIDTH: u16 = 420;
 const WINDOW_START_HEIGHT: u16 = 380;
+/// Target redraw cadence (~60 fps). The emulator runs on its own thread; the UI
+/// just samples its framebuffer at this rate.
+const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
-struct WindowApp<'a> {
-    write_buffer: Arc<Mutex<WriteBuffer>>,
-    pixels: Option<Pixels<'a>>,
-    window: Option<Arc<Window>>,
+/// Events delivered to the event loop from sources other than window events:
+/// the OS signal handler (Ctrl+C) and `muda` menu activations.
+pub(crate) enum AppEvent {
+    SaveAndExit,
+    Menu(MenuId),
+}
+
+struct WindowApp {
+    renderer: Renderer,
     key_event_handler: KeyEventHandler,
+    program_state: ProgramState,
+    savefile: Option<String>,
+    modifiers: ModifiersState,
+    /// The native menu bar. Kept alive for the lifetime of the app: dropping it
+    /// removes the menu from the window.
+    _menu: Menu,
 }
 
-impl WindowApp<'_> {
-    fn new(write_buffer: Arc<Mutex<WriteBuffer>>, key_event_handler: KeyEventHandler) -> Self {
-        Self {
-            write_buffer,
-            pixels: None,
-            window: None,
-            key_event_handler,
-        }
-    }
-
+impl WindowApp {
     fn render(&mut self) {
-        if let Some(pixels) = self.pixels.as_mut() {
-            let frame = pixels.frame_mut();
-            frame.copy_from_slice(self.write_buffer.lock().unwrap().deref());
-            let _ = pixels.render();
+        self.renderer.render();
+    }
+
+    /// Routes every user-triggered action (menu item, keyboard shortcut, window
+    /// close, or signal) through a single place.
+    fn handle_action(&mut self, action: MenuAction, control_flow: &mut ControlFlow) {
+        match action {
+            MenuAction::LoadRom => self.load_rom(),
+            MenuAction::Exit => self.do_exit(control_flow),
         }
     }
-}
 
-impl ApplicationHandler for WindowApp<'_> {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        /* TODO handle error? */
-        let window = Arc::new(
-            event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title("Patina")
-                        .with_inner_size(LogicalSize::new(WINDOW_START_WIDTH, WINDOW_START_HEIGHT)),
-                )
-                .unwrap(),
-        );
+    fn do_exit(&mut self, control_flow: &mut ControlFlow) {
+        let save_data = self.program_state.cleanup();
+        if let (Some(path), Some(data)) = (&self.savefile, save_data) {
+            if let Err(e) = fs::write(path, data) {
+                eprintln!("Failed to write save file {path}: {e}");
+            }
+        }
+        *control_flow = ControlFlow::Exit;
+    }
 
-        /* TODO handle error? */
-        self.pixels = {
-            let window_size = window.inner_size();
-            let surface_texture =
-                SurfaceTexture::new(window_size.width, window_size.height, window.clone());
-            Some(Pixels::new(ppu::DISPLAY_WIDTH, ppu::DISPLAY_HEIGHT, surface_texture).unwrap())
+    fn load_rom(&mut self) {
+        let path = rfd::FileDialog::new()
+            .add_filter("NES ROM", &["nes"])
+            .pick_file();
+
+        let Some(path) = path else { return };
+
+        let rom = match Rom::parse_file(path.to_string_lossy().to_string()) {
+            Ok(rom) => rom,
+            Err(e) => {
+                eprintln!("Failed to load ROM: {e}");
+                return;
+            }
         };
 
-        self.window = Some(window);
-        event_loop.set_control_flow(ControlFlow::Wait);
-        self.window.as_ref().unwrap().request_redraw();
+        let key_source = self.program_state.key_source.clone();
+        self.program_state.cleanup();
+        let new_state = ProgramState::simulate_async(&rom, &None, key_source);
+        self.renderer.set_write_buffer(new_state.write_buffer.clone());
+        self.key_event_handler
+            .set_write_buffer(new_state.write_buffer.clone());
+        self.program_state = new_state;
     }
 
-    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
-        if let Some(window) = self.window.as_ref() {
-            window.request_redraw();
-        }
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event: WindowEvent, control_flow: &mut ControlFlow) {
         match event {
-            WindowEvent::RedrawRequested => {
-                self.render();
-            }
             WindowEvent::CloseRequested => {
-                event_loop.exit();
+                self.do_exit(control_flow);
             }
             WindowEvent::Resized(size) => {
-                self.pixels
-                    .as_mut()
-                    .unwrap()
-                    .resize_surface(size.width, size.height)
-                    .expect("TODO: panic message");
+                self.renderer.resize(size.width, size.height);
             }
-            WindowEvent::KeyboardInput {
-                device_id: _,
-                event: input,
-                is_synthetic: _,
-            } => {
+            WindowEvent::ModifiersChanged(new_modifiers) => {
+                self.modifiers = new_modifiers;
+            }
+            WindowEvent::KeyboardInput { event: input, .. } => {
+                if input.state == ElementState::Pressed {
+                    if let Some(action) =
+                        menu::action_for_shortcut(self.modifiers.control_key(), &input.logical_key)
+                    {
+                        self.handle_action(action, control_flow);
+                        return;
+                    }
+                }
                 self.key_event_handler.handle_key_event(&input);
             }
             _ => (),
         }
     }
+
+    fn user_event(&mut self, event: AppEvent, control_flow: &mut ControlFlow) {
+        match event {
+            AppEvent::SaveAndExit => self.do_exit(control_flow),
+            AppEvent::Menu(id) => {
+                if let Some(action) = menu::action_for_menu_id(&id) {
+                    self.handle_action(action, control_flow);
+                }
+            }
+        }
+    }
+}
+
+/// Attaches the menu bar to the window. This is the only platform-divergent
+/// part of the menu implementation; the menu itself is defined once in
+/// [`crate::menu`].
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+fn attach_menu(menu: &Menu, window: &Window) {
+    use tao::platform::unix::WindowExtUnix;
+    if let Err(e) = menu.init_for_gtk_window(window.gtk_window(), window.default_vbox()) {
+        eprintln!("Failed to attach menu: {e}");
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn attach_menu(menu: &Menu, window: &Window) {
+    use tao::platform::windows::WindowExtWindows;
+    if let Err(e) = unsafe { menu.init_for_hwnd(window.hwnd() as isize) } {
+        eprintln!("Failed to attach menu: {e}");
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn attach_menu(menu: &Menu, _window: &Window) {
+    menu.init_for_nsapp();
 }
 
 pub fn initialize_ui(
-    write_buffer: Arc<Mutex<WriteBuffer>>,
+    program_state: ProgramState,
     key_event_handler: KeyEventHandler,
-) -> Result<(), EventLoopError> {
-    let event_loop = EventLoop::new()?;
-    event_loop.run_app(&mut WindowApp::new(write_buffer, key_event_handler))
+    savefile: Option<String>,
+) -> Result<(), Box<dyn Error>> {
+    let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
+
+    // Forward native menu activations into the event loop as user events.
+    let menu_proxy = event_loop.create_proxy();
+    MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+        let _ = menu_proxy.send_event(AppEvent::Menu(event.id().clone()));
+    }));
+
+    // Route Ctrl+C through the event loop so it shares the save-and-exit path.
+    let signal_proxy = event_loop.create_proxy();
+    ctrlc::set_handler(move || {
+        let _ = signal_proxy.send_event(AppEvent::SaveAndExit);
+    })
+    .expect("Should not error due to being only signal handler");
+
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_title("Patina")
+            .with_inner_size(LogicalSize::new(WINDOW_START_WIDTH, WINDOW_START_HEIGHT))
+            .build(&event_loop)?,
+    );
+
+    // Attach the menu before creating the renderer: on Linux the renderer packs
+    // its drawing area into the same vbox, below muda's menubar.
+    let menu = menu::build_menu()?;
+    attach_menu(&menu, &window);
+
+    let renderer = Renderer::new(&window, program_state.write_buffer.clone());
+
+    let mut app = WindowApp {
+        renderer,
+        key_event_handler,
+        program_state,
+        savefile,
+        modifiers: ModifiersState::empty(),
+        _menu: menu,
+    };
+
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::WaitUntil(Instant::now() + FRAME_INTERVAL);
+        match event {
+            Event::WindowEvent { event, .. } => app.window_event(event, control_flow),
+            Event::UserEvent(app_event) => app.user_event(app_event, control_flow),
+            Event::MainEventsCleared => app.render(),
+            _ => (),
+        }
+    })
 }

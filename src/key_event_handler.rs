@@ -7,11 +7,11 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use winit::event::{ElementState, KeyEvent};
-use winit::keyboard::Key;
-use winit::keyboard::Key::Character;
+use tao::event::{ElementState, KeyEvent};
+use tao::keyboard::Key;
+use tao::keyboard::Key::Character;
 
-type PressedKeys = Arc<Mutex<HashSet<Key>>>;
+type PressedKeys = Arc<Mutex<HashSet<Key<'static>>>>;
 
 pub struct KeyEventHandler {
     pressed_keys: PressedKeys,
@@ -31,6 +31,10 @@ impl KeyEventHandler {
 
     // TODO document
     // TODO how will this interact with configuration?
+    pub fn set_write_buffer(&mut self, write_buffer: Arc<Mutex<WriteBuffer>>) {
+        self.write_buffer = write_buffer;
+    }
+
     pub fn handle_key_event(&mut self, key_event: &KeyEvent) {
         match key_event.state {
             ElementState::Pressed => {
@@ -40,7 +44,7 @@ impl KeyEventHandler {
                     .insert(key_event.logical_key.clone());
 
                 match &key_event.logical_key {
-                    Character(key) => match key.as_str() {
+                    Character(key) => match *key {
                         SCREENSHOT_KEY => {
                             self.take_screenshot();
                         }
@@ -55,6 +59,7 @@ impl KeyEventHandler {
                     .unwrap()
                     .remove(&key_event.logical_key.clone());
             }
+            _ => {}
         }
     }
 

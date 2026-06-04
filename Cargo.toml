@@ -23,6 +23,20 @@ clap = { version = "4.5.50", features = ["derive"] }
 ctrlc = "3.5.1"
 fnv = "1.0.7"
 image = "0.25.8"
-pixels = "0.15.0"
+# default features drop libxdo (only needed for predefined Copy/Cut/Paste items
+# we don't use); keep gtk for the Linux menu backend.
+muda = { version = "0.17", default-features = false, features = ["gtk"] }
+rfd = "0.17"
 rodio = "0.21.1"
-winit = "0.30.12"
+tao = { version = "0.35", features = ["rwh_06"] }
+
+# Rendering is platform-split because native menus are. On Windows/macOS the
+# native menu lives outside the client area, so pixels' full-window wgpu
+# surface is fine and gives free GPU scaling. On Linux the GTK menubar is an
+# in-window widget, so we render the frame into a gtk::DrawingArea below it
+# (Cairo) instead — and Linux never compiles wgpu/pixels.
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+pixels = "0.15.0"
+
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+gtk = "0.18"

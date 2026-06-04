@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use winit::keyboard::{Key, NamedKey};
+use tao::keyboard::Key;
 
 #[test]
 fn test_cpu() {
@@ -63,8 +63,8 @@ fn test_set_key_source() {
 
     {
         let mut unwrapped_key_source = key_source.lock().unwrap();
-        unwrapped_key_source.insert(Key::from(NamedKey::Enter)); // start
-        unwrapped_key_source.insert(Key::Character("z".parse().unwrap())); // B
+        unwrapped_key_source.insert(Key::Enter); // start
+        unwrapped_key_source.insert(Key::Character("z")); // B
     }
     cpu.write_mem(CONTROLLER_ADDRESS, 0x01);
     cpu.write_mem(CONTROLLER_ADDRESS, 0x00);

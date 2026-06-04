@@ -2,13 +2,13 @@ use crate::cpu::core_memory::MemoryListener;
 use crate::cpu::CoreMemory;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use winit::keyboard::{Key, NamedKey};
+use tao::keyboard::Key;
 
 pub const CONTROLLER_ADDRESS: u16 = 0x4016;
 
 #[derive(Clone)]
 pub struct Controller {
-    key_source: Arc<Mutex<HashSet<Key>>>,
+    key_source: Arc<Mutex<HashSet<Key<'static>>>>,
     inputs_in_order: Vec<u8>,
     old_value: u8,
 }
@@ -22,7 +22,7 @@ impl Controller {
         }
     }
 
-    pub fn set_key_source(&mut self, keys: Arc<Mutex<HashSet<Key>>>) {
+    pub fn set_key_source(&mut self, keys: Arc<Mutex<HashSet<Key<'static>>>>) {
         self.key_source = keys;
     }
 
@@ -31,14 +31,14 @@ impl Controller {
         self.inputs_in_order = Vec::new();
         /* keys, in order: A B Select Start Up Down Left Right */
         /* putting in a stack, so will reverse it */
-        self.push_key_press(&recorded_keys, Key::Named(NamedKey::ArrowRight)); /* right */
-        self.push_key_press(&recorded_keys, Key::Named(NamedKey::ArrowLeft)); /* left */
-        self.push_key_press(&recorded_keys, Key::Named(NamedKey::ArrowDown)); /* down */
-        self.push_key_press(&recorded_keys, Key::Named(NamedKey::ArrowUp)); /* up */
-        self.push_key_press(&recorded_keys, Key::Named(NamedKey::Enter)); /* start */
-        self.push_key_press(&recorded_keys, Key::Named(NamedKey::Tab)); /* select */
-        self.push_key_press(&recorded_keys, Key::Character("z".parse().unwrap())); /* B */
-        self.push_key_press(&recorded_keys, Key::Character("x".parse().unwrap()));
+        self.push_key_press(&recorded_keys, Key::ArrowRight); /* right */
+        self.push_key_press(&recorded_keys, Key::ArrowLeft); /* left */
+        self.push_key_press(&recorded_keys, Key::ArrowDown); /* down */
+        self.push_key_press(&recorded_keys, Key::ArrowUp); /* up */
+        self.push_key_press(&recorded_keys, Key::Enter); /* start */
+        self.push_key_press(&recorded_keys, Key::Tab); /* select */
+        self.push_key_press(&recorded_keys, Key::Character("z")); /* B */
+        self.push_key_press(&recorded_keys, Key::Character("x"));
         /* A */
     }
 
@@ -46,7 +46,7 @@ impl Controller {
         self.inputs_in_order.pop().unwrap_or(1)
     }
 
-    fn push_key_press(&mut self, recorded_keys: &HashSet<Key>, key: Key) {
+    fn push_key_press(&mut self, recorded_keys: &HashSet<Key<'static>>, key: Key<'static>) {
         self.inputs_in_order
             .push(if recorded_keys.contains(&key) { 1 } else { 0 })
     }

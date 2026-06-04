@@ -1,7 +1,7 @@
 use crate::cpu::{tests, Controller, MemoryListener};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use winit::keyboard::{Key, NamedKey};
+use tao::keyboard::Key;
 
 #[test]
 fn test_controller() {
@@ -10,10 +10,10 @@ fn test_controller() {
     controller.set_key_source(key_source.clone());
     {
         let mut unwrapped_key_source = key_source.lock().unwrap();
-        unwrapped_key_source.insert(Key::Named(NamedKey::ArrowUp)); // up press
-        unwrapped_key_source.insert(Key::Named(NamedKey::Tab)); // select press
-        unwrapped_key_source.insert(Key::Character("z".parse().unwrap())); // B press
-        unwrapped_key_source.insert(Key::Character("t".parse().unwrap())); // no effect
+        unwrapped_key_source.insert(Key::ArrowUp); // up press
+        unwrapped_key_source.insert(Key::Tab); // select press
+        unwrapped_key_source.insert(Key::Character("z")); // B press
+        unwrapped_key_source.insert(Key::Character("t")); // no effect
     }
     controller.record_data();
     /* make sure we got the write output */
@@ -36,7 +36,7 @@ fn test_controller() {
     key_source
         .lock()
         .unwrap()
-        .insert(Key::Named(NamedKey::Enter)); // start press
+        .insert(Key::Enter); // start press
     let memory = tests::memory_for_testing();
     assert_eq!(controller.read(&memory, 0x1234), 1); // always returns 1 now
     assert_eq!(controller.read(&memory, 0x1234), 1); // always returns 1 now
