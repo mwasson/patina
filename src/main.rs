@@ -17,6 +17,7 @@ mod mapper;
 mod menu;
 mod ppu;
 mod processor;
+mod renderer;
 mod simulator;
 mod window;
 

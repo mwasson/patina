@@ -1,15 +1,13 @@
 use crate::key_event_handler::KeyEventHandler;
 use crate::menu::{self, MenuAction};
-use crate::ppu;
-use crate::ppu::WriteBuffer;
+use crate::renderer::Renderer;
 use crate::rom::Rom;
 use crate::simulator::program_state::ProgramState;
 use muda::{Menu, MenuEvent, MenuId};
-use pixels::{Pixels, SurfaceTexture};
 use std::error::Error;
 use std::fs;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tao::dpi::LogicalSize;
 use tao::event::{ElementState, Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
@@ -18,6 +16,9 @@ use tao::window::{Window, WindowBuilder};
 
 const WINDOW_START_WIDTH: u16 = 420;
 const WINDOW_START_HEIGHT: u16 = 380;
+/// Target redraw cadence (~60 fps). The emulator runs on its own thread; the UI
+/// just samples its framebuffer at this rate.
+const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
 /// Events delivered to the event loop from sources other than window events:
 /// the OS signal handler (Ctrl+C) and `muda` menu activations.
@@ -27,9 +28,7 @@ pub(crate) enum AppEvent {
 }
 
 struct WindowApp {
-    write_buffer: Arc<Mutex<WriteBuffer>>,
-    pixels: Pixels<'static>,
-    window: Arc<Window>,
+    renderer: Renderer,
     key_event_handler: KeyEventHandler,
     program_state: ProgramState,
     savefile: Option<String>,
@@ -41,9 +40,7 @@ struct WindowApp {
 
 impl WindowApp {
     fn render(&mut self) {
-        let frame = self.pixels.frame_mut();
-        frame.copy_from_slice(self.write_buffer.lock().unwrap().deref());
-        let _ = self.pixels.render();
+        self.renderer.render();
     }
 
     /// Routes every user-triggered action (menu item, keyboard shortcut, window
@@ -83,7 +80,7 @@ impl WindowApp {
         let key_source = self.program_state.key_source.clone();
         self.program_state.cleanup();
         let new_state = ProgramState::simulate_async(&rom, &None, key_source);
-        self.write_buffer = new_state.write_buffer.clone();
+        self.renderer.set_write_buffer(new_state.write_buffer.clone());
         self.key_event_handler
             .set_write_buffer(new_state.write_buffer.clone());
         self.program_state = new_state;
@@ -95,9 +92,7 @@ impl WindowApp {
                 self.do_exit(control_flow);
             }
             WindowEvent::Resized(size) => {
-                self.pixels
-                    .resize_surface(size.width, size.height)
-                    .expect("Failed to resize surface");
+                self.renderer.resize(size.width, size.height);
             }
             WindowEvent::ModifiersChanged(new_modifiers) => {
                 self.modifiers = new_modifiers;
@@ -186,21 +181,15 @@ pub fn initialize_ui(
             .build(&event_loop)?,
     );
 
-    let pixels = {
-        let window_size = window.inner_size();
-        let surface_texture =
-            SurfaceTexture::new(window_size.width, window_size.height, window.clone());
-        Pixels::new(ppu::DISPLAY_WIDTH, ppu::DISPLAY_HEIGHT, surface_texture)?
-    };
-
+    // Attach the menu before creating the renderer: on Linux the renderer packs
+    // its drawing area into the same vbox, below muda's menubar.
     let menu = menu::build_menu()?;
     attach_menu(&menu, &window);
 
-    let write_buffer = program_state.write_buffer.clone();
+    let renderer = Renderer::new(&window, program_state.write_buffer.clone());
+
     let mut app = WindowApp {
-        write_buffer,
-        pixels,
-        window: window.clone(),
+        renderer,
         key_event_handler,
         program_state,
         savefile,
@@ -209,12 +198,11 @@ pub fn initialize_ui(
     };
 
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+        *control_flow = ControlFlow::WaitUntil(Instant::now() + FRAME_INTERVAL);
         match event {
             Event::WindowEvent { event, .. } => app.window_event(event, control_flow),
             Event::UserEvent(app_event) => app.user_event(app_event, control_flow),
-            Event::RedrawRequested(_) => app.render(),
-            Event::MainEventsCleared => app.window.request_redraw(),
+            Event::MainEventsCleared => app.render(),
             _ => (),
         }
     })
