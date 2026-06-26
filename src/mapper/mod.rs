@@ -1,9 +1,10 @@
 mod axrom;
-mod bank_array;
+pub(crate) mod bank_array;
 mod mapper;
 mod mmc1;
 mod nrom;
 mod uxrom;
+mod tests;
 
 use nrom::NROM;
 
