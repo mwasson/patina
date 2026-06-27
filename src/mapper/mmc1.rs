@@ -42,7 +42,7 @@ impl MMC1 {
 
         let mut result = MMC1 {
             shift_register: SHIFT_REGISTER_INITIAL_VAL,
-            prg_ram: Box::new([0; 1 << 15]),
+            prg_ram: Box::new([0; 1 << 13]),
             prg_banks,
             chr_banks,
             chr_bank_0: 0,

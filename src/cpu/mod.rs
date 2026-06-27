@@ -1,6 +1,6 @@
 mod addressing_mode;
 mod controller;
-mod core_memory;
+pub(crate) mod core_memory;
 mod cpu;
 mod instruction;
 mod operation;

@@ -40,7 +40,8 @@ pub trait Mapper: Send {
 
     fn write_prg_rom(&mut self, address: u16, data: u8);
 
-    /* TODO comment before commit */
+    /* Called by the PPU at dot 260 each scanline. Only used by MMC3 for its
+     * scanline counter. See ppu.rs TODO about approximating A12 edges. */
     fn listen_ppu_a12(&mut self, cpu: &mut CPU) {
         /* generally a no-op */
     }

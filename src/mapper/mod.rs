@@ -5,6 +5,7 @@ mod mmc1;
 mod mmc3;
 mod nrom;
 mod uxrom;
+#[cfg(test)]
 mod tests;
 
 use nrom::NROM;
@@ -22,7 +23,7 @@ const SIZE_8_KB: usize = 13;
 const SIZE_16_KB: usize = 14;
 const SIZE_32_KB: usize = 15;
 
-type RamBank = Box<[u8; 1 << 15]>;
+type RamBank = Box<[u8; 1 << 13]>; /* 8 KB PRG-RAM at 0x6000-0x7FFF */
 
 pub fn load_mapper(mapper_num: u8, rom: &Rom) -> Box<dyn Mapper> {
     match mapper_num {

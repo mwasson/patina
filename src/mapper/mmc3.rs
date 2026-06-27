@@ -4,18 +4,19 @@ use crate::mapper::bank_array::BankArray;
 use crate::ppu::NametableMirroring;
 use crate::rom::Rom;
 
-static OPEN_BUS: [u8; 1 << 15] = [0; 1 << 15];
+static OPEN_BUS: [u8; 1 << 13] = [0; 1 << 13];
 
 pub struct MMC3 {
     prg_ram: RamBank, /* TODO: optional */
     prg_banks: BankArray,
     chr_banks: BankArray,
     mirroring: NametableMirroring,
-    irq_counter: u8,
+    pub(crate) irq_counter: u8,
     irq_reload: u8,
     irq_enabled: bool,
     prg_bank_mode: bool,
     chr_a12_inversion: bool,
+    four_screen: bool,
     prg_ram_write_protect: bool,
     prg_ram_enabled: bool,
     selected_bank: Option<NamedBank>,
@@ -60,9 +61,10 @@ impl MMC3 {
         let chr_banks = BankArray::new(0, SIZE_1_KB, rom.chr_data.clone(), 8);
 
         MMC3 {
-            prg_ram: Box::new([0; 1 << 15]),
+            prg_ram: Box::new([0; 1 << 13]),
             prg_banks,
             chr_banks,
+            four_screen: rom.byte_6_flags & (1 << 3) != 0,
             mirroring: initial_nametable_mirroring(&rom),
             irq_counter: 0,
             irq_reload: 0,
@@ -91,8 +93,8 @@ impl MMC3 {
                 self.bank_data(value);
             }
         } else if address < 0xc000 {
-            /* 0xa000-0xbfff even: nametable arrangement */
-            if is_even {
+            /* 0xa000-0xbfff even: nametable arrangement (ignored for four-screen boards) */
+            if is_even && !self.four_screen {
                 self.mirroring = if value & 1 != 0 { NametableMirroring::Vertical } else { NametableMirroring::Horizontal };
             /* 0xa000-0xbfff odd: prg ram protect */
             } else {
@@ -238,6 +240,9 @@ impl Mapper for MMC3 {
         self.listen_for_state_change(address, data);
     }
 
+    /* Called by the PPU to clock the scanline counter. See the TODO in ppu.rs
+     * about A12 rising edge detection — this currently fires every scanline
+     * at dot 260, which is correct for most games but not all. */
     fn listen_ppu_a12(&mut self, cpu: &mut CPU) {
         if self.irq_counter == 0 {
             self.irq_counter = self.irq_reload;

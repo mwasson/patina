@@ -121,6 +121,13 @@ impl PPU {
         } else if dot == 257 && rendering_on {
             self.internal_regs.copy_x_bits();
         } else if dot == 260 {
+            /* TODO: This is an approximation. The real MMC3 IRQ counter only clocks on a
+             * rising edge of PPU address line A12 (bit 12), which happens when the PPU
+             * transitions from fetching in pattern table 0 to pattern table 1. This
+             * typically occurs around dot 260 during normal rendering, but games that use
+             * the same pattern table for both BG and sprites, or that deliberately
+             * manipulate A12 to filter counter ticks (e.g. Micro Machines), need precise
+             * edge detection. Fix: track A12 state and only call on 0→1 transitions. */
             self.mapper.borrow_mut().listen_ppu_a12(cpu);
         } else if dot > 320 && dot < 329 {
             //337 TODO fix: this is leading to incorrect renders where sprites haven't
