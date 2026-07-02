@@ -37,6 +37,8 @@ impl Mapper for MockMapper {
     fn get_nametable_mirroring(&self) -> NametableMirroring {
         self.mirroring.clone()
     }
+
+    fn write_prg_rom(&mut self, _address: u16, _value: u8) {}
 }
 
 pub fn make_ppu_with_buffer(

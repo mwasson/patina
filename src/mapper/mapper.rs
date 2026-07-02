@@ -1,11 +1,10 @@
+use crate::cpu::CPU;
 use crate::ppu::NametableMirroring;
 
 pub trait Mapper: Send {
     fn read_prg(&self, address: u16) -> u8;
 
     fn read_prg_slice(&self, address: u16, size: usize) -> &[u8];
-
-    fn write_prg(&mut self, address: u16, value: u8);
 
     fn read_chr(&self, address: u16) -> u8;
 
@@ -26,4 +25,24 @@ pub trait Mapper: Send {
      * this has no effect.
      */
     fn set_save_data(&mut self, _data: &Vec<u8>) {}
+
+    fn write_prg(&mut self, address: u16, data: u8) {
+        if address < 0x8000 {
+            self.write_prg_ram(address, data);
+        } else {
+            self.write_prg_rom(address, data);
+        }
+    }
+
+    fn write_prg_ram(&mut self, address: u16, data: u8) {
+        /* default: no-op due to having no ram */
+    }
+
+    fn write_prg_rom(&mut self, address: u16, data: u8);
+
+    /* Called by the PPU at dot 260 each scanline. Only used by MMC3 for its
+     * scanline counter. See ppu.rs TODO about approximating A12 edges. */
+    fn listen_ppu_a12(&mut self, cpu: &mut CPU) {
+        /* generally a no-op */
+    }
 }

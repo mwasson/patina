@@ -132,7 +132,7 @@ impl Instruction {
                 extra_cycles += Self::branch_instr(cpu, StatusFlag::Negative, false, b1);
             }
             Instruction::BRK => {
-                cpu.irq_with_offset(2);
+                cpu.irq_with_offset(2, true);
             }
             Instruction::BVC => {
                 extra_cycles += Self::branch_instr(cpu, StatusFlag::Overflow, false, b1);

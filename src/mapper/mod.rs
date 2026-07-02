@@ -2,8 +2,10 @@ mod axrom;
 pub(crate) mod bank_array;
 mod mapper;
 mod mmc1;
+mod mmc3;
 mod nrom;
 mod uxrom;
+#[cfg(test)]
 mod tests;
 
 use nrom::NROM;
@@ -13,17 +15,22 @@ use crate::mapper::mmc1::MMC1;
 use crate::mapper::uxrom::UxROM;
 use crate::rom::Rom;
 pub use mapper::Mapper;
+use crate::mapper::mmc3::MMC3;
 /* common bank sizes; u16 since they must fit in the CPU address space */
+const SIZE_1_KB: usize = 10;
 const SIZE_4_KB: usize = 12;
 const SIZE_8_KB: usize = 13;
 const SIZE_16_KB: usize = 14;
 const SIZE_32_KB: usize = 15;
+
+type RamBank = Box<[u8; 1 << 13]>; /* 8 KB PRG-RAM at 0x6000-0x7FFF */
 
 pub fn load_mapper(mapper_num: u8, rom: &Rom) -> Box<dyn Mapper> {
     match mapper_num {
         0 => Box::new(NROM::new(rom)),
         1 => Box::new(MMC1::new(rom)),
         2 => Box::new(UxROM::new(rom)),
+        4 => Box::new(MMC3::new(rom)),
         7 => Box::new(AxROM::new(rom)),
         _ => todo!("mapper {mapper_num}"),
     }

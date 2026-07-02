@@ -90,7 +90,7 @@ impl PPU {
         let rendering_on = self.ppu_mask & 0x18 != 0;
 
         if scanline < 240 {
-            self.render_scanline(scanline as u8, dot, rendering_on);
+            self.render_scanline(scanline as u8, dot, rendering_on, cpu);
         } else if scanline == 240 {
             if dot == 1 {
                 // todo!()
@@ -98,7 +98,7 @@ impl PPU {
         } else if scanline == 241 && dot == 1 {
             self.end_of_screen_render(cpu);
         } else if scanline == 261 {
-            self.prerender_scanline(dot, rendering_on);
+            self.prerender_scanline(dot, rendering_on, cpu);
         }
 
         if self.tick_count == 341 * 262 - 1 {
@@ -109,7 +109,7 @@ impl PPU {
         }
     }
 
-    fn render_scanline(&mut self, scanline: u8, dot: u16, rendering_on: bool) {
+    fn render_scanline(&mut self, scanline: u8, dot: u16, rendering_on: bool, cpu: &mut CPU) {
         if 0 < dot && dot < 257 {
             if dot == 1 {
                 self.render_scanline_begin(scanline);
@@ -120,6 +120,15 @@ impl PPU {
             }
         } else if dot == 257 && rendering_on {
             self.internal_regs.copy_x_bits();
+        } else if dot == 260 {
+            /* TODO: This is an approximation. The real MMC3 IRQ counter only clocks on a
+             * rising edge of PPU address line A12 (bit 12), which happens when the PPU
+             * transitions from fetching in pattern table 0 to pattern table 1. This
+             * typically occurs around dot 260 during normal rendering, but games that use
+             * the same pattern table for both BG and sprites, or that deliberately
+             * manipulate A12 to filter counter ticks (e.g. Micro Machines), need precise
+             * edge detection. Fix: track A12 state and only call on 0→1 transitions. */
+            self.mapper.borrow_mut().listen_ppu_a12(cpu);
         } else if dot > 320 && dot < 329 {
             //337 TODO fix: this is leading to incorrect renders where sprites haven't
             //been properly initialized. (scanline + 1) % 240 is probably at issue, but
@@ -128,7 +137,7 @@ impl PPU {
         }
     }
 
-    fn prerender_scanline(&mut self, dot: u16, rendering_on: bool) {
+    fn prerender_scanline(&mut self, dot: u16, rendering_on: bool, cpu: &mut CPU) {
         if dot == 1 {
             /* clear overflow flag */
             set_bit_off(&mut self.ppu_status, 5);
@@ -142,7 +151,7 @@ impl PPU {
                 self.internal_regs.copy_y_bits();
             }
         }
-        self.render_scanline(0xff, dot, rendering_on);
+        self.render_scanline(0xff, dot, rendering_on, cpu);
     }
 
     fn render_block(&mut self, scanline: u8, x: u8, rendering_on: bool) {
